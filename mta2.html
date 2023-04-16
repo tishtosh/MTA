@@ -4,7 +4,7 @@
     <link rel="icon" href="favicon.ico">
     <style>
         body {
-        background-color: white;
+            background-color: white;
         }
         header {
             margin-left: 0;
@@ -30,9 +30,8 @@
             font-size: 25px;
         }
         .p1 {
-        font-family: Arial, Helvetica, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
         }
-
     </style>
 
     <script src="https://use.fontawesome.com/029958eb6a.js"></script>
@@ -53,8 +52,7 @@
     if( has_stop ) {
         busstops = urlParams.get('busstop').split(",");
     }
-    console.log( busstops );
-
+    //console.log( busstops );
 </script>
 
 
@@ -66,8 +64,6 @@
 
             var params = {
                 "api_key": "22a765be4d804e949b016174387d697e" ,
-                // Request parameters
-                // "StopID": "1002141",
                 "StopID": busstops[i],
             };
                 
@@ -97,8 +93,6 @@
                     "class": "my-new-list",
                     html: items.join( "" )
                 }).appendTo( "body" );
-        
-
             })
             .fail(function() {
                 alert("error");
@@ -107,11 +101,11 @@
     });
 
     window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 1000);
-
 </script>
 
 <script src="https://momentjs.com/downloads/moment.js"></script>
 <i class="fa fa-bus fa-3x"></i>
 <h4 id="clock"></h4>
 </body>
+    
 </html>
