@@ -1,9 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <link rel="icon" href="favicon.ico">
     <style>
         body {
-        background-color: white;
+            background-color: white;
+        }
+        ul.a {
+            padding-left: 0px;
+            margin-left: 0px;
         }
         header {
             margin-left: 0;
@@ -14,29 +19,49 @@
             font-size: 30px;
             font-weight: 600;
             color: white;
-            text-align: center;    
+            text-align: center;  
+            padding-left: 10px;
+            padding-right: 10px;
         }
         h2 {
             font-size: 30px;
-            width: 45px;
             font-weight: 600;
+            width: 45px;
+            color: white;
             background-color: blue;
             text-align: center;
-            color: white;
+            display:inline;
+            padding-left: 10px;
+            padding-right: 10px;
         }
         h3 {
             display:inline;
-            font-size: 25px;
+            padding-left: 10px;
+            font-size: 20px;
+            font-family: Arial, Helvetica, sans-serif;
         }
         .p1 {
-        font-family: Arial, Helvetica, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
+            margin-left: 5px;
+            margin-right: 5px;
+            padding-left: 10px;
+
+        }
+
+        pre {
+            display:inline;
+            font-size: 20px;
+            font-family: Arial, Helvetica, sans-serif;
         }
 
     </style>
 
-    <script src="https://use.fontawesome.com/029958eb6a.js"></script>
+    <link href="./css/all.css" rel="stylesheet">
+    <link href='https://fonts.googleapis.com/css?family=Orbitron' rel='stylesheet' type='text/css'>
+
+   
     <title>like a bus</title>
-    <meta http-equiv="refresh" content="30">
+    <meta http-equiv="refresh" content="300">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>    
 </head>
 
@@ -44,30 +69,70 @@
 <body class="p1">
 <p id = "myid"></p>
 <script>
-    const busstops_default = "1002135,1002141,1002130,1002148";
-    var busstops = busstops_default.split(",");
+     // Parameters:
+    // busstop : comma delimeted list of busstops to display arrival information for. 
+    //          ignore lat lon when busstop is provided
+    //          defaults if not provided
+    // lat,lon : gps location to search when no busstop is provided
+    const busstops_default = "1002135,1002130,1002141,1002148";
+    var gBusstops = busstops_default.split(",");
 
     const urlParams = new URLSearchParams(window.location.search);
     const has_stop = urlParams.has('busstop');
     if( has_stop ) {
-        busstops = urlParams.get('busstop').split(",");
+        gBusstops = urlParams.get('busstop').split(",");
     }
-    console.log( busstops );
+    //console.log( gBusstops );
 
-</script>
+    function getStopsNear( lat, lon, radius ) {
+        console.log( "getStopsNear:", lat, lon, radius );
+        console.log( "Current stops:", gBusstops );
+        
+        // Remove old busstops
+        var element;
+        while( element = document.getElementById( "9999Z" ) ) {
+            element.remove(); 
+        }
+        while( element = gBusstops.pop() )
+            ;
+        console.log( "Cleared stops:", gBusstops );
 
+        // Get new busstops
+        var params = {
+            "api_key": "22a765be4d804e949b016174387d697e",
+            "Lat": lat,
+            "Lon": lon,
+            "Radius": radius,
+            };
 
-<script type="text/javascript">
+        $.ajax({
+            url: "https://api.wmata.com/Bus.svc/json/jStops?" + $.param(params),
+            type: "GET",
+        })
+        .done(function(data) {
+            var items = []; 
+            $(jQuery.parseJSON(JSON.stringify(data.Stops))).each(function() {  
+                console.log( this.StopID, this.Name );
+                gBusstops.push( this.StopID ); 
+            });                
+            console.log( "New busstops:", gBusstops );
 
-    $(function() {
-        for (var i = 0; i < busstops.length; i++) { 
-            console.log( busstops[i]); 
+        })
+        .fail(function() {
+            console.log( "error" );
+        });
+    }
+
+    function getPredictions() {
+        // arrival predictions for gBusstops 
+        console.log( "Getting predictions:", gBusstops ); 
+
+        for (var i = 0; i < gBusstops.length; i++) { 
+            console.log( "Getting prediction:", gBusstops[i]); 
 
             var params = {
                 "api_key": "22a765be4d804e949b016174387d697e" ,
-                // Request parameters
-                // "StopID": "1002141",
-                "StopID": busstops[i],
+                "StopID": gBusstops[i],
             };
                 
             $.ajax({
@@ -77,40 +142,90 @@
             .done(function(data) {
                 var items = [];
                 
-                items.push( "<header><H1 class='p1'>" );
+                items.push( "<header id=9999X ><H1 class='p1' id=9999>");
                 items.push( data.StopName );
                 items.push( "</H1></header>" );
                 
                 $(jQuery.parseJSON(JSON.stringify(data.Predictions))).each(function() {  
-                    items.push( "<H2 class=p1> " 
-                        + this.RouteID 
-                        + " </H2>"
-                        + "<H3 class=p1>" 
-                        + this.Minutes 
-                        + " minutes</H3>   " 
-                        + this.DirectionText + "</br>"
+                    items.push( 
+                        "<H2 class=p1 id=9999>" + this.RouteID + "</H2>"
+                        + "<pre> " + this.Minutes + " minutes</pre>"
+                        + "<br>" + this.DirectionText + "<br><br>"
                     );
                 });
                 
-                $( "<ul/>", {
-                    "class": "my-new-list",
+                $( "<pre/>", {
+                    "class": "a", "id": "9999Z",
                     html: items.join( "" )
                 }).appendTo( "body" );
-        
-
             })
             .fail(function() {
+                console.log( "error:", params );
                 alert("error");
             });
         }
-    });
+        console.log( "Show:", gBusstops );
+    };
+ 
+    function nearMe() {
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(showPosition);
+        } else { 
+            x.innerHTML = "Turn on location sharing.";
+        }
+    }
 
-    window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 1000);
+    function nearURL() {
+        if ( gLat && gLon ) {
+            showFixedPosition( gLat, gLon);
+        } else { 
+            x.innerHTML = "Set the Home location in the URL {lat|lon|radius}";
+        }
+    }
+            
+    function showFixedPosition( lat, lon ) {
+        //x.innerHTML="Latitude: " + lat + "<br>Longitude: " + lon;
+        getStopsNear( lat, lon, gRadius );
+        console.log( "showFixedPosition:", gBusstops );
+        getPredictions();
+    }
+        
+    function showPosition(position) {
+        //x.innerHTML="Latitude: " + position.coords.latitude +  "<br>Longitude: " + position.coords.longitude;
+        // getStopsNear( position.coords.latitude, position.coords.longitude );
+        getStopsNear( position.coords.latitude, position.coords.longitude, 3000 );
+        console.log( "showPosition:", gBusstops );
+        getPredictions();
+ 
+    }
+
+
+    var gLat, gLon;
+    var gRadius = 250;   // Meters
+    const has_lat = urlParams.has('lat');
+    const has_lon = urlParams.has('lon');
+    const has_radius = urlParams.has('radius');
+    if( has_lat & has_lon ) {
+        gLat = urlParams.get('lat')
+        gLon = urlParams.get('lon')
+    }
+    if( has_radius ) {
+        gRadius = urlParams.get('radius');
+    }
+    console.log( gLat, gLon, gRadius );
+
+    // Refresh
+    // window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 1000);
+    var x = document.getElementById("demo");
 
 </script>
-
 <script src="https://momentjs.com/downloads/moment.js"></script>
-<i class="fa fa-bus fa-3x"></i>
-<h4 id="clock"></h4>
+
+<pre class="fa-solid fa-bus fa-3x" style="color: #0433ff;" onClick="window.location.reload()">  </pre>
+<pre class="fa-solid fa-house fa-3x" onclick="nearURL()" >  </pre>
+<pre class="fa-solid fa-location-dot fa-3x" onclick="nearMe()">    4a</pre>
+<pre id="clock" style="font-family: 'Orbitron', sans-serif"></pre>
+<pre id="demo"></pre>
+
 </body>
 </html>
