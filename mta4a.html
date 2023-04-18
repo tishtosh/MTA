@@ -66,7 +66,7 @@
             color: white;
             background-color: blue;
             text-align: center;
-            width: 50px;
+            width: 30px;
             border:5px;
         }
         tbody td.hmepad {
@@ -74,21 +74,21 @@
             width: 10px;
         }
         tbody td.hmetime {
-            font-size: 50px;
+            font-size: 30px;
             font-weight: 200;
             color: black;
             background-color: white;
-            text-align: center;
-            width: 60px;
+            text-align: left;
+            width: 50px;
             border:5px;
         }
         tbody td.hmedest {
-            font-size: 40px;
+            font-size: 30px;
             font-weight: 200;
             color: black;
             background-color: white;
-            text-align: center;
-            width: 30%;
+            text-align: left;
+            width: 380px;
             border:5px;
         }
 
@@ -143,10 +143,9 @@
 <pre id="mBus" class="fa-solid fa-bus fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="getAllPredictions_init()">  </pre>
 <pre class="fa-solid fa-house fa-3x" onclick="nearURL()" >  </pre>
 <pre class="fa-solid fa-location-dot fa-3x" onclick="nearMe()"> </pre>
-<br>
-<pre class="fa-solid fa-house fa-3x> </pre>
 <pre id="clock" style="font-family: 'Orbitron', sans-serif"></pre>
-<br><pre id="statusmessage"></pre>
+<br>
+<pre id="statusmessage"></pre>
 
 
 <script>
@@ -344,7 +343,7 @@
                 if( p.StopID == s.StopID ) {
                     out = out + "<tr><td></td>"+
                         "<td class='hmepad'>" + "<td class='hmebus'>" + p.route + "</td><td class='hmepad'></td>" + 
-                        "<td class='hmetime'><b>" + p.min + "</b><i class='fa-solid fa-watch'></i></td>"+ 
+                        "<td class='hmetime'><b><i class='fa-solid fa-clock fa-1x'> " + p.min + "</b></i></td>"+ 
                         "<td class='hmedest'>" + p.dir + "</td></tr>"; 
                 }
             }
