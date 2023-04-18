@@ -58,12 +58,21 @@
             width: fit-content;
         }
 
-        tbody td.hme {
+        tbody td.hmebus {
+            font-size: 30px;
+            font-weight: 600;
             color: white;
             background-color: blue;
             text-align: center;
-            width: 100px;
+            width: 50px;
+            border:5px;
         }
+        tbody td.hmepad {
+            background-color: white;
+            width: 10px;
+        }
+
+
         tbody th {
             width: 800px;
             text-align: center;  
@@ -91,12 +100,11 @@
 
 <body class="p1">
 <p id = "myid"></p>
-<pre id="mBus" class="fa-solid fa-bus fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="getPredictions()">  </pre>
+<pre id="mBus" class="fa-solid fa-bus fa-beat fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="getPredictions()">  </pre>
 <pre class="fa-solid fa-house fa-3x" onclick="nearURL()" >  </pre>
 <pre class="fa-solid fa-location-dot fa-3x" onclick="nearMe()"> </pre>
 <pre id="clock" style="font-family: 'Orbitron', sans-serif"></pre>
-<pre id="statusmessage"></pre>
-
+<br><pre id="statusmessage"></pre>
 
 
 <script>
@@ -111,6 +119,8 @@
     // URL busstops
     const busstops_default = "1002135,1002130,1002141,1002148";
     var gBusstops = busstops_default.split(",");
+    var gBusstopsLat = [];
+    var gBusstopsLon = [];
 
     const urlParams = new URLSearchParams(window.location.search);
     const has_stop = urlParams.has('busstop');
@@ -153,6 +163,10 @@
         }
         while( element = gBusstops.pop() )
             ;
+        while( element = gBusstopsLat.pop() )
+            ;
+        while( element = gBusstopsLon.pop() )
+            ;
         console.log( "Cleared stops:", gBusstops );
     }
 
@@ -180,6 +194,8 @@
             $(jQuery.parseJSON(JSON.stringify(data.Stops))).each(function() {  
                 console.log( this.StopID, this.Name );
                 gBusstops.push( this.StopID ); 
+                gBusstopsLat.push( this.Lat );
+                gBusstopsLon.push( this.Lon );
             });                
             console.log( "GSN call GP");
             getPredictions();
@@ -219,9 +235,9 @@
                     items2.push( this.RouteID, this.Minutes, this.DirectionText );
                 });
                 
-                var s = "<table><tbody><tr><th colspan=4>" + data.StopName + "</th></tr>";
+                var s = "<table><tbody><tr><th colspan=5>" + data.StopName + "</th></tr>";
                 for (var i = 0; i < items2.length; i=i+3) {
-                    s = s + "<tr><td class='hme'>"+ items2[i] + "</td><td>" + items2[i+1] + "</td><td>" + items2[i+2] + "</td></tr>";
+                    s = s + "<tr><td class='hmepad'></td><td class='hmebus'>"+ items2[i] + "</td><td class='hmepad'></td><td>" + items2[i+1] + "</td><td>" + items2[i+2] + "</td></tr>";
                 }
                 s = s + "</tbody></table>";
                 
@@ -245,38 +261,70 @@
         console.log( "GP returning", gBusstops );
     };
  
+    
+    function shownearGivenPosition( lat, lon ) {
+        console.log( "snGP start", lat, lon );
+
+        var d = Math.trunc( distance( 38.89790, -77.03661, lat, lon, "K" ) );
+        if( d>50 ) {
+           // When over 50 km from DC default to DC center
+            gStatus.innerHTML = d+" km to these Whitehouse bus stops";
+            getStopsNear( 38.89790, -77.03661, 500 );  // RUNS ASYNC
+        }
+        else {
+            gStatus.innerHTML = d+" km to the Whitehouse";
+            getStopsNear(  lat, lon, 500 );  // RUNS ASYNC
+        }
+    }
+
     function nearMe() {
         if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(showPosition);
+            navigator.geolocation.watchPosition(shownearMe);
         } else { 
             gStatus.innerHTML = "Turn on location sharing.";
         }
     }
+    
+    function shownearMe(position) {
+        // Stops near current position. 
+        console.log( "snM start", position );
+        shownearGivenPosition( position.coords.latitude, position.coords.longitude )
+    }
 
     function nearURL() {
+        // Stops near position given in URL
         if ( gLat && gLon ) {
-            showFixedPosition( gLat, gLon);
+            shownearGivenPosition( gLat, gLon);
         } else { 
             gStatus.innerHTML = "Set the Home location in the URL {lat|lon|radius}";
         }
     }
             
-    function showFixedPosition( lat, lon ) {
-        console.log( "SFP start", gBusstops );
-        getStopsNear( lat, lon, gRadius ); // RUNS ASYNC
-        console.log( "SFP return", gBusstops );
-        //getPredictions();
-    }
-        
-    function showPosition(position) {
-        // getStopsNear( position.coords.latitude, position.coords.longitude );
-        console.log( "SP start", gBusstops );
-        getStopsNear( position.coords.latitude, position.coords.longitude, 3000 );  // RUNS ASYNC
-        console.log( "SP return", gBusstops );
-        //removeDisplayedStops();
-        //alert( "get predictions");
-        //getPredictions();
-    }
+  
+
+    function distance(lat1, lon1, lat2, lon2, unit) {
+	if ((lat1 == lat2) && (lon1 == lon2)) {
+		return 0;
+	}
+	else {
+		var radlat1 = Math.PI * lat1/180;
+		var radlat2 = Math.PI * lat2/180;
+		var theta = lon1-lon2;
+		var radtheta = Math.PI * theta/180;
+		var dist = Math.sin(radlat1) * Math.sin(radlat2) + Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
+		if (dist > 1) {
+			dist = 1;
+		}
+		dist = Math.acos(dist);
+		dist = dist * 180/Math.PI;
+		dist = dist * 60 * 1.1515;                     // US land Miles
+		if (unit=="K") { dist = dist * 1.609344 }      // Km
+		if (unit=="N") { dist = dist * 0.8684 }
+		if (unit=="f") { dist = dist * 5280 }          // Feet
+		return dist;
+	}
+}
+
 
     // Refresh
     window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 30);
