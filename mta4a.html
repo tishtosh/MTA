@@ -56,6 +56,8 @@
 
         table {
             width: fit-content;
+            border: 0px;
+            -webkit-border-horizontal-spacing: 0px;
         }
 
         tbody td.hmebus {
@@ -76,8 +78,8 @@
             font-weight: 200;
             color: black;
             background-color: white;
-            text-align: left;
-            width: 50px;
+            text-align: center;
+            width: 60px;
             border:5px;
         }
 
@@ -85,9 +87,19 @@
             color: black;
             font-size: 15px;
             font-weight: 200;
-            text-align:left;
+            text-align:center;
             background-color: white;
-            width: 50px;
+            width: 60px;
+            border: solid black;
+            border-left-width: 5px;
+            border-top-width: 5px;
+            border-bottom-width: 5px;
+            border-right-width: 0px;
+            border-left-color: red;
+            border-top-color: red;
+            border-bottom-color: red;
+            border-top-left-radius: 8px;
+            border-bottom-left-radius: 8px;
         }
 
 
@@ -98,13 +110,13 @@
             font-weight: 600;
             color: white;
             background-color: red;
-            text-align: left;     
-            --grid-max-width: 21.25rem;
-            --grid-gutter: var(--space-s-l, clamp(0.75rem, calc(3.19rem + -3.26vw), 2.50rem));
-            --grid-columns: 3;
+            text-align: left;    
+            border-left-width: 10px;
+            border: 10px;
         }
 
         tbody td.dme { text-align: center; color:blue; color: white; }
+       
 
     </style>
 
@@ -175,7 +187,8 @@
     var gStatus = document.getElementById("statusmessage");
 
     // Refresh predicitions for busstops
-    getPredictions();
+    //getPredictions_init();
+    shownearGivenPosition( gLat, gLon );    
 
     //
     // FUNCTIONS
@@ -233,7 +246,8 @@
             // Sort stops by distance 
             gBus.sort((a, b) => { return a.distance - b.distance; });
 
-            getPredictions();
+            //getPredictions();
+            getAllPredictions_init();
             console.log( "GSN returned from GP" );
 
         }) .fail(function(jqStop, textStatus, error) {
@@ -269,18 +283,7 @@
                 var items2=[];
                 $(jQuery.parseJSON(JSON.stringify(data.Predictions))).each(function() {  
                     items2.push( this.RouteID, this.Minutes, this.DirectionText );
-                });
-                
-                var s = "<table><tbody><tr><th colspan=5>" + data.StopName + "</th></tr>";
-                for (var i = 0; i < items2.length; i=i+3) {
-                    s = s + "<tr><td class='hmepad'></td><td class='hmebus'>"+ items2[i] + "</td><td class='hmepad'></td><td>" + items2[i+1] + "</td><td>" + items2[i+2] + "</td></tr>";
-                }
-                s = s + "</tbody></table>";
-                
-                var myDiv = document.createElement("table");
-                myDiv.id = 't9999';
-                myDiv.innerHTML = s;
-                document.body.appendChild(myDiv);                
+                });          
           
             }).fail(function(jqPrediction, textStatus, error) {
                 console.log( textStatus, error );
@@ -319,14 +322,19 @@
 
     function showAll() {
         // HTML
-        var out = "<table><tbody id=t9999>";
+        var out = "";
+ 
+        out = out + "<table><tbody id=t9999>";
         for( var i=0, l=gBus.length; i < l; i++ ) {
             var s = gBus[i];
-            out = out + "<tr><th class=hmedist>"+ s.Distance + " feet</th><th colspan=5>" + s.Name + "</th></tr>";
+            out = out + "<tr><th class=hmedist><b>"+ s.Distance + "</b><br>feet</th><th colspan=5>" + s.Name + "</th></tr>";
             for( var j=0, jl=gBusstopPredictions.length; j < jl; j++ ) {
                 var p = gBusstopPredictions[j];
                 if( p.StopID == s.StopID ) {
-                    out = out + "<tr><td></td><td class='hmepad'><td class='hmebus'>" + p.route + "</td><td class='hmepad'></td><td>" + p.min + " minutes</td><td>" + p.dir + "</td></tr>"; 
+                    out = out + "<tr><td></td>"+
+                        "<td class='hmepad'>" + "<td class='hmebus'>" + p.route + "</td><td class='hmepad'></td>" + 
+                        "<td class='hmetime'><b>" + p.min + "</b><br>minutes</td>"+ 
+                        "<td>" + p.dir + "</td></tr>"; 
                 }
             }
         }
@@ -337,23 +345,25 @@
         document.body.appendChild(myDiv);
 
         // Plain text
-        out = "Stops:<br>";
-        for( var i=0, l=gBus.length; i < l; i++ ) {
-            var s = gBus[i];
-            out = out + s.StopID + ":"+ s.Name + s.Distance + "feet";
-            out = out + "<br>";
-        }        
-        out = out + "Predictions:<br>";
-        for( var i=0, l=gBusstopPredictions.length; i < l; i++ ) {
-            var s = gBusstopPredictions[i];
-            out = out + s.StopID + ":" + s.route + ":" + s.min + ":" + s.dir; 
-            out = out + "<br>";
-        }
+        if( false ) {
+            out = "Stops:<br>";
+            for( var i=0, l=gBus.length; i < l; i++ ) {
+                var s = gBus[i];
+                out = out + s.StopID + ":"+ s.Name + s.Distance + "feet";
+                out = out + "<br>";
+            }        
+            out = out + "Predictions:<br>";
+            for( var i=0, l=gBusstopPredictions.length; i < l; i++ ) {
+                var s = gBusstopPredictions[i];
+                out = out + s.StopID + ":" + s.route + ":" + s.min + ":" + s.dir; 
+                out = out + "<br>";
+            }
 
-        var myDiv = document.createElement("table");
-        myDiv.id = 't9999';
-        myDiv.innerHTML = out;
-        document.body.appendChild(myDiv); 
+            var myDiv = document.createElement("table");
+            myDiv.id = 't9999';
+            myDiv.innerHTML = out;
+            document.body.appendChild(myDiv); 
+        }
     }
 
     function getAllPredictions() {
@@ -473,7 +483,7 @@
 
 
     // Refresh
-    // window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 30);
+    window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 30);
     // window.setInterval(loop, 500);  
 </script>
 <script src="https://momentjs.com/downloads/moment.js"></script>
