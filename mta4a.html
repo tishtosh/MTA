@@ -19,6 +19,7 @@
             font-size: 30px;
             font-weight: 600;
             color: white;
+            background-color: red;
             text-align: center;  
             padding-left: 10px;
             padding-right: 10px;
@@ -47,33 +48,67 @@
             padding-left: 10px;
 
         }
-
         pre {
             display:inline;
             font-size: 20px;
             font-family: Arial, Helvetica, sans-serif;
         }
 
+        table {
+            width: fit-content;
+        }
+
+        tbody td.hme {
+            color: white;
+            background-color: blue;
+            text-align: center;
+            width: 100px;
+        }
+        tbody th {
+            width: 800px;
+            text-align: center;  
+            font-size: 30px;
+            font-weight: 600;
+            color: white;
+            background-color: red;
+            text-align: center;     
+            --grid-max-width: 21.25rem;
+            --grid-gutter: var(--space-s-l, clamp(0.75rem, calc(3.19rem + -3.26vw), 2.50rem));
+            --grid-columns: 3;
+        }
+
+        tbody td.dme { text-align: center; color:blue; color: white; }
+
     </style>
 
     <link href="./css/all.css" rel="stylesheet">
     <link href='https://fonts.googleapis.com/css?family=Orbitron' rel='stylesheet' type='text/css'>
 
-   
     <title>like a bus</title>
     <meta http-equiv="refresh" content="300">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>    
 </head>
 
-
 <body class="p1">
 <p id = "myid"></p>
+<pre id="mBus" class="fa-solid fa-bus fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="getPredictions()">  </pre>
+<pre class="fa-solid fa-house fa-3x" onclick="nearURL()" >  </pre>
+<pre class="fa-solid fa-location-dot fa-3x" onclick="nearMe()"> </pre>
+<pre id="clock" style="font-family: 'Orbitron', sans-serif"></pre>
+<pre id="statusmessage"></pre>
+
+
+
 <script>
-     // Parameters:
+    // MAIN
+    //
+    // Parameters:
     // busstop : comma delimeted list of busstops to display arrival information for. 
     //          ignore lat lon when busstop is provided
     //          defaults if not provided
     // lat,lon : gps location to search when no busstop is provided
+
+    // URL busstops
     const busstops_default = "1002135,1002130,1002141,1002148";
     var gBusstops = busstops_default.split(",");
 
@@ -84,124 +119,10 @@
     }
     //console.log( gBusstops );
 
-    function getStopsNear( lat, lon, radius ) {
-        console.log( "getStopsNear:", lat, lon, radius );
-        console.log( "Current stops:", gBusstops );
-        
-        // Remove old busstops
-        var element;
-        while( element = document.getElementById( "9999Z" ) ) {
-            element.remove(); 
-        }
-        while( element = gBusstops.pop() )
-            ;
-        console.log( "Cleared stops:", gBusstops );
-
-        // Get new busstops
-        var params = {
-            "api_key": "22a765be4d804e949b016174387d697e",
-            "Lat": lat,
-            "Lon": lon,
-            "Radius": radius,
-            };
-
-        $.ajax({
-            url: "https://api.wmata.com/Bus.svc/json/jStops?" + $.param(params),
-            type: "GET",
-        })
-        .done(function(data) {
-            var items = []; 
-            $(jQuery.parseJSON(JSON.stringify(data.Stops))).each(function() {  
-                console.log( this.StopID, this.Name );
-                gBusstops.push( this.StopID ); 
-            });                
-            console.log( "New busstops:", gBusstops );
-
-        })
-        .fail(function() {
-            console.log( "error" );
-        });
-    }
-
-    function getPredictions() {
-        // arrival predictions for gBusstops 
-        console.log( "Getting predictions:", gBusstops ); 
-
-        for (var i = 0; i < gBusstops.length; i++) { 
-            console.log( "Getting prediction:", gBusstops[i]); 
-
-            var params = {
-                "api_key": "22a765be4d804e949b016174387d697e" ,
-                "StopID": gBusstops[i],
-            };
-                
-            $.ajax({
-                url: "https://api.wmata.com/NextBusService.svc/json/jPredictions?" + $.param(params),
-                type: "GET",
-            })
-            .done(function(data) {
-                var items = [];
-                
-                items.push( "<header id=9999X ><H1 class='p1' id=9999>");
-                items.push( data.StopName );
-                items.push( "</H1></header>" );
-                
-                $(jQuery.parseJSON(JSON.stringify(data.Predictions))).each(function() {  
-                    items.push( 
-                        "<H2 class=p1 id=9999>" + this.RouteID + "</H2>"
-                        + "<pre> " + this.Minutes + " minutes</pre>"
-                        + "<br>" + this.DirectionText + "<br><br>"
-                    );
-                });
-                
-                $( "<pre/>", {
-                    "class": "a", "id": "9999Z",
-                    html: items.join( "" )
-                }).appendTo( "body" );
-            })
-            .fail(function() {
-                console.log( "error:", params );
-                alert("error");
-            });
-        }
-        console.log( "Show:", gBusstops );
-    };
- 
-    function nearMe() {
-        if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(showPosition);
-        } else { 
-            x.innerHTML = "Turn on location sharing.";
-        }
-    }
-
-    function nearURL() {
-        if ( gLat && gLon ) {
-            showFixedPosition( gLat, gLon);
-        } else { 
-            x.innerHTML = "Set the Home location in the URL {lat|lon|radius}";
-        }
-    }
-            
-    function showFixedPosition( lat, lon ) {
-        //x.innerHTML="Latitude: " + lat + "<br>Longitude: " + lon;
-        getStopsNear( lat, lon, gRadius );
-        console.log( "showFixedPosition:", gBusstops );
-        getPredictions();
-    }
-        
-    function showPosition(position) {
-        //x.innerHTML="Latitude: " + position.coords.latitude +  "<br>Longitude: " + position.coords.longitude;
-        // getStopsNear( position.coords.latitude, position.coords.longitude );
-        getStopsNear( position.coords.latitude, position.coords.longitude, 3000 );
-        console.log( "showPosition:", gBusstops );
-        getPredictions();
- 
-    }
-
-
-    var gLat, gLon;
-    var gRadius = 250;   // Meters
+    // URL lat,lon,radius
+    var gLat = 38.89790;        // default to central DC
+    var gLon = -77.03661;
+    var gRadius = 350;   // Meters
     const has_lat = urlParams.has('lat');
     const has_lon = urlParams.has('lon');
     const has_radius = urlParams.has('radius');
@@ -214,18 +135,159 @@
     }
     console.log( gLat, gLon, gRadius );
 
-    // Refresh
-    // window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 1000);
-    var x = document.getElementById("demo");
+    // Element for status message
+    var gStatus = document.getElementById("statusmessage");
 
+    // Refresh predicitions for busstops
+    getPredictions();
+
+    //
+    // FUNCTIONS
+    //
+
+    function removeDisplayedStops() {
+        // Remove old busstops
+        var element;
+        while( element = document.getElementById( "t9999" ) ) {
+            element.remove(); 
+        }
+        while( element = gBusstops.pop() )
+            ;
+        console.log( "Cleared stops:", gBusstops );
+    }
+
+    function getStopsNear( lat, lon, radius ) {
+        console.log( "GSN start", lat, lon, radius );
+        console.log( "GSN stops:", gBusstops );
+        
+        // Get new busstops
+        var params = {
+            "api_key": "22a765be4d804e949b016174387d697e",
+            "Lat": lat,
+            "Lon": lon,
+            "Radius": radius,
+        };
+
+        var jqStop = $.ajax({
+            url: "https://api.wmata.com/Bus.svc/json/jStops?" + $.param(params),
+            type: "GET",
+
+        }) .done(function(data) {
+            console.log( "GSN have result - clear old display");
+            removeDisplayedStops();
+            
+            var items = []; 
+            $(jQuery.parseJSON(JSON.stringify(data.Stops))).each(function() {  
+                console.log( this.StopID, this.Name );
+                gBusstops.push( this.StopID ); 
+            });                
+            console.log( "GSN call GP");
+            getPredictions();
+            console.log( "GSN returned from GP" );
+
+        }) .fail(function(jqStop, textStatus, error) {
+            console.log( textStatus, error );
+        });
+
+        jqStop.always(function() {
+            console.log( "GSN prediction GET complete", gBusstops);
+        });
+
+        console.log( "GSN return:", gBusstops );
+    }
+
+    function getPredictions() {
+        // arrival predictions for gBusstops 
+        console.log( "GP start", gBusstops ); 
+
+        for (var i = 0; i < gBusstops.length; i++) { 
+            console.log( "GP Getting prediction:", gBusstops[i]); 
+
+            var params = {
+                "api_key": "22a765be4d804e949b016174387d697e" ,
+                "StopID": gBusstops[i],
+            };
+                
+            var jqPrediction = $.ajax({
+                url: "https://api.wmata.com/NextBusService.svc/json/jPredictions?" + $.param(params),
+                type: "GET",
+
+            }).done(function(data) {
+
+                var items2=[];
+                $(jQuery.parseJSON(JSON.stringify(data.Predictions))).each(function() {  
+                    items2.push( this.RouteID, this.Minutes, this.DirectionText );
+                });
+                
+                var s = "<table><tbody><tr><th colspan=4>" + data.StopName + "</th></tr>";
+                for (var i = 0; i < items2.length; i=i+3) {
+                    s = s + "<tr><td class='hme'>"+ items2[i] + "</td><td>" + items2[i+1] + "</td><td>" + items2[i+2] + "</td></tr>";
+                }
+                s = s + "</tbody></table>";
+                
+                var myDiv = document.createElement("table");
+                myDiv.id = 't9999';
+                myDiv.innerHTML = s;
+                document.body.appendChild(myDiv);                
+          
+            }).fail(function(jqPrediction, textStatus, error) {
+                console.log( textStatus, error );
+                if( jqPrediction.statusCode() != 429 ) {   // ignore 'too many requests'
+                    console.log( jqPrediction.statusCode(), error ) 
+                }
+            });
+
+            jqPrediction.always(function() {
+                console.log( "GP prediction GET complete" );
+            });
+
+        }
+        console.log( "GP returning", gBusstops );
+    };
+ 
+    function nearMe() {
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(showPosition);
+        } else { 
+            gStatus.innerHTML = "Turn on location sharing.";
+        }
+    }
+
+    function nearURL() {
+        if ( gLat && gLon ) {
+            showFixedPosition( gLat, gLon);
+        } else { 
+            gStatus.innerHTML = "Set the Home location in the URL {lat|lon|radius}";
+        }
+    }
+            
+    function showFixedPosition( lat, lon ) {
+        console.log( "SFP start", gBusstops );
+        getStopsNear( lat, lon, gRadius ); // RUNS ASYNC
+        console.log( "SFP return", gBusstops );
+        //getPredictions();
+    }
+        
+    function showPosition(position) {
+        // getStopsNear( position.coords.latitude, position.coords.longitude );
+        console.log( "SP start", gBusstops );
+        getStopsNear( position.coords.latitude, position.coords.longitude, 3000 );  // RUNS ASYNC
+        console.log( "SP return", gBusstops );
+        //removeDisplayedStops();
+        //alert( "get predictions");
+        //getPredictions();
+    }
+
+    // Refresh
+    window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 30);
 </script>
 <script src="https://momentjs.com/downloads/moment.js"></script>
 
-<pre class="fa-solid fa-bus fa-3x" style="color: #0433ff;" onClick="window.location.reload()">  </pre>
-<pre class="fa-solid fa-house fa-3x" onclick="nearURL()" >  </pre>
-<pre class="fa-solid fa-location-dot fa-3x" onclick="nearMe()">    4a</pre>
-<pre id="clock" style="font-family: 'Orbitron', sans-serif"></pre>
-<pre id="demo"></pre>
+<script>
+    const div = document.getElementById("mBus");
+    div.addEventListener("contextmenu", (e) => {e.preventDefault()});
+</script>
+
 
 </body>
 </html>
