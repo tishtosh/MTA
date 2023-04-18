@@ -61,7 +61,7 @@
         }
 
         tbody td.hmebus {
-            font-size: 30px;
+            font-size: 75px;
             font-weight: 600;
             color: white;
             background-color: blue;
@@ -74,7 +74,7 @@
             width: 10px;
         }
         tbody td.hmetime {
-            font-size: 15px;
+            font-size: 50px;
             font-weight: 200;
             color: black;
             background-color: white;
@@ -82,14 +82,23 @@
             width: 60px;
             border:5px;
         }
+        tbody td.hmedest {
+            font-size: 40px;
+            font-weight: 200;
+            color: black;
+            background-color: white;
+            text-align: center;
+            width: 30%;
+            border:5px;
+        }
 
         tbody th.hmedist {
             color: black;
-            font-size: 15px;
+            font-size: 30px;
             font-weight: 200;
             text-align:center;
             background-color: white;
-            width: 60px;
+            width: 10%;
             border: solid black;
             border-left-width: 5px;
             border-top-width: 5px;
@@ -104,15 +113,16 @@
 
 
         tbody th {
-            width: 800px;
+            width: 100%;
             text-align: center;  
-            font-size: 30px;
+            font-size: 50px;
             font-weight: 600;
             color: white;
             background-color: red;
             text-align: left;    
             border-left-width: 10px;
             border: 10px;
+            height: 100px;
         }
 
         tbody td.dme { text-align: center; color:blue; color: white; }
@@ -130,9 +140,11 @@
 
 <body class="p1">
 <p id = "myid"></p>
-<pre id="mBus" class="fa-solid fa-bus fa-beat fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="getAllPredictions_init()">  </pre>
+<pre id="mBus" class="fa-solid fa-bus fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="getAllPredictions_init()">  </pre>
 <pre class="fa-solid fa-house fa-3x" onclick="nearURL()" >  </pre>
 <pre class="fa-solid fa-location-dot fa-3x" onclick="nearMe()"> </pre>
+<br>
+<pre class="fa-solid fa-house fa-3x> </pre>
 <pre id="clock" style="font-family: 'Orbitron', sans-serif"></pre>
 <br><pre id="statusmessage"></pre>
 
@@ -206,7 +218,6 @@
             ;
         while( element = gBusstopPredictions.pop() )
             ;
-
        console.log( "Cleared stops:", gBusstops );
     }
 
@@ -333,8 +344,8 @@
                 if( p.StopID == s.StopID ) {
                     out = out + "<tr><td></td>"+
                         "<td class='hmepad'>" + "<td class='hmebus'>" + p.route + "</td><td class='hmepad'></td>" + 
-                        "<td class='hmetime'><b>" + p.min + "</b><br>minutes</td>"+ 
-                        "<td>" + p.dir + "</td></tr>"; 
+                        "<td class='hmetime'><b>" + p.min + "</b><i class='fa-solid fa-watch'></i></td>"+ 
+                        "<td class='hmedest'>" + p.dir + "</td></tr>"; 
                 }
             }
         }
@@ -425,7 +436,7 @@
         if( d>50 ) {
            // When over 50 km from DC default to DC center
             gStatus.innerHTML = d+" miles to these Whitehouse bus stops";
-            getStopsNear( 38.89790, -77.03661, 500 );  // RUNS ASYNC
+            getStopsNear( 38.89790, -77.03661, gRadius );  // RUNS ASYNC
         }
         else {
             gStatus.innerHTML = d+" miles to the Whitehouse";
