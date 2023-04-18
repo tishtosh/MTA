@@ -71,6 +71,24 @@
             background-color: white;
             width: 10px;
         }
+        tbody td.hmetime {
+            font-size: 15px;
+            font-weight: 200;
+            color: black;
+            background-color: white;
+            text-align: left;
+            width: 50px;
+            border:5px;
+        }
+
+        tbody th.hmedist {
+            color: black;
+            font-size: 15px;
+            font-weight: 200;
+            text-align:left;
+            background-color: white;
+            width: 50px;
+        }
 
 
         tbody th {
@@ -80,7 +98,7 @@
             font-weight: 600;
             color: white;
             background-color: red;
-            text-align: center;     
+            text-align: left;     
             --grid-max-width: 21.25rem;
             --grid-gutter: var(--space-s-l, clamp(0.75rem, calc(3.19rem + -3.26vw), 2.50rem));
             --grid-columns: 3;
@@ -100,7 +118,7 @@
 
 <body class="p1">
 <p id = "myid"></p>
-<pre id="mBus" class="fa-solid fa-bus fa-beat fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="getPredictions()">  </pre>
+<pre id="mBus" class="fa-solid fa-bus fa-beat fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="getAllPredictions_init()">  </pre>
 <pre class="fa-solid fa-house fa-3x" onclick="nearURL()" >  </pre>
 <pre class="fa-solid fa-location-dot fa-3x" onclick="nearMe()"> </pre>
 <pre id="clock" style="font-family: 'Orbitron', sans-serif"></pre>
@@ -119,8 +137,14 @@
     // URL busstops
     const busstops_default = "1002135,1002130,1002141,1002148";
     var gBusstops = busstops_default.split(",");
-    var gBusstopsLat = [];
-    var gBusstopsLon = [];
+    var gBusstopRequestIndex = 0;
+    var gBusstopPredictions;    // Predictions
+    gBusstopPredictions = [];
+    var gBus;                   // Bus stops as objects
+    gBus = [];
+
+    var gInterval;
+
 
     const urlParams = new URLSearchParams(window.location.search);
     const has_stop = urlParams.has('busstop');
@@ -130,9 +154,11 @@
     //console.log( gBusstops );
 
     // URL lat,lon,radius
-    var gLat = 38.89790;        // default to central DC
-    var gLon = -77.03661;
-    var gRadius = 350;   // Meters
+    //var gLat = 38.89790;        // default to central DC
+    //var gLon = -77.03661;
+    var gLat = 38.93468;        // Park Rd NW
+    var gLon = -77.04512;
+    var gRadius = 300;   // Meters
     const has_lat = urlParams.has('lat');
     const has_lon = urlParams.has('lon');
     const has_radius = urlParams.has('radius');
@@ -163,11 +189,12 @@
         }
         while( element = gBusstops.pop() )
             ;
-        while( element = gBusstopsLat.pop() )
+        while( element = gBus.pop() )
             ;
-        while( element = gBusstopsLon.pop() )
+        while( element = gBusstopPredictions.pop() )
             ;
-        console.log( "Cleared stops:", gBusstops );
+
+       console.log( "Cleared stops:", gBusstops );
     }
 
     function getStopsNear( lat, lon, radius ) {
@@ -185,6 +212,7 @@
         var jqStop = $.ajax({
             url: "https://api.wmata.com/Bus.svc/json/jStops?" + $.param(params),
             type: "GET",
+            timeout: 2000,
 
         }) .done(function(data) {
             console.log( "GSN have result - clear old display");
@@ -193,11 +221,18 @@
             var items = []; 
             $(jQuery.parseJSON(JSON.stringify(data.Stops))).each(function() {  
                 console.log( this.StopID, this.Name );
+                var d = distance( window.gLat, window.gLon, this.Lat, this.Lon, "f" ); 
                 gBusstops.push( this.StopID ); 
-                gBusstopsLat.push( this.Lat );
-                gBusstopsLon.push( this.Lon );
+                var o = new Object( { StopID:this.StopID, Lat:this.Lat, Lon:this.Lon, Name:this.Name, Distance:d } );
+                gBus.push( o );
+                console.log( "GSN push", Object.values(o) )
+
             });                
             console.log( "GSN call GP");
+
+            // Sort stops by distance 
+            gBus.sort((a, b) => { return a.distance - b.distance; });
+
             getPredictions();
             console.log( "GSN returned from GP" );
 
@@ -227,6 +262,7 @@
             var jqPrediction = $.ajax({
                 url: "https://api.wmata.com/NextBusService.svc/json/jPredictions?" + $.param(params),
                 type: "GET",
+                timeout: 2000,
 
             }).done(function(data) {
 
@@ -260,20 +296,130 @@
         }
         console.log( "GP returning", gBusstops );
     };
- 
+
+
+    // getAlPredictions with request limiting to match QoS
+    // called async
+    // gBusstopRequestIndex 
+    // - global used for progress through all bus stops. 
+    // - set to zero before first call
+    // assumes requests complete in order sent
+
+   
+    // getAllPredictions using interval time to throttle requests
+
+    function getAllPredictions_init() {
+        window.gBusstopRequestIndex = 0;
+        gInterval = setInterval(getAllPredictions, 100);    
+      }
+
+     function loop() {
+        console.log( "loop", gBusstopRequestIndex ); 
+     }
+
+    function showAll() {
+        // HTML
+        var out = "<table><tbody id=t9999>";
+        for( var i=0, l=gBus.length; i < l; i++ ) {
+            var s = gBus[i];
+            out = out + "<tr><th class=hmedist>"+ s.Distance + " feet</th><th colspan=5>" + s.Name + "</th></tr>";
+            for( var j=0, jl=gBusstopPredictions.length; j < jl; j++ ) {
+                var p = gBusstopPredictions[j];
+                if( p.StopID == s.StopID ) {
+                    out = out + "<tr><td></td><td class='hmepad'><td class='hmebus'>" + p.route + "</td><td class='hmepad'></td><td>" + p.min + " minutes</td><td>" + p.dir + "</td></tr>"; 
+                }
+            }
+        }
+        out = out + "</tbody></table>";
+        var myDiv = document.createElement("table");
+        myDiv.id = 't9999';
+        myDiv.innerHTML = out;
+        document.body.appendChild(myDiv);
+
+        // Plain text
+        out = "Stops:<br>";
+        for( var i=0, l=gBus.length; i < l; i++ ) {
+            var s = gBus[i];
+            out = out + s.StopID + ":"+ s.Name + s.Distance + "feet";
+            out = out + "<br>";
+        }        
+        out = out + "Predictions:<br>";
+        for( var i=0, l=gBusstopPredictions.length; i < l; i++ ) {
+            var s = gBusstopPredictions[i];
+            out = out + s.StopID + ":" + s.route + ":" + s.min + ":" + s.dir; 
+            out = out + "<br>";
+        }
+
+        var myDiv = document.createElement("table");
+        myDiv.id = 't9999';
+        myDiv.innerHTML = out;
+        document.body.appendChild(myDiv); 
+    }
+
+    function getAllPredictions() {
+        // called by interval timer
+        console.log( "gAP start", gBusstopRequestIndex, "max", window.gBusstops.length ); 
+
+        if( window.gBusstopRequestIndex >= window.gBusstops.length ) {
+            // Have completed prediction request for last busstop 
+            console.log( "gAP ending - stop interval", gBusstopRequestIndex ); 
+            clearInterval( gInterval ); 
+            showAll();   
+        }
+        else {
+            // Request bus prediction for next busstop
+            console.log( "gAP get prediction", gBusstopRequestIndex ); 
+
+            var params = {
+                "api_key": "22a765be4d804e949b016174387d697e" ,
+                "StopID": gBusstops[gBusstopRequestIndex],
+            };
+
+            var datatoSend = { StopID: gBusstops[gBusstopRequestIndex] };
+
+            var jxPrediction = $.ajax({
+                url: "https://api.wmata.com/NextBusService.svc/json/jPredictions?" + $.param(params),
+                type: "GET",
+                sentData: datatoSend,
+                beforeSend: function() {
+                    window.gBusstopRequestIndex = window.gBusstopRequestIndex + 1;  // number of requests issued
+                },
+
+            }).done(function(data) {
+                var id = this.sentData.StopID;
+                console.log(  id );
+                $(jQuery.parseJSON(JSON.stringify(data.Predictions))).each(function() {  
+                    var o = new Object( { StopID:id, route:this.RouteID, min:this.Minutes, dir:this.DirectionText} );
+                    window.gBusstopPredictions.push(o);
+                    console.log( "gAP GET complete ", window.gBusstopPredictions.length, Object.values(o) );                
+                });
+            
+            }).fail(function(jqPrediction, textStatus, error) {
+                console.log( textStatus, error );
+                if( jxPrediction.statusCode() != 429 ) {   // ignore 'too many requests'
+                    console.log( jxPrediction.statusCode(), error ) 
+                }
+            });
+
+            jxPrediction.always(function() {
+                console.log( "gAP GET complete" );
+            });
+        }
+    };
+
     
     function shownearGivenPosition( lat, lon ) {
         console.log( "snGP start", lat, lon );
 
-        var d = Math.trunc( distance( 38.89790, -77.03661, lat, lon, "K" ) );
+        var d = distance( 38.89790, -77.03661, lat, lon, "m" );
         if( d>50 ) {
            // When over 50 km from DC default to DC center
-            gStatus.innerHTML = d+" km to these Whitehouse bus stops";
+            gStatus.innerHTML = d+" miles to these Whitehouse bus stops";
             getStopsNear( 38.89790, -77.03661, 500 );  // RUNS ASYNC
         }
         else {
-            gStatus.innerHTML = d+" km to the Whitehouse";
-            getStopsNear(  lat, lon, 500 );  // RUNS ASYNC
+            gStatus.innerHTML = d+" miles to the Whitehouse";
+            getStopsNear(  lat, lon, gRadius );  // RUNS ASYNC
         }
     }
 
@@ -301,33 +447,34 @@
     }
             
   
-
     function distance(lat1, lon1, lat2, lon2, unit) {
-	if ((lat1 == lat2) && (lon1 == lon2)) {
-		return 0;
-	}
-	else {
-		var radlat1 = Math.PI * lat1/180;
-		var radlat2 = Math.PI * lat2/180;
-		var theta = lon1-lon2;
-		var radtheta = Math.PI * theta/180;
-		var dist = Math.sin(radlat1) * Math.sin(radlat2) + Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
-		if (dist > 1) {
-			dist = 1;
-		}
-		dist = Math.acos(dist);
-		dist = dist * 180/Math.PI;
-		dist = dist * 60 * 1.1515;                     // US land Miles
-		if (unit=="K") { dist = dist * 1.609344 }      // Km
-		if (unit=="N") { dist = dist * 0.8684 }
-		if (unit=="f") { dist = dist * 5280 }          // Feet
-		return dist;
-	}
-}
+        if ((lat1 == lat2) && (lon1 == lon2)) {
+            return 0;
+        }
+        else {
+            var radlat1 = Math.PI * lat1/180;
+            var radlat2 = Math.PI * lat2/180;
+            var theta = lon1-lon2;
+            var radtheta = Math.PI * theta/180;
+            var dist = Math.sin(radlat1) * Math.sin(radlat2) + Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
+            if (dist > 1) {
+                dist = 1;
+            }
+            dist = Math.acos(dist);
+            dist = dist * 180/Math.PI;
+            dist = dist * 60 * 1.1515;                     // US land Miles
+            if (unit=="K") { dist = Math.trunc(dist * 1.609344 * 10)/10 }      // Km
+            if (unit=="N") { dist = Math.trunc(dist * 0.8684 * 10)/10 }
+            if (unit=="f") { dist = Math.trunc(dist * 5280) }           // feet
+            if (unit=="m") { dist = Math.trunc(dist * 10)/10 }          // miles
+            return dist;
+        }
+    }
 
 
     // Refresh
-    window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 30);
+    // window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 30);
+    // window.setInterval(loop, 500);  
 </script>
 <script src="https://momentjs.com/downloads/moment.js"></script>
 
