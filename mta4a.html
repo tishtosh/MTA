@@ -166,7 +166,7 @@
 <pre id="mBus" class="fa-solid fa-bus fa-xl-mta" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="window.location.reload()">  </pre>
 <pre class="fa-solid fa-house fa-xl-mta" onclick="nearURL()" >  </pre>
 <pre class="fa-solid fa-location-dot fa-xl-mta" onclick="nearMe()"> </pre>
-<pre id="clock" style="font-size: 48px; font-family: 'Orbitron', sans-serif"></pre>
+<pre id="clock" style="font-size: 70px; font-family: 'Orbitron', sans-serif"></pre>
 <br>
 <pre id="statusmessage"></pre>
 
@@ -290,7 +290,11 @@
     //
     function loopTime() {
         const d = new Date();
-        var s = d.toLocaleString( "en-us", { hour: "2-digit", minute: "2-digit", second: "numeric" } );
+        var s = d.toLocaleString( "en-us", { hour: "numeric", minute: "2-digit", second: "numeric" } );
+        s = s.replace( "M", "");
+        s = s.replace( 'A', '');
+        s = s.replace( 'P', '');
+        
         $('#clock').html( s );
      }
 
