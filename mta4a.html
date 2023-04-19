@@ -56,30 +56,33 @@
 
         table {
             width: fit-content;
-            border: 0px;
             -webkit-border-horizontal-spacing: 0px;
+            
         }
 
         tbody td.hmebus {
-            font-size: 75px;
+            font-size: 50px;
             font-weight: 600;
             color: white;
             background-color: blue;
+            border: solid;   
             text-align: center;
-            width: 30px;
-            border:5px;
+            width: 40px;
+            border-left-width: 0px;
+            border-right-width: 20px;
+            border-top-width: 5px;
+            border-bottom-width: 5px;
+            border-left-color: white;
+            border-right-color: white;                
         }
-        tbody td.hmepad {
-            background-color: white;
-            width: 10px;
-        }
+      
         tbody td.hmetime {
             font-size: 30px;
             font-weight: 200;
             color: black;
             background-color: white;
             text-align: left;
-            width: 50px;
+            width: 75px;
             border:5px;
         }
         tbody td.hmedest {
@@ -109,8 +112,8 @@
             border-bottom-color: red;
             border-top-left-radius: 8px;
             border-bottom-left-radius: 8px;
+            -webkit-border-horizontal-spacing: 0px;
         }
-
 
         tbody th {
             width: 100%;
@@ -123,11 +126,9 @@
             border-left-width: 10px;
             border: 10px;
             height: 100px;
+            -webkit-border-horizontal-spacing: 0px;
         }
-
-        tbody td.dme { text-align: center; color:blue; color: white; }
        
-
     </style>
 
     <link href="./css/all.css" rel="stylesheet">
@@ -139,12 +140,13 @@
 </head>
 
 <body class="p1">
-<p id = "myid"></p>
-<pre id="mBus" class="fa-solid fa-bus fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="getAllPredictions_init()">  </pre>
+<p id = "myid">
+<pre id="mBus" class="fa-solid fa-bus fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="window.location.reload()">  </pre>
 <pre class="fa-solid fa-house fa-3x" onclick="nearURL()" >  </pre>
 <pre class="fa-solid fa-location-dot fa-3x" onclick="nearMe()"> </pre>
 <pre id="clock" style="font-family: 'Orbitron', sans-serif"></pre>
 <br>
+</p>
 <pre id="statusmessage"></pre>
 
 
@@ -161,8 +163,6 @@
     const busstops_default = "1002135,1002130,1002141,1002148";
     var gBusstops = busstops_default.split(",");
     var gBusstopRequestIndex = 0;
-    var gBusstopPredictions;    // Predictions
-    gBusstopPredictions = [];
     var gBus;                   // Bus stops as objects
     gBus = [];
 
@@ -201,28 +201,25 @@
     //getPredictions_init();
     shownearGivenPosition( gLat, gLon );    
 
+
     //
     // FUNCTIONS
     //
-
-    function removeDisplayedStops() {
-        // Remove old busstops
+    function cleanupGlobalBusstops() {
+        // Cleanup old busstops and arrival data
         var element;
-        while( element = document.getElementById( "t9999" ) ) {
-            element.remove(); 
+        while( gBusstops.pop() )
+            ;
+        while( element = gBus.pop() ) {
+            if( element.Arrivals )
+                while( element.Arrivals.pop() )
+                    ;
         }
-        while( element = gBusstops.pop() )
-            ;
-        while( element = gBus.pop() )
-            ;
-        while( element = gBusstopPredictions.pop() )
-            ;
-       console.log( "Cleared stops:", gBusstops );
+        console.log( "Cleared stops:", gBusstops );
     }
 
     function getStopsNear( lat, lon, radius ) {
-        console.log( "GSN start", lat, lon, radius );
-        console.log( "GSN stops:", gBusstops );
+        console.log( "GSN start", lat, lon, radius, "stops:", gBusstops );
         
         // Get new busstops
         var params = {
@@ -239,26 +236,23 @@
 
         }) .done(function(data) {
             console.log( "GSN have result - clear old display");
-            removeDisplayedStops();
+            cleanupGlobalBusstops();
             
             var items = []; 
             $(jQuery.parseJSON(JSON.stringify(data.Stops))).each(function() {  
-                console.log( this.StopID, this.Name );
+                console.log( "GSN pusing:", this.StopID, this.Name );
                 var d = distance( window.gLat, window.gLon, this.Lat, this.Lon, "f" ); 
                 gBusstops.push( this.StopID ); 
                 var o = new Object( { StopID:this.StopID, Lat:this.Lat, Lon:this.Lon, Name:this.Name, Distance:d } );
                 gBus.push( o );
-                console.log( "GSN push", Object.values(o) )
-
             });                
-            console.log( "GSN call GP");
-
+        
             // Sort stops by distance 
             gBus.sort((a, b) => { return a.distance - b.distance; });
 
             //getPredictions();
             getAllPredictions_init();
-            console.log( "GSN returned from GP" );
+            console.log( "GSN returned from GAP" );
 
         }) .fail(function(jqStop, textStatus, error) {
             console.log( textStatus, error );
@@ -267,152 +261,82 @@
         jqStop.always(function() {
             console.log( "GSN prediction GET complete", gBusstops);
         });
-
         console.log( "GSN return:", gBusstops );
     }
+ 
+    //
+    // Update time 
+    //
+    function loopTime() {
+        const d = new Date();
+        var s = d.toLocaleString( "en-us", { hour: "2-digit", minute: "2-digit", second: "2-digit" } );
+        $('#clock').html( s );
+     }
 
-    function getPredictions() {
-        // arrival predictions for gBusstops 
-        console.log( "GP start", gBusstops ); 
-
-        for (var i = 0; i < gBusstops.length; i++) { 
-            console.log( "GP Getting prediction:", gBusstops[i]); 
-
-            var params = {
-                "api_key": "22a765be4d804e949b016174387d697e" ,
-                "StopID": gBusstops[i],
-            };
-                
-            var jqPrediction = $.ajax({
-                url: "https://api.wmata.com/NextBusService.svc/json/jPredictions?" + $.param(params),
-                type: "GET",
-                timeout: 2000,
-
-            }).done(function(data) {
-
-                var items2=[];
-                $(jQuery.parseJSON(JSON.stringify(data.Predictions))).each(function() {  
-                    items2.push( this.RouteID, this.Minutes, this.DirectionText );
-                });          
-          
-            }).fail(function(jqPrediction, textStatus, error) {
-                console.log( textStatus, error );
-                if( jqPrediction.statusCode() != 429 ) {   // ignore 'too many requests'
-                    console.log( jqPrediction.statusCode(), error ) 
-                }
-            });
-
-            jqPrediction.always(function() {
-                console.log( "GP prediction GET complete" );
-            });
-
-        }
-        console.log( "GP returning", gBusstops );
-    };
-
-
-    // getAlPredictions with request limiting to match QoS
-    // called async
-    // gBusstopRequestIndex 
-    // - global used for progress through all bus stops. 
-    // - set to zero before first call
-    // assumes requests complete in order sent
-
-   
-    // getAllPredictions using interval time to throttle requests
+    //
+    // getAllPredictions using interval time to throttle requests to service level
+    //
 
     function getAllPredictions_init() {
         window.gBusstopRequestIndex = 0;
         gInterval = setInterval(getAllPredictions, 100);    
       }
 
-     function loop() {
-        console.log( "loop", gBusstopRequestIndex ); 
-     }
-
-    function showAll() {
-        // HTML
-        var out = "";
- 
-        out = out + "<table><tbody id=t9999>";
-        for( var i=0, l=gBus.length; i < l; i++ ) {
-            var s = gBus[i];
-            out = out + "<tr><th class=hmedist><b>"+ s.Distance + "</b><br>feet</th><th colspan=5>" + s.Name + "</th></tr>";
-            for( var j=0, jl=gBusstopPredictions.length; j < jl; j++ ) {
-                var p = gBusstopPredictions[j];
-                if( p.StopID == s.StopID ) {
-                    out = out + "<tr><td></td>"+
-                        "<td class='hmepad'>" + "<td class='hmebus'>" + p.route + "</td><td class='hmepad'></td>" + 
-                        "<td class='hmetime'><b><i class='fa-solid fa-clock fa-1x'> " + p.min + "</b></i></td>"+ 
-                        "<td class='hmedest'>" + p.dir + "</td></tr>"; 
-                }
-            }
-        }
-        out = out + "</tbody></table>";
-        var myDiv = document.createElement("table");
-        myDiv.id = 't9999';
-        myDiv.innerHTML = out;
-        document.body.appendChild(myDiv);
-
-        // Plain text
-        if( false ) {
-            out = "Stops:<br>";
-            for( var i=0, l=gBus.length; i < l; i++ ) {
-                var s = gBus[i];
-                out = out + s.StopID + ":"+ s.Name + s.Distance + "feet";
-                out = out + "<br>";
-            }        
-            out = out + "Predictions:<br>";
-            for( var i=0, l=gBusstopPredictions.length; i < l; i++ ) {
-                var s = gBusstopPredictions[i];
-                out = out + s.StopID + ":" + s.route + ":" + s.min + ":" + s.dir; 
-                out = out + "<br>";
-            }
-
-            var myDiv = document.createElement("table");
-            myDiv.id = 't9999';
-            myDiv.innerHTML = out;
-            document.body.appendChild(myDiv); 
-        }
-    }
+    
+    // getAlPredictions is called async until all routes have been requested
+    // Uses gBusstopRequestIndex 
+    // - global used for progress through all bus stops. 
+    // - set to zero before first call
+    // assumes requests complete in order sent
 
     function getAllPredictions() {
         // called by interval timer
-        console.log( "gAP start", gBusstopRequestIndex, "max", window.gBusstops.length ); 
 
         if( window.gBusstopRequestIndex >= window.gBusstops.length ) {
-            // Have completed prediction request for last busstop 
-            console.log( "gAP ending - stop interval", gBusstopRequestIndex ); 
-            clearInterval( gInterval ); 
-            showAll();   
+            // Have completed prediction request for last busstop (last one sent - not last one received --- FIX THIS)
+            console.log( "gAP ending OLD - stopping at index", gBusstopRequestIndex ); 
         }
         else {
             // Request bus prediction for next busstop
-            console.log( "gAP get prediction", gBusstopRequestIndex ); 
+            console.log( "gAP start - index ", gBusstopRequestIndex, "max", window.gBusstops.length ); 
 
             var params = {
                 "api_key": "22a765be4d804e949b016174387d697e" ,
                 "StopID": gBusstops[gBusstopRequestIndex],
             };
-
-            var datatoSend = { StopID: gBusstops[gBusstopRequestIndex] };
+            var datatoSend = { StopIndex: gBusstopRequestIndex, StopID: gBusstops[gBusstopRequestIndex] };      // Need StopID when request returns
 
             var jxPrediction = $.ajax({
                 url: "https://api.wmata.com/NextBusService.svc/json/jPredictions?" + $.param(params),
                 type: "GET",
                 sentData: datatoSend,
                 beforeSend: function() {
-                    window.gBusstopRequestIndex = window.gBusstopRequestIndex + 1;  // number of requests issued
                 },
 
             }).done(function(data) {
-                var id = this.sentData.StopID;
-                console.log(  id );
+                var id = this.sentData.StopID;          // Retrieve StopID and StopIndex used for this request
+                var index = this.sentData.StopIndex;
+                //console.log(  id );
                 $(jQuery.parseJSON(JSON.stringify(data.Predictions))).each(function() {  
+                    // Save arrival prediction in array of preductions AND add to gBus[] arrivals arry
+                    var gb = window.gBus[index].Arrivals;
+                    if( !gb ) {
+                        gb = new Array()
+                        window.gBus[index].Arrivals = gb;
+                    }
                     var o = new Object( { StopID:id, route:this.RouteID, min:this.Minutes, dir:this.DirectionText} );
-                    window.gBusstopPredictions.push(o);
-                    console.log( "gAP GET complete ", window.gBusstopPredictions.length, Object.values(o) );                
+                    window.gBus[index].Arrivals.push(o);
+
+                    console.log( "gAP GET complete - index", index, o.StopID, o.route );                
                 });
+
+                // Have completed prediction request for last busstop 
+                if( window.gBusstopRequestIndex >= window.gBusstops.length ) {
+                   console.log( "gAP ending NEW - stopping at index after rx", gBusstopRequestIndex ); 
+                    clearInterval( gInterval ); 
+                    showAll();
+                }
+
             
             }).fail(function(jqPrediction, textStatus, error) {
                 console.log( textStatus, error );
@@ -421,28 +345,73 @@
                 }
             });
 
-            jxPrediction.always(function() {
-                console.log( "gAP GET complete" );
-            });
+            window.gBusstopRequestIndex = window.gBusstopRequestIndex + 1;  // number of requests issued
         }
     };
 
-    
-    function shownearGivenPosition( lat, lon ) {
-        console.log( "snGP start", lat, lon );
 
-        var d = distance( 38.89790, -77.03661, lat, lon, "m" );
-        if( d>50 ) {
-           // When over 50 km from DC default to DC center
-            gStatus.innerHTML = d+" miles to these Whitehouse bus stops";
-            getStopsNear( 38.89790, -77.03661, gRadius );  // RUNS ASYNC
+    //
+    // Show All Stop and Arrival predictions
+    //
+    function showAll() {
+        // DELETE OLD TABLES
+        var element;
+        while( element = document.getElementById( "t9999" ) ) {
+            element.remove(); 
         }
-        else {
-            gStatus.innerHTML = d+" miles to the Whitehouse";
-            getStopsNear(  lat, lon, gRadius );  // RUNS ASYNC
+
+        // HTML
+        var out = "";
+        out = out + "<table><tbody>";
+        for( var i=0, l=gBus.length; i < l; i++ ) {
+            var s = gBus[i];
+            out = out + "<tr><th class=hmedist><b>"+ s.Distance + "</b><br>feet</th><th colspan=5>" + s.Name + "</th></tr>";
+            if( gBus[i].Arrivals ) {
+                for( var ia=0, la=gBus[i].Arrivals.length; ia < la; ia++ ) {
+                    p = gBus[i].Arrivals[ia];
+                    out = out + "<tr><td></td>"+
+                        "<td class='hmebus'>" + p.route + "</td>" + 
+                        "<td class='hmetime'><b><i class='fa-solid fa-clock fa-1x'> " + p.min + "</b></i></td>"+ 
+                        "<td class='hmedest'>" + p.dir + "</td></tr>"; 
+
+                }
+            }
+
         }
+        out = out + "</tbody></table>";
+        var myDiv = document.createElement("table");
+        myDiv.id = 't9999';
+        myDiv.innerHTML = out;
+        document.body.appendChild(myDiv);
+
+        // TEXT
+        if( false ) {
+            out = "Stops+Arrivals:<br>";
+            for( var i=0, l=gBus.length; i < l; i++ ) {
+                var s = gBus[i];
+                out = out + s.StopID + ":"+ s.Name + s.Distance + "feet";
+                out = out + "<br>";
+                if( gBus[i].Arrivals ) {
+                    for( var ia=0, la=gBus[i].Arrivals.length; ia < la; ia++ ) {
+                        s = gBus[i].Arrivals[ia];
+                        out = out + s.StopID + ":" + s.route + ":" + s.min + ":" + s.dir; 
+                        out = out + "<br>";
+                    }
+                }
+            }
+            var myDiv = document.createElement("table");
+            myDiv.id = 't9999';
+            myDiv.innerHTML = out;
+            document.body.appendChild(myDiv); 
+        }
+    
     }
 
+  
+    // 
+    // Get data based on postion
+    //
+    
     function nearMe() {
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(shownearMe);
@@ -465,8 +434,27 @@
             gStatus.innerHTML = "Set the Home location in the URL {lat|lon|radius}";
         }
     }
+
+    function shownearGivenPosition( lat, lon ) {
+        console.log( "snGP start", lat, lon );
+
+        var d = distance( 38.89790, -77.03661, lat, lon, "m" );
+        if( d>50 ) {
+           // When over 50 km from DC default to DC center
+            gStatus.innerHTML = d+" miles to these Whitehouse bus stops";
+            getStopsNear( 38.89790, -77.03661, gRadius );  // RUNS ASYNC
+        }
+        else {
+            gStatus.innerHTML = d+" miles to the Whitehouse";
+            getStopsNear(  lat, lon, gRadius );  // RUNS ASYNC
+        }
+    }
+
             
-  
+    //
+    // Distance between two GPS locations
+    // m=miles f=feet K=Km N=Nautical miles
+    //
     function distance(lat1, lon1, lat2, lon2, unit) {
         if ((lat1 == lat2) && (lon1 == lon2)) {
             return 0;
@@ -491,18 +479,14 @@
         }
     }
 
-
-    // Refresh
-    window.setInterval( function () { $('#clock').html(moment().format('H:mm:ss')) }, 30);
-    // window.setInterval(loop, 500);  
+    // Refresh - time displayed
+    window.setInterval(loopTime, 500);  
 </script>
-<script src="https://momentjs.com/downloads/moment.js"></script>
 
 <script>
     const div = document.getElementById("mBus");
     div.addEventListener("contextmenu", (e) => {e.preventDefault()});
 </script>
-
 
 </body>
 </html>
