@@ -45,8 +45,19 @@
             font-family: Arial, Helvetica, sans-serif;
             margin-left: 5px;
             margin-right: 5px;
-            padding-left: 10px;
-
+            margin-top: 5px;
+            margin-bottom: 5px;
+            padding-left: 5px;
+            font-size: 50px;
+        }
+        .p2 {
+            font-family: Arial, Helvetica, sans-serif;
+            margin-left: 5px;
+            margin-right: 5px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+            padding-left: 5px;
+            font-size: 30px;
         }
         pre {
             display:inline;
@@ -128,11 +139,22 @@
             height: 100px;
             -webkit-border-horizontal-spacing: 0px;
         }
+
+        .fa-xl-mta {
+  font-size: 3em;
+  line-height: 0.02167em;
+  margin-bottom: 5px;
+  margin-top: 5px;
+  width: 175px;
+  margin-left: 5px;
+  margin-right: 5px;
+  text-align: center; 
+  vertical-align: -0.125em; }
        
     </style>
 
     <link href="./css/all.css" rel="stylesheet">
-    <link href='https://fonts.googleapis.com/css2?family=Orbitron:wght@700' rel='stylesheet' type='text/css'>
+    <link href='https://fonts.googleapis.com/css2?family=Orbitron:wght@800' rel='stylesheet' type='text/css'>
 
     <title>like a bus</title>
     <meta http-equiv="refresh" content="300">
@@ -140,13 +162,11 @@
 </head>
 
 <body class="p1">
-<p id = "myid">
-<pre id="mBus" class="fa-solid fa-bus fa-3x" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="window.location.reload()">  </pre>
-<pre class="fa-solid fa-house fa-3x" onclick="nearURL()" >  </pre>
-<pre class="fa-solid fa-location-dot fa-3x" onclick="nearMe()"> </pre>
+<pre id="mBus" class="fa-solid fa-bus fa-xl-mta" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="window.location.reload()">  </pre>
+<pre class="fa-solid fa-house fa-xl-mta" onclick="nearURL()" >  </pre>
+<pre class="fa-solid fa-location-dot fa-xl-mta" onclick="nearMe()"> </pre>
 <pre id="clock" style="font-family: 'Orbitron', sans-serif"></pre>
 <br>
-</p>
 <pre id="statusmessage"></pre>
 
 
