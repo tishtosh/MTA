@@ -3,174 +3,86 @@
 <head>
     <link rel="icon" href="favicon.ico">
     <style>
-        body {
-            background-color: white;
-        }
-        ul.a {
-            padding-left: 0px;
-            margin-left: 0px;
-        }
-        header {
-            margin-left: 0;
-            margin-right: 0;
-            background-color: red;
-        }
-        h1 {
-            font-size: 30px;
-            font-weight: 600;
-            color: white;
-            background-color: red;
-            text-align: center;  
-            padding-left: 10px;
-            padding-right: 10px;
-        }
-        h2 {
-            font-size: 30px;
-            font-weight: 600;
-            width: 45px;
-            color: white;
-            background-color: blue;
-            text-align: center;
-            display:inline;
-            padding-left: 10px;
-            padding-right: 10px;
-        }
-        h3 {
-            display:inline;
-            padding-left: 10px;
-            font-size: 20px;
-            font-family: Arial, Helvetica, sans-serif;
-        }
-        .p1 {
-            font-family: Arial, Helvetica, sans-serif;
-            margin-left: 5px;
-            margin-right: 5px;
-            margin-top: 5px;
-            margin-bottom: 5px;
-            padding-left: 5px;
-            font-size: 50px;
-        }
-        .p2 {
-            font-family: Arial, Helvetica, sans-serif;
-            margin-left: 5px;
-            margin-right: 5px;
-            margin-top: 5px;
-            margin-bottom: 5px;
-            padding-left: 5px;
-            font-size: 30px;
-        }
-        pre {
-            display:inline;
-            font-size: 20px;
-            font-family: Arial, Helvetica, sans-serif;
-        }
-
-        table {
-            width: fit-content;
-            -webkit-border-horizontal-spacing: 0px;
-            
-        }
-
-        tbody td.hmebus {
-            font-size: 50px;
-            font-weight: 600;
-            color: white;
-            background-color: blue;
-            border: solid;   
-            text-align: center;
-            width: 40px;
-            border-left-width: 0px;
-            border-right-width: 20px;
-            border-top-width: 5px;
-            border-bottom-width: 5px;
-            border-left-color: white;
-            border-right-color: white;                
-        }
-      
-        tbody td.hmetime {
-            font-size: 30px;
-            font-weight: 200;
-            color: black;
-            background-color: white;
-            text-align: left;
-            width: 75px;
-            border:5px;
-        }
-        tbody td.hmedest {
-            font-size: 30px;
-            font-weight: 200;
-            color: black;
-            background-color: white;
-            text-align: left;
-            width: 380px;
-            border:5px;
-        }
-
-        tbody th.hmedist {
-            color: black;
-            font-size: 30px;
-            font-weight: 200;
-            text-align:center;
-            background-color: white;
-            width: 10%;
-            border: solid black;
-            border-left-width: 5px;
-            border-top-width: 5px;
-            border-bottom-width: 5px;
-            border-right-width: 0px;
-            border-left-color: red;
-            border-top-color: red;
-            border-bottom-color: red;
-            border-top-left-radius: 8px;
-            border-bottom-left-radius: 8px;
-            -webkit-border-horizontal-spacing: 0px;
-        }
-
-        tbody th {
-            width: 100%;
-            text-align: center;  
-            font-size: 50px;
-            font-weight: 600;
-            color: white;
-            background-color: red;
-            text-align: left;    
-            border-left-width: 10px;
-            border: 10px;
-            height: 100px;
-            -webkit-border-horizontal-spacing: 0px;
-        }
-
         .fa-xl-mta {
             font-size: 3em;
             line-height: 0.02167em;
-            margin-bottom: 5px;
-            margin-top: 5px;
-            width: 175px;
-            margin-left: 5px;
-            margin-right: 5px;
+            margin-bottom: 0px;
+            margin-top: 0px;
+            width: 150px;
+            margin-left: 0px;
+            margin-right: 0px;
             text-align: center; 
             vertical-align: -0.125em;   
+        }
+
+        .fa-mta {
+            font-size: 3em;
+            line-height: 0.02167em;
+            text-align: center; 
+            vertical-align: -0.125em;   
+        }
+
+        .triangle {
+        width: 0;
+        height: 0;
+        }
+
+        .triangle .triangle-left {
+        border-top: 50px solid transparent;
+        border-right: 100px solid #32557f;
+        border-bottom: 50px solid transparent;
+        }
+
+        .triangle .triangle-right {
+        border-top: 50px solid transparent;
+        border-left: 100px solid #32557f;
+        border-bottom: 50px solid transparent;
+        border-right-color: blue;
+        }
+
+        .tright { 
+        width: 0;
+        height: 0;
+        border-top: 50px solid transparent;
+        border-left: 100px solid #32557f;
+        border-bottom: 50px solid transparent;
+        border-right-color: blue;
         }
        
     </style>
 
     <link href="./css/all.css" rel="stylesheet">
     <link href='https://fonts.googleapis.com/css2?family=Orbitron:wght@800' rel='stylesheet' type='text/css'>
-
     <title>like a bus</title>
+    <meta charset="utf-8">
     <meta http-equiv="refresh" content="300">
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>    
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+  
 </head>
 
-<body class="p1">
-<pre id="mBus" class="fa-solid fa-bus fa-xl-mta" style="color: #0433ff;" onClick="window.location.reload()" oncontextmenu="window.location.reload()">  </pre>
-<pre class="fa-solid fa-house fa-xl-mta" onclick="nearURL()" >  </pre>
-<pre class="fa-solid fa-location-dot fa-xl-mta" onclick="nearMe()"> </pre>
-<pre id="clock" style="font-size: 70px; font-family: 'Orbitron', sans-serif"></pre>
-<br>
-<pre id="statusmessage"></pre>
+<body style="height:1500px">
 
+    <nav class="navbar navbar-fixed-top">
+        <div class="container-fluid">
+            <div class="navbar-header"></div>
+            <ul class="nav navbar-nav">
+                <li class="active"><pre class="fa-solid fa-bus fa-xl-mta" onclick="nearURL()" ></pre></li>
+                <li><pre class="fa-solid fa-house fa-xl-mta" onclick="nearURL()" ></pre></li>
+                <li><pre class="fa-solid fa-location-dot fa-xl-mta" onclick="nearMe()"></pre></li>
+                <li><pre id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></pre></li>
+                <br>
+            </ul>
+        </div> 
+    </nav>
 
+    <div style="margin-top:50px" class="container">
+        <h3><small id="statusmessage"></small></h3>        
+        <div id="tINSERTHERE" ></div>
+    </div>
+        
 <script>
     // MAIN
     //
@@ -387,27 +299,31 @@
 
         // HTML
         var out = "";
-        out = out + "<table><tbody>";
+        out = out + "<table class=table table-condensed table-hover>";
+        out = out + "<thead><tr><th width=10%></th><th width=20%></th><th width=70%></th></tr></thead>";
+        out - out + "<tbody>";
         for( var i=0, l=gBus.length; i < l; i++ ) {
             var s = gBus[i];
-            out = out + "<tr><th class=hmedist><b>"+ s.Distance + "</b><br>feet</th><th colspan=5>" + s.Name + "</th></tr>";
+//            out = out + "<tr class=danger><td><b>"+ s.Distance + "</b> feet</td><td colspan=2>" + s.Name + "</td></tr>";
+            out = out + "<tr class=active><td>" + s.Distance + " feet</td><td colspan=2>" + s.Name + "</td></tr>";
             if( gBus[i].Arrivals ) {
                 for( var ia=0, la=gBus[i].Arrivals.length; ia < la; ia++ ) {
                     p = gBus[i].Arrivals[ia];
-                    out = out + "<tr><td></td>"+
-                        "<td class='hmebus'>" + p.route + "</td>" + 
-                        "<td class='hmetime'><b><i class='fa-solid fa-clock fa-1x'> " + p.min + "</b></i></td>"+ 
-                        "<td class='hmedest'>" + p.dir + "</td></tr>"; 
+                    out = out + "<tr>"+
+                        "<td>" + p.route + "</td>" + 
+                        "<td><b><i class='fa-solid fa-clock fa-1x'> " + p.min + "</b></i></td>"+ 
+                        "<td>" + p.dir + "</td></tr>";  
 
                 }
             }
 
         }
         out = out + "</tbody></table>";
-        var myDiv = document.createElement("table");
+        var myDiv = document.createElement("div");
         myDiv.id = 't9999';
+        myDiv.classname = "container";
         myDiv.innerHTML = out;
-        document.body.appendChild(myDiv);
+        document.getElementById( "tINSERTHERE" ).appendChild( myDiv );
 
         // TEXT
         if( false ) {
@@ -466,11 +382,11 @@
         var d = distance( 38.89790, -77.03661, lat, lon, "m" );
         if( d>50 ) {
            // When over 50 km from DC default to DC center
-            gStatus.innerHTML = d+" miles to these Whitehouse bus stops";
+            gStatus.innerHTML = ""+ d+ " miles to these Whitehouse bus stops";
             getStopsNear( 38.89790, -77.03661, gRadius );  // RUNS ASYNC
         }
         else {
-            gStatus.innerHTML = d+" miles to the Whitehouse";
+            gStatus.innerHTML = ""+ d+" miles to the Whitehouse";
             getStopsNear(  lat, lon, gRadius );  // RUNS ASYNC
         }
     }
