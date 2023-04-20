@@ -22,6 +22,12 @@
             vertical-align: -0.125em;   
         }
 
+        .vert {
+            vertical-align: middle;
+            
+        }
+
+
         .triangle {
         width: 0;
         height: 0;
@@ -309,7 +315,15 @@
         for( var i=0, l=gBus.length; i < l; i++ ) {
             var s = gBus[i];
 //            out = out + "<tr class=danger><td><b>"+ s.Distance + "</b> feet</td><td colspan=2>" + s.Name + "</td></tr>";
-            out = out + "<tr class=active><td>" + s.Distance + " feet</td><td colspan=2>" + s.Name + "</td></tr>";
+            out = out + "<tr class=table-primary><td>";
+            if( s.Distance < 5280) 
+                out = out + s.Distance + " feet";
+            else {
+                var m = s.Distance/5280;
+                out = out + Math.trunc( s.Distance/5280 * 10) / 10 + " miles";
+            }
+                
+            out = out + "</td><td class=vert colspan=2>" + s.Name + "</td></tr>";
             if( gBus[i].Arrivals ) {
                 for( var ia=0, la=gBus[i].Arrivals.length; ia < la; ia++ ) {
                     p = gBus[i].Arrivals[ia];
