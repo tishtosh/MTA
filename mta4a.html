@@ -6,9 +6,9 @@
         .fa-xl-mta {
             font-size: 3em;
             line-height: 0.02167em;
-            margin-bottom: 0px;
-            margin-top: 0px;
-            width: 80px;
+            margin-bottom: 5px;
+            margin-top: 5px;
+            width: 70px;
             margin-left: 0px;
             margin-right: 0px;
             text-align: center; 
@@ -40,7 +40,7 @@
         border-right-color: blue;
         }
 
-        .tright { 
+        .xtright { 
         width: 0;
         height: 0;
         border-top: 50px solid transparent;
@@ -66,14 +66,17 @@
 <body style="height:1500px">
 
     <nav class="navbar navbar-fixed-top">
-        <div class="container-fluid">
+        <div class="container-sm">
             <div class="navbar-header"></div>
             <ul class="nav navbar-nav">
-                <li class="active"><pre class="fa-solid fa-bus fa-xl-mta" onclick="nearURL()" ></pre></li>
-                <li><pre class="fa-solid fa-house fa-xl-mta" onclick="nearURL()" ></pre></li>
-                <li><pre class="fa-solid fa-location-dot fa-xl-mta" onclick="nearMe()"></pre></li>
-                <li><pre id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></pre></li>
-                <br>
+                <li class="active fa-solid fa-bus fa-xl-mta" onclick="nearURL()" ></li>
+                <li class="fa-solid fa-house fa-xl-mta" onclick="nearURL()" ></li>
+                <li class="fa-solid fa-location-dot fa-xl-mta" onclick="nearMe()"></li>
+ <!--
+
+
+                <li id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></li>
+ -->
             </ul>
         </div> 
     </nav>
