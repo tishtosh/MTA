@@ -309,7 +309,7 @@
         // HTML
         var out = "";
         out = out + "<table class=table table-condensed table-hover>";
-        out = out + "<thead><tr><th width=3%><th width=13%></th><th width=10%></th><th width=74%></th></tr></thead>";
+        out = out + "<thead><tr><th width=8%><th width=8%></th><th width=10%></th><th width=75%></th></tr></thead>";
         out - out + "<tbody>";
         for( var i=0, l=gBus.length; i < l; i++ ) {
             var s = gBus[i];
@@ -330,8 +330,8 @@
             if( gBus[i].Arrivals ) {
                 for( var ia=0, la=gBus[i].Arrivals.length; ia < la; ia++ ) {
                     p = gBus[i].Arrivals[ia];
-                    out = out + "<tr><td></td>"+
-                        "<td><b><i align=center class='fa-solid fa-clock fa-1x'></b></i> " + p.min + "</td>"+ 
+                    out = out + "<tr><td><b><i align=right class='fa-solid fa-clock fa-1x'></b></i></td>"+
+                        "<td align=left>" + p.min + "</td>"+ 
                         "<td align=left><b>" + p.route + "</b></td>" + 
                         "<td>" + p.dir + "</td></tr>";  
 
