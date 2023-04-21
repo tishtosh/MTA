@@ -373,6 +373,11 @@
     // Get data based on postion
     //
     
+    function nearMyLocation_fail()
+    {
+        gStatus.innerHTML = "Turn on location sharing.";
+    }
+
     function nearMyLocation() {
 
         const options = {
@@ -380,16 +385,13 @@
             timeout: 5000,
             maximumAge: 0,
         };
-
-
-        navigator.geolocation.getCurrentPosition(success, error, options);
-
+        navigator.geolocation.getCurrentPosition(shownearMe, nearMyLocation_fail, options);
 
         // Below for live tracking callback
         //if (navigator.geolocation) {
         //    navigator.geolocation.watchPosition(shownearMe);
         //} else { 
-        //    gStatus.innerHTML = "Turn on location sharing.";
+        //   
         //}
     }
     
