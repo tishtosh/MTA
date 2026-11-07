@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" href="favicon.ico">
+    <title>like a bus</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="./css/all.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@800" rel="stylesheet" type="text/css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <style>
+        .fa-xl-mta {
+            font-size: 3em;
+            line-height: 0.02167em;
+            margin-bottom: 5px;
+            margin-top: 5px;
+            width: 70px;
+            text-align: center;
+            vertical-align: -0.125em;
+        }
+
+        .fa-mta {
+            font-size: 3em;
+            line-height: 0.02167em;
+            text-align: center;
+            vertical-align: -0.125em;
+        }
+
+        .vert {
+            vertical-align: middle;
+        }
+
+        /* icon buttons: look like the old <li> icons, but keyboard accessible */
+        .navicon {
+            background: none;
+            border: 0;
+            padding: 0;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body style="height:1500px">
+
+<div class="container">
+    <nav class="navbar fixed-top navbar-light bg-light">
+        <div class="container d-flex align-items-center">
+            <div class="d-flex align-items-center">
+                <button id="btnBus" class="navicon" title="Reload" aria-label="Reload page">
+                    <i class="fa-solid fa-bus fa-xl-mta"></i>
+                </button>
+                <span class="navbar-text" id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></span>
+            </div>
+            <div class="d-flex align-items-center" style="gap: 12px">
+                <button id="btnHome" class="navicon" title="Stops near the home location (URL lat/lon)" aria-label="Show stops near home location">
+                    <i class="fa-solid fa-house fa-xl-mta"></i>
+                </button>
+                <button id="btnLocate" class="navicon" title="Stops near my current location" aria-label="Show stops near my current location">
+                    <i class="fa-solid fa-location-dot fa-xl-mta"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+</div>
+
+<div style="margin-top:100px" class="container">
+    <h3><small id="statusmessage" aria-live="polite"></small></h3>
+    <div id="tINSERTHERE"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// Configuration
+// ════════════════════════════════════════════════════════════════════
+
+// ⚠  This key ships inside a public static page — anyone who loads the
+//    page (or the repo) can read it. See README.md → "API key handling".
+//    This is the ONLY place the key appears in the file.
+// const API_KEY = "REDACTED_WMATA_KEY";
+const API_KEY = "REDACTED_WMATA_KEY";
+
+
+// WMATA public API — WMATA operates the DC (Metrobus) bus system.
+// Portal / docs / key registration: https://developer.wmata.com
+const WMATA_API = "https://api.wmata.com";
+
+// The 20010 corner (Cleveland Park), for building ?busstop= links:
+//   1002135 / 1002130  Park Rd NW + 19 St NW        (C87, D72)
+//   1002118            Adams Mill Rd NW + Klingle Rd NW (C61)
+//   1002127 / 1002120  Park Rd NW + Mt Pleasant St NW (C87, D72)
+// The 2025 "Better Bus" redesign renumbered stops — the old defaults
+// 1002141/1002148 no longer exist (verified 2026-11). The no-param view
+// does a live nearby search instead of using fixed IDs, so it self-heals
+// if the IDs change again; see README → "Maintenance".
+
+// Park Rd NW, Cleveland Park (20010) — the "home" corner
+const HOME = { lat: 38.93468, lon: -77.04512 };
+const DC_CENTER = { lat: 38.89790, lon: -77.03661 };
+
+// ── URL parameters ───────────────────────────────────────────────────
+//   ?busstop=1002135,1002130   explicit stops (lat/lon/radius ignored)
+//   ?lat=38.934&lon=-77.045    search for stops near this point
+//   ?radius=300                search radius in meters
+//   ?refresh=60                prediction refresh interval, seconds (15..600)
+// No params: live nearby search at the 20010 corner (HOME) above.
+// Defaults: radius 300 m, refresh 60 s.
+const params = new URLSearchParams(location.search);
+
+function num(value, fallback) {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+const stopListFromURL =
+    params.get("busstop") ? params.get("busstop").split(",").map(s => s.trim()).filter(Boolean) : null;
+
+// lat/lon: use the URL point only when BOTH are given, otherwise HOME
+const hasLatLon = params.has("lat") && params.has("lon");
+const urlPoint = hasLatLon
+    ? { lat: num(params.get("lat"), HOME.lat), lon: num(params.get("lon"), HOME.lon) }
+    : HOME;
+
+const gRadius = num(params.get("radius"), 300);
+const REFRESH_MS = Math.min(Math.max(num(params.get("refresh"), 60), 15), 600) * 1000;
+
+// ════════════════════════════════════════════════════════════════════
+// State
+// ════════════════════════════════════════════════════════════════════
+let stops = [];               // [{ StopID, Name, Lat, Lon, Distance, Arrivals, Error }]
+let searchPoint = urlPoint;   // where to look for stops (updated by geolocation)
+let refreshTimer = null;
+let rateLimited = false;      // WMATA returned 429 → slow the refresh down
+let busy = false;             // re-entrancy guard for runFlow()
+let lastRefreshAt = 0;
+
+const gStatus = document.getElementById("statusmessage");
+const gClock = document.getElementById("clock");
+const gTableHost = document.getElementById("tINSERTHERE");
+
+// ════════════════════════════════════════════════════════════════════
+// WMATA API
+// ════════════════════════════════════════════════════════════════════
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// One GET against the WMATA API. One retry after backoff on 429/timeout.
+// Never throws: returns { data, error } so callers decide how to surface it.
+async function apiGet(path, query, timeoutMs = 10000) {
+    const qs = new URLSearchParams(Object.assign({ api_key: API_KEY }, query));
+    for (let attempt = 0; ; attempt++) {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), timeoutMs);
+        try {
+            const res = await fetch(`${WMATA_API}${path}?${qs}`, { signal: ctl.signal });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 429 && attempt === 0) {   // back off, retry once
+                await sleep(1500);
+                continue;
+            }
+            const error = res.ok ? null : Object.assign(
+                new Error(data.Message || `HTTP ${res.status}`),
+                { status: res.status, rateLimited: res.status === 429 });
+            return { data, error };
+        } catch (e) {                                     // network error / timeout
+            if (attempt === 0) {
+                await sleep(1500);
+                continue;
+            }
+            return { data: null, error: e };
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+}
+
+// Nearby stops:  GET /Bus.svc/json/jStops?Lat&Lon&Radius
+// Returns [{ StopID, Name, Lat, Lon, Routes }] (or [] if none in range)
+async function fetchStopsNear(lat, lon, radius) {
+    const { data, error } = await apiGet("/Bus.svc/json/jStops", { Lat: lat, Lon: lon, Radius: radius });
+    if (error) throw error;
+    return (data && data.Stops) || [];
+}
+
+// Arrival predictions:  GET /NextBusService.svc/json/jPredictions?StopID
+// Returns { name, predictions: [{ min, route, dir }] }.
+// `name` (StopName) also labels stops given via ?busstop=, since there is
+// no single-stop lookup in the nearby-search endpoint.
+async function fetchPredictions(stopId) {
+    const { data, error } = await apiGet("/NextBusService.svc/json/jPredictions", { StopID: stopId });
+    if (error) throw error;
+    return {
+        name: (data && data.StopName) || null,
+        predictions: ((data && data.Predictions) || []).map(p => ({
+            min: p.Minutes, route: p.RouteID, dir: p.DirectionText,
+        })),
+    };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Flow
+// ════════════════════════════════════════════════════════════════════
+
+function makeStop(id, name, lat, lon) {
+    return { StopID: id, Name: name, Lat: lat, Lon: lon, Distance: null, Arrivals: [], Error: null };
+}
+
+// Full (re)load: resolve the stop list, then fetch predictions for it.
+async function runFlow() {
+    if (busy) return;                    // don't stack flows when buttons are clicked
+    busy = true;
+    try {
+        if (stopListFromURL) {
+            // ?busstop= given: use it as-is, ignore lat/lon (as documented)
+            gStatus.textContent = `${stopListFromURL.length} stop${stopListFromURL.length > 1 ? "s" : ""} from URL`;
+            stops = stopListFromURL.map(id => makeStop(id, null, null, null));
+        } else {
+            // ?lat&lon (or HOME): find stops near the search point
+            const d = distance(DC_CENTER.lat, DC_CENTER.lon, searchPoint.lat, searchPoint.lon, "m");
+            const at = d > 50 ? DC_CENTER : searchPoint;     // far from DC → search DC center
+            gStatus.textContent = `${d.toFixed(1)} mi to the Whitehouse` + (at === DC_CENTER ? " (searching DC center)" : "") + " …";
+            const raw = await fetchStopsNear(at.lat, at.lon, gRadius);
+            // Distance is measured from the point we actually searched —
+            // NOT from the HOME default, so the geolocation view is honest.
+            stops = raw
+                .map(s => {
+                    const stop = makeStop(s.StopID, s.Name, s.Lat, s.Lon);
+                    stop.Distance = distance(at.lat, at.lon, s.Lat, s.Lon, "f");
+                    return stop;
+                })
+                .sort((a, b) => a.Distance - b.Distance);   // sorted; one array, so no index drift
+            if (!stops.length) {
+                gStatus.textContent = `No stops within ${gRadius} m — try ?radius=600`;
+                stops = [];
+            }
+        }
+        await refreshPredictions();
+    } catch (e) {
+        // Stops lookup failed (bad key / network): keep whatever is shown
+        gStatus.textContent = `Could not reach WMATA: ${e.message}`;
+    } finally {
+        busy = false;
+        scheduleRefresh();
+    }
+}
+
+// Re-fetch predictions for the current stops. Promise.all so the render
+// happens exactly once, after every request has settled — including the
+// ones that failed (the old code only rendered when the last request
+// SUCCEEDED, so one 400/429 left a blank page).
+async function refreshPredictions() {
+    if (!stops.length) return;
+    let saw429 = false;
+    await Promise.all(stops.map(async (stop) => {
+        try {
+            const { name, predictions } = await fetchPredictions(stop.StopID);
+            if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
+            stop.Arrivals = predictions;
+            stop.Error = null;
+        } catch (e) {
+            stop.Arrivals = [];
+            stop.Error = e;                                 // rendered as a muted row
+            if (e.rateLimited) saw429 = true;
+        }
+    }));
+    rateLimited = saw429;          // → next refresh is delayed (self-throttling)
+    lastRefreshAt = Date.now();
+    render();
+    const t = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    gStatus.textContent = `${stops.length} stop${stops.length > 1 ? "s" : ""} · updated ${t}` +
+        (rateLimited ? " · API rate limit hit, slowing refresh" : "");
+}
+
+// Periodic refresh: predictions only (the stop list itself rarely changes).
+// After a 429 the interval stretches 5× to be polite to the shared key.
+function scheduleRefresh() {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    const wait = rateLimited ? 5 * REFRESH_MS : REFRESH_MS;
+    refreshTimer = setTimeout(() => refreshPredictions(), wait);
+}
+
+// Background tabs get throttled timers; refresh promptly when we come back.
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && !busy && stops.length) {
+        if (Date.now() - lastRefreshAt > REFRESH_MS / 2) {
+            refreshPredictions();
+        } else {
+            scheduleRefresh();
+        }
+    }
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Rendering
+// ════════════════════════════════════════════════════════════════════
+
+function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+    ));
+}
+
+function fmtDistance(ft) {
+    if (ft == null) return "—";
+    return ft < 5280 ? `${ft} ft` : `${(ft / 5280).toFixed(1)} mi`;
+}
+
+function render() {
+    let rows = "";
+    for (const s of stops) {
+        rows += "<tr class='table-primary vert'>"
+            + "<td class='text-center'><i class='fa-solid fa-person-walking'></i></td>"
+            + `<td>${fmtDistance(s.Distance)}</td>`
+            + `<td colspan="2">${esc(s.Name || s.StopID)} <small class="text-muted">(#${esc(s.StopID)})</small></td>`
+            + "</tr>";
+
+        if (s.Error) {
+            const msg = s.Error.rateLimited ? "too many requests — will retry" : "predictions unavailable";
+            rows += "<tr><td class='text-center'><i class='fa-solid fa-triangle-exclamation text-warning'></i></td>"
+                + `<td colspan="3" class="text-muted">${esc(msg)}</td></tr>`;
+        } else if (!s.Arrivals.length) {
+            rows += "<tr><td class='text-center'><i class='fa-solid fa-clock'></i></td>"
+                + "<td colspan='3' class='text-muted'>no arrivals scheduled</td></tr>";
+        } else {
+            for (const a of s.Arrivals) {
+                rows += "<tr><td class='text-center'><i class='fa-solid fa-clock'></i></td>"
+                    + `<td>${esc(a.min)}</td>`
+                    + `<td><b>${esc(a.route)}</b></td>`
+                    + `<td>${esc(a.dir)}</td></tr>`;
+            }
+        }
+    }
+    gTableHost.innerHTML = stops.length
+        ? `<div class="container">
+             <table class="table table-sm table-hover">
+                 <thead><tr><th style="width:8%"></th><th style="width:18%"></th><th style="width:20%"></th><th>destination</th></tr></thead>
+                 <tbody>${rows}</tbody>
+             </table>
+           </div>`
+        : "";
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Navigation icons
+// ════════════════════════════════════════════════════════════════════
+
+document.getElementById("btnBus").addEventListener("click", () => location.reload());
+
+document.getElementById("btnHome").addEventListener("click", () => {
+    searchPoint = urlPoint;              // home = URL lat/lon, or the 20010 corner
+    runFlow();
+});
+
+document.getElementById("btnLocate").addEventListener("click", () => {
+    if (!navigator.geolocation) {
+        gStatus.textContent = "Geolocation not supported by this browser";
+        return;
+    }
+    gStatus.textContent = "Locating …";
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            searchPoint = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+            runFlow();
+        },
+        () => { gStatus.textContent = "Turn on location sharing."; },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Distance between two GPS points (spherical law of cosines — plenty
+// accurate at these scales). Units: "m" miles, "f" feet, "K" km, "N" nautical
+// ════════════════════════════════════════════════════════════════════
+function distance(lat1, lon1, lat2, lon2, unit) {
+    if (lat1 === lat2 && lon1 === lon2) return 0;
+    const radlat1 = Math.PI * lat1 / 180;
+    const radlat2 = Math.PI * lat2 / 180;
+    const radtheta = Math.PI * (lon1 - lon2) / 180;
+    let d = Math.sin(radlat1) * Math.sin(radlat2) +
+        Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
+    d = Math.acos(Math.max(-1, Math.min(1, d))) * 180 / Math.PI * 60 * 1.1515;   // US statute miles
+    if (unit === "K") return Math.trunc(d * 1.609344 * 10) / 10;
+    if (unit === "N") return Math.trunc(d * 0.8684 * 10) / 10;
+    if (unit === "f") return Math.trunc(d * 5280);
+    return Math.trunc(d * 10) / 10;        // "m" = miles
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Clock
+// ════════════════════════════════════════════════════════════════════
+function tickClock() {
+    const s = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    gClock.textContent = s.replace(/\s?[AP]M$/, "");       // no AM/PM
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Go
+// ════════════════════════════════════════════════════════════════════
+tickClock();
+setInterval(tickClock, 1000);
+runFlow();
+</script>
+
+</body>
+</html>
