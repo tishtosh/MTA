@@ -56,6 +56,9 @@
             white-space: nowrap;
             transform: translate(-50%, -130%);
         }
+
+        /* calm base color until the OpenStreetMap tiles arrive */
+        .leaflet-container { background: #e8ebef; }
     </style>
 </head>
 
@@ -100,9 +103,12 @@
         <div id="tINSERTHERE"></div>
     </div>
     <div id="viewMap" role="tabpanel" aria-labelledby="tabBtnMap" style="display:none">
+        <small id="mapnote" class="text-muted" aria-live="polite" style="display:block"></small>
         <div id="map" class="border rounded-bottom" style="height:62vh;min-height:380px"></div>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
 
 <script>
 // ════════════════════════════════════════════════════════════════════
@@ -172,8 +178,9 @@ let busy = false;             // re-entrancy guard for runFlow()
 let lastRefreshAt = 0;
 // map tab
 let mapVisible = false;       // which tab is showing
-let mapDataReady = false;     // mapStops have coordinates (nearby mode: yes; ?busstop=: after resolve)
+let mapDataReady = false;     // resolveMapStops() has loaded the map context (coords + neighborhood)
 let mapDataPending = false;   // resolveMapStops() is in flight
+let mapDataFailed = false;    // context load failed → no auto-retry (a tab click or runFlow retries)
 let mapFitted = false;        // fit the viewport to the stops once per runFlow()
 let allStopsCache = null;     // one-shot full-stops dump (?busstop= mode), cached per page load
 
@@ -185,6 +192,7 @@ const gViewArrivals = document.getElementById("viewArrivals");
 const gViewMap = document.getElementById("viewMap");
 const gTabArrivals = document.getElementById("tabBtnArrivals");
 const gTabMap = document.getElementById("tabBtnMap");
+const gMapNote = document.getElementById("mapnote");
 
 // ════════════════════════════════════════════════════════════════════
 // WMATA API
@@ -278,6 +286,7 @@ async function runFlow() {
             stops = stopListFromURL.map(id => makeStop(id, null, null, null));
             mapStops = stops.slice();   // resolveMapStops() grows this with a neighborhood context
             mapDataReady = false;
+            mapDataFailed = false;      // a new flow clears a stale failure (the map tab retries)
         } else {
             // ?lat&lon (or HOME): find stops near the search point
             const d = distance(DC_CENTER.lat, DC_CENTER.lon, searchPoint.lat, searchPoint.lon, "m");
@@ -436,6 +445,205 @@ document.getElementById("btnLocate").addEventListener("click", () => {
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
 });
+
+// ════════════════════════════════════════════════════════════════════
+// Map tab
+// Leaflet + OpenStreetMap tiles — no API key, no geometry files. WMATA
+// publishes no line geometry, so each route's line is synthesized as the
+// nearest-neighbor chain through its own stops (approximate in shape, but
+// self-heals if WMATA renumbers stops again).
+// ════════════════════════════════════════════════════════════════════
+
+let leaflet = null;           // the L.map instance, created lazily on first view
+let mapLayer = null;          // the L.layerGroup that gets cleared + redrawn each render
+const MAP_CONTEXT_RADIUS = 1600;   // meters (~1 mi) — neighborhood context for ?busstop=
+
+// A small distinguishable palette; routes hash into it (stable across loads).
+const ROUTE_COLORS = ["#c62828", "#1565c0", "#2e7d32", "#ef6c00", "#6a1b9a", "#00838f",
+    "#ad1457", "#5d4037", "#455a64", "#827717", "#37474f", "#9e9d24"];
+
+function routeColor(routeId) {
+    let h = 0;
+    for (const c of String(routeId)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return ROUTE_COLORS[h % ROUTE_COLORS.length];
+}
+
+// Order a route's stops as a chain: start at the first, repeatedly visit the
+// nearest unvisited stop. (Squared degree distance is plenty for ordering.)
+function chainStops(pts) {
+    if (pts.length < 2) return pts.slice();
+    const rest = pts.slice();
+    const out = [rest.shift()];
+    while (rest.length) {
+        const last = out[out.length - 1];
+        let bi = 0, bd = Infinity;
+        for (let i = 0; i < rest.length; i++) {
+            const d = (rest[i].Lat - last.Lat) ** 2 + (rest[i].Lon - last.Lon) ** 2;
+            if (d < bd) { bd = d; bi = i; }
+        }
+        out.push(rest.splice(bi, 1)[0]);
+    }
+    return out;
+}
+
+// Give the map its coordinates. In nearby mode the stops already have them;
+// in ?busstop= mode jStops ignores a StopID-only query, so pull the one-shot
+// full dump (cached per page load), look the requested stops up in it, then
+// add a ~1-mile neighborhood for context. Deliberately deferred: the arrivals
+// flow never waits for it — it runs when the Map tab is shown.
+async function resolveMapStops() {
+    if (mapDataReady || mapDataPending) return;
+    const needsCoords = stops.some(s => s.Lat == null || s.Lon == null);
+    if (!needsCoords) {                       // already resolved (a re-run in ?busstop=)
+        mapDataReady = true;
+        if (mapVisible) renderMap();
+        return;
+    }
+    mapDataPending = true;
+    mapDataFailed = false;
+    gMapNote.textContent = "Loading stops …";
+    try {
+        if (!allStopsCache) allStopsCache = await fetchAllStops();   // ~7.5k stops, once per load
+        const byId = new Map(allStopsCache.map(s => [s.StopID, s]));
+        let found = 0;
+        for (const stop of stops) {
+            const hit = byId.get(stop.StopID);
+            if (hit) {
+                stop.Lat = hit.Lat;
+                stop.Lon = hit.Lon;
+                if (!stop.Name) stop.Name = hit.Name;
+                if (!stop.Routes.length) stop.Routes = hit.Routes || [];
+                found++;
+            }
+        }
+        mapStops = stops.filter(s => s.Lat != null && s.Lon != null);
+        if (mapStops.length) {
+            // Neighborhood context around the requested stops: the route lines
+            // need nearby stops, and it makes the map feel like a place.
+            const cLat = mapStops.reduce((a, s) => a + s.Lat, 0) / mapStops.length;
+            const cLon = mapStops.reduce((a, s) => a + s.Lon, 0) / mapStops.length;
+            for (const s of await fetchStopsNear(cLat, cLon, MAP_CONTEXT_RADIUS)) {
+                if (!mapStops.some(t => t.StopID === s.StopID)) {
+                    const ctx = makeStop(s.StopID, s.Name, s.Lat, s.Lon);
+                    ctx.Routes = s.Routes || [];
+                    ctx.Context = true;
+                    mapStops.push(ctx);
+                }
+            }
+        }
+        mapDataReady = true;
+        mapFitted = false;                   // new area → let renderMap() re-fit
+        gMapNote.textContent = found === stops.length
+            ? "Lines are drawn through each route's stops (WMATA publishes no geometry). Hover a circle for details."
+            : `${found} of ${stops.length} requested stops found — the rest may have been renumbered.`;
+    } catch (e) {
+        mapDataFailed = true;                // no auto-retry; a tab click or new flow retries
+        gMapNote.textContent = `Map data unavailable: ${e.message} — click the tab to retry.`;
+    } finally {
+        mapDataPending = false;
+    }
+    if (mapVisible) renderMap();
+}
+
+// Redraw the map to match the current data. Called from render() on every
+// pass, but a no-op unless the Map tab is showing. If Leaflet failed to load
+// (CDN blocked / offline), the rest of the page keeps working as-is.
+function renderMap() {
+    if (!mapVisible) return;
+    if (typeof L === "undefined") {
+        gMapNote.textContent = "Map unavailable — the Leaflet CDN could not be loaded.";
+        return;
+    }
+    if (!leaflet) {
+        leaflet = L.map(gMap);
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors",
+        }).addTo(leaflet);
+        mapLayer = L.layerGroup().addTo(leaflet);
+    }
+    if (!mapDataReady) {
+        if (!mapDataPending && !mapDataFailed) resolveMapStops();   // map showing, data missing
+        return;                                                     // the note is set by resolveMapStops
+    }
+
+    mapLayer.clearLayers();
+    const pts = mapStops.filter(s => s.Lat != null && s.Lon != null);
+    if (!pts.length) {
+        gMapNote.textContent = "No stops with coordinates to draw.";
+        return;
+    }
+
+    // Route lines: one thick colored polyline per route, through its stops
+    const byRoute = new Map();
+    for (const s of pts) {
+        for (const r of s.Routes || []) {
+            if (!byRoute.has(r)) byRoute.set(r, []);
+            byRoute.get(r).push(s);
+        }
+    }
+    for (const [routeId, stopsForRoute] of byRoute) {
+        const chain = chainStops(stopsForRoute);
+        if (chain.length < 2) continue;               // one stop doesn't make a line
+        const color = routeColor(routeId);
+        L.polyline(chain.map(s => [s.Lat, s.Lon]), {
+            color, weight: 6, opacity: 0.8, lineCap: "round", lineJoin: "round",
+        }).addTo(mapLayer);
+        const mid = chain[Math.floor((chain.length - 1) / 2)];   // label above the line's middle
+        L.marker([mid.Lat, mid.Lon], {
+            icon: L.divIcon({
+                className: "routetag-wrap", iconSize: [0, 0],
+                html: `<span class="routetag" style="background:${color}">${esc(routeId)}</span>`,
+            }),
+            interactive: false,                       // the label must not block stop tooltips
+        }).addTo(mapLayer);
+    }
+
+    // Stops: circle markers; hover → address, routes, next arrivals
+    for (const s of pts) {
+        const color = (s.Routes || []).length ? routeColor(s.Routes[0]) : "#455a64";
+        const next = (s.Arrivals || []).slice(0, 3)
+            .map(a => `${esc(a.route)} · ${esc(a.dir)} in ${esc(a.min)} min`)
+            .join("<br>");
+        L.circleMarker([s.Lat, s.Lon], {
+            radius: s.Context ? 5 : 7,
+            color: "#fff", weight: 1.5,
+            fillColor: color, fillOpacity: 1,
+        }).bindTooltip(
+            `<b>${esc(s.Name || s.StopID)}</b>`
+            + (s.Routes && s.Routes.length ? `<br>${esc(s.Routes.join(", "))}` : "")
+            + (next ? `<br>${next}` : "")
+            + (s.Context ? "<br><i>context stop</i>" : ""),
+            { direction: "top", opacity: 0.95 }
+        ).addTo(mapLayer);
+    }
+
+    // Fit the viewport once per full load — not on every 60-second refresh
+    if (!mapFitted) {
+        leaflet.fitBounds(L.latLngBounds(pts.map(s => [s.Lat, s.Lon])).pad(0.15), { maxZoom: 16 });
+        mapFitted = true;
+    }
+}
+
+// Tab buttons (plain JS — no Bootstrap JS)
+function showTab(which) {
+    const showMap = which === "map";
+    mapVisible = showMap;
+    gViewArrivals.style.display = showMap ? "none" : "";
+    gViewMap.style.display = showMap ? "" : "none";
+    gTabArrivals.classList.toggle("active", !showMap);
+    gTabArrivals.setAttribute("aria-selected", String(!showMap));
+    gTabMap.classList.toggle("active", showMap);
+    gTabMap.setAttribute("aria-selected", String(showMap));
+    if (showMap) {
+        if (!mapDataReady && !mapDataPending) resolveMapStops();   // explicit click → retry even after a failure
+        if (leaflet) leaflet.invalidateSize();                    // the map was display:none while hidden
+        renderMap();
+    }
+}
+
+gTabArrivals.addEventListener("click", () => showTab("arrivals"));
+gTabMap.addEventListener("click", () => showTab("map"));
 
 // ════════════════════════════════════════════════════════════════════
 // Distance between two GPS points (spherical law of cosines — plenty

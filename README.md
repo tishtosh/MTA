@@ -1,9 +1,9 @@
 # like a bus 🚌
 
-A tiny, dependency-free web app that shows **live DC Metrobus arrival predictions** for a
-handful of bus stops around **Cleveland Park (20010)** — the Park Rd NW / 19 St NW corner.
-It's a single static HTML page hosted on **GitHub Pages**, so it costs nothing to run and
-needs no backend.
+A tiny, single-file web app (no backend, no build step) that shows **live DC Metrobus
+arrival predictions** for a handful of bus stops around **Cleveland Park (20010)** — the
+Park Rd NW / 19 St NW corner. It's a static HTML page hosted on **GitHub Pages**, so it
+costs nothing to run.
 
 Open it: **https://tishtosh.github.io/MTA/mta26.html**
 
@@ -22,6 +22,9 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
     `?lat`/`?lon` you passed).
   - **📍 (location)** — use your browser's **geolocation** to find the stops nearest *you*.
 - Distances are shown from the point actually searched, so the geolocation view is honest.
+- A **Map** tab shows the same stops geographically: each route as a thick colored line,
+  each stop as a circle (hover for the address and next arrivals). Details under
+  [Map tab](#map-tab).
 - If one stop's prediction request fails (e.g. a stop that no longer exists), the page
   still renders the others and shows a muted "predictions unavailable" row instead of
   going blank.
@@ -51,6 +54,26 @@ The current 20010 corner stops (useful for building `?busstop=` links):
 | `1002135` / `1002130` | Park Rd NW + 19 St NW | C87, D72 |
 | `1002118` | Adams Mill Rd NW + Klingle Rd NW | C61 |
 | `1002127` / `1002120` | Park Rd NW + Mt Pleasant St NW | C87, D72 |
+
+---
+
+## Map tab
+
+The **Map** tab draws the same stops geographically with **Leaflet 1.9.4** on
+**OpenStreetMap** tiles — both key-free, so the map adds zero load to the WMATA API:
+
+- Each bus route is a **thick colored line** with its name labelled; each stop is a
+  **circle**. Hover a circle for the stop's address, its routes, and the next arrivals.
+- WMATA publishes **no line geometry**, so a route's line is *synthesized* as the
+  nearest-neighbor chain through that route's own stops. It's approximate in shape, and
+  it self-heals if WMATA renumbers stops again (see [Maintenance](#maintenance)).
+- In `?busstop=` mode the stops' coordinates aren't known until the map opens: the tab
+  then makes **one** full-stops `jStops` request — the API ignores a `StopID`-only
+  query, so the ~800 KB full dump is the only way to resolve an ID to coordinates —
+  cached for the page load, plus a ~1-mile neighborhood search for context. The arrivals
+  tab never waits for this.
+- If the Leaflet CDN can't be loaded (offline / blocked), the Map tab says so in its note
+  line and the rest of the page keeps working.
 
 ---
 
@@ -143,8 +166,8 @@ export default {
 | `css/all.css`, `webfonts/` | Self-hosted **Font Awesome** icons. |
 | `.github/workflows/static.yml` | GitHub Pages deploy (uploads the whole repo from `main`). |
 
-Bootstrap **5.3.3** (SRI-hashed) and the Orbitron clock font load from CDN in the page;
-Font Awesome is self-hosted.
+Bootstrap **5.3.3** (SRI-hashed), Leaflet **1.9.4** (SRI-hashed), and the Orbitron clock
+font load from CDN in the page; Font Awesome is self-hosted.
 
 ## Run it locally
 
