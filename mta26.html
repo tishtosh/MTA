@@ -59,6 +59,30 @@
 
         /* calm base color until the OpenStreetMap tiles arrive */
         .leaflet-container { background: #e8ebef; }
+
+        /* route list in the Map tab: one pill per route, colored like its line */
+        .routelist {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 8px 0;
+        }
+
+        .routechip {
+            color: #fff;
+            border: 2px solid transparent;
+            border-radius: 999px;
+            padding: 2px 12px;
+            font: 700 12px/1.6 system-ui, -apple-system, sans-serif;
+            cursor: pointer;
+        }
+
+        .routechip:hover { filter: brightness(1.15); }
+
+        .routechip.sel {
+            border-color: #212529;
+            box-shadow: 0 0 0 2px rgba(33, 37, 41, .35);
+        }
     </style>
 </head>
 
@@ -104,6 +128,7 @@
     </div>
     <div id="viewMap" role="tabpanel" aria-labelledby="tabBtnMap" style="display:none">
         <small id="mapnote" class="text-muted" aria-live="polite" style="display:block"></small>
+        <div id="routelist" class="routelist" aria-label="Routes in view — click one to highlight it on the map"></div>
         <div id="map" class="border rounded-bottom" style="height:62vh;min-height:380px"></div>
     </div>
 </div>
@@ -182,6 +207,7 @@ let mapDataReady = false;     // resolveMapStops() has loaded the map context (c
 let mapDataPending = false;   // resolveMapStops() is in flight
 let mapDataFailed = false;    // context load failed → no auto-retry (a tab click or runFlow retries)
 let mapFitted = false;        // fit the viewport to the stops once per runFlow()
+let selectedRoute = null;     // the route highlighted on the map (null = show all)
 let allStopsCache = null;     // one-shot full-stops dump (?busstop= mode), cached per page load
 
 const gStatus = document.getElementById("statusmessage");
@@ -193,6 +219,7 @@ const gViewMap = document.getElementById("viewMap");
 const gTabArrivals = document.getElementById("tabBtnArrivals");
 const gTabMap = document.getElementById("tabBtnMap");
 const gMapNote = document.getElementById("mapnote");
+const gRouteList = document.getElementById("routelist");
 
 // ════════════════════════════════════════════════════════════════════
 // WMATA API
@@ -277,6 +304,7 @@ async function runFlow() {
     busy = true;
     try {
         mapFitted = false;              // a full load may move the area → let the map re-fit
+        selectedRoute = null;           // ...and a new area means a fresh, unfiltered map
         if (stopListFromURL) {
             // ?busstop= given: use it as-is, ignore lat/lon (as documented).
             // Coordinates stay null until the map tab asks resolveMapStops()
@@ -545,11 +573,59 @@ async function resolveMapStops() {
     if (mapVisible) renderMap();
 }
 
+// One pill per route in view, colored like its line, plus an "All routes"
+// reset. Rebuilt on every render — the list always mirrors the map.
+function renderRouteList(pts) {
+    const ids = [...new Set(pts.flatMap(s => s.Routes || []))]
+        .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+    gRouteList.replaceChildren(
+        routeChip("All routes", null, null),
+        ...ids.map(id => routeChip(id, id, routeColor(id)))
+    );
+    for (const chip of gRouteList.children) {
+        chip.classList.toggle("sel", selectedRoute !== null && chip.dataset.route === selectedRoute);
+    }
+}
+
+function routeChip(label, routeId, color) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "routechip" + (color ? "" : " all");
+    btn.textContent = label;
+    btn.title = routeId ? "Highlight " + label + " on the map" : "Show all routes";
+    btn.dataset.route = routeId || "";
+    if (color) btn.style.background = color;
+    btn.addEventListener("click", () => toggleRoute(routeId));
+    return btn;
+}
+
+// Pick a route (bold line, everything else recedes, view fits it); pick the
+// same one again — or "All routes" — to undo.
+function toggleRoute(routeId) {
+    const next = (selectedRoute === routeId) ? null : routeId;
+    if (next === selectedRoute) return;          // "All routes" while already showing all
+    selectedRoute = next;
+    renderMap(next || "all");
+}
+
 // Redraw the map to match the current data. Called from render() on every
 // pass, but a no-op unless the Map tab is showing. If Leaflet failed to load
-// (CDN blocked / offline), the rest of the page keeps working as-is.
-function renderMap() {
+// (CDN blocked / offline), the route list and the rest of the page keep
+// working as-is. `fitTo` (a route id, or "all") re-fits the viewport — set
+// by a route pick; the 60-second refresh passes nothing and keeps the view.
+function renderMap(fitTo = null) {
     if (!mapVisible) return;
+    if (!mapDataReady) {
+        if (!mapDataPending && !mapDataFailed) resolveMapStops();   // map showing, data missing
+        return;                                                     // the note is set by resolveMapStops
+    }
+
+    const pts = mapStops.filter(s => s.Lat != null && s.Lon != null);
+    renderRouteList(pts);
+    if (!pts.length) {
+        gMapNote.textContent = "No stops with coordinates to draw.";
+        return;
+    }
     if (typeof L === "undefined") {
         gMapNote.textContent = "Map unavailable — the Leaflet CDN could not be loaded.";
         return;
@@ -562,19 +638,11 @@ function renderMap() {
         }).addTo(leaflet);
         mapLayer = L.layerGroup().addTo(leaflet);
     }
-    if (!mapDataReady) {
-        if (!mapDataPending && !mapDataFailed) resolveMapStops();   // map showing, data missing
-        return;                                                     // the note is set by resolveMapStops
-    }
 
     mapLayer.clearLayers();
-    const pts = mapStops.filter(s => s.Lat != null && s.Lon != null);
-    if (!pts.length) {
-        gMapNote.textContent = "No stops with coordinates to draw.";
-        return;
-    }
 
-    // Route lines: one thick colored polyline per route, through its stops
+    // Route lines: one thick colored polyline per route, through its stops.
+    // With a route picked, the others recede so the pick reads at a glance.
     const byRoute = new Map();
     for (const s of pts) {
         for (const r of s.Routes || []) {
@@ -586,21 +654,29 @@ function renderMap() {
         const chain = chainStops(stopsForRoute);
         if (chain.length < 2) continue;               // one stop doesn't make a line
         const color = routeColor(routeId);
+        const picked = selectedRoute === routeId;
         L.polyline(chain.map(s => [s.Lat, s.Lon]), {
-            color, weight: 6, opacity: 0.8, lineCap: "round", lineJoin: "round",
+            color,
+            weight: picked ? 9 : 6,
+            opacity: selectedRoute ? (picked ? 1 : 0.25) : 0.8,
+            lineCap: "round", lineJoin: "round",
         }).addTo(mapLayer);
-        const mid = chain[Math.floor((chain.length - 1) / 2)];   // label above the line's middle
-        L.marker([mid.Lat, mid.Lon], {
-            icon: L.divIcon({
-                className: "routetag-wrap", iconSize: [0, 0],
-                html: `<span class="routetag" style="background:${color}">${esc(routeId)}</span>`,
-            }),
-            interactive: false,                       // the label must not block stop tooltips
-        }).addTo(mapLayer);
+        if (!selectedRoute || picked) {               // one label at a time while a route is picked
+            const mid = chain[Math.floor((chain.length - 1) / 2)];   // label above the line's middle
+            L.marker([mid.Lat, mid.Lon], {
+                icon: L.divIcon({
+                    className: "routetag-wrap", iconSize: [0, 0],
+                    html: `<span class="routetag" style="background:${color}">${esc(routeId)}</span>`,
+                }),
+                interactive: false,                       // the label must not block stop tooltips
+            }).addTo(mapLayer);
+        }
     }
 
-    // Stops: circle markers; hover → address, routes, next arrivals
+    // Stops: circle markers; hover → address, routes, next arrivals.
+    // Off-route stops fade back while a route is picked.
     for (const s of pts) {
+        const onPick = selectedRoute === null || (s.Routes || []).includes(selectedRoute);
         const color = (s.Routes || []).length ? routeColor(s.Routes[0]) : "#455a64";
         const next = (s.Arrivals || []).slice(0, 3)
             .map(a => `${esc(a.route)} · ${esc(a.dir)} in ${esc(a.min)} min`)
@@ -608,7 +684,9 @@ function renderMap() {
         L.circleMarker([s.Lat, s.Lon], {
             radius: s.Context ? 5 : 7,
             color: "#fff", weight: 1.5,
-            fillColor: color, fillOpacity: 1,
+            fillColor: color,
+            fillOpacity: onPick ? 1 : 0.3,
+            opacity: onPick ? 1 : 0.3,
         }).bindTooltip(
             `<b>${esc(s.Name || s.StopID)}</b>`
             + (s.Routes && s.Routes.length ? `<br>${esc(s.Routes.join(", "))}` : "")
@@ -618,10 +696,16 @@ function renderMap() {
         ).addTo(mapLayer);
     }
 
-    // Fit the viewport once per full load — not on every 60-second refresh
+    // Fit the viewport once per full load — not on every 60-second refresh.
+    // An explicit route pick (fitTo) is a deliberate move, so it always fits.
     if (!mapFitted) {
         leaflet.fitBounds(L.latLngBounds(pts.map(s => [s.Lat, s.Lon])).pad(0.15), { maxZoom: 16 });
         mapFitted = true;
+    } else if (fitTo) {
+        const selPts = fitTo === "all" ? pts : pts.filter(s => (s.Routes || []).includes(fitTo));
+        leaflet.fitBounds(
+            L.latLngBounds((selPts.length ? selPts : pts).map(s => [s.Lat, s.Lon])).pad(0.2),
+            { maxZoom: 17 });
     }
 }
 

@@ -64,6 +64,9 @@ The **Map** tab draws the same stops geographically with **Leaflet 1.9.4** on
 
 - Each bus route is a **thick colored line** with its name labelled; each stop is a
   **circle**. Hover a circle for the stop's address, its routes, and the next arrivals.
+- A row of **route pills** lists every route in view. Click one to highlight it — bold
+  line, other routes and off-route stops fade back, and the map zooms to it; click it
+  again (or the "All routes" pill) to restore the whole network.
 - WMATA publishes **no line geometry**, so a route's line is *synthesized* as the
   nearest-neighbor chain through that route's own stops. It's approximate in shape, and
   it self-heals if WMATA renumbers stops again (see [Maintenance](#maintenance)).
