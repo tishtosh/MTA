@@ -264,34 +264,37 @@ const REFRESH_MS = Math.min(Math.max(num(params.get("refresh"), 30), 15), 600) *
 // State
 // ════════════════════════════════════════════════════════════════════
 let stops = [];               // [{ StopID, Name, Lat, Lon, Distance, Routes, Arrivals, Error }]
-let mapStops = [];            // stops drawn on the map (= stops, plus context stops in ?busstop= mode)
 let searchPoint = urlPoint;   // where to look for stops (updated by geolocation)
-let searchAt = null;          // the point actually searched (may be DC_CENTER) — for the map
+let pickedStop = null;        // the stop chosen in the entry field (null = nearby search)
+let pickedStopObj = null;     // the stop object actually shown (may be a directory stop outside the list)
+let forceNearby = false;      // the user dismissed a ?busstop= prefill (✕) → search nearby even with the param
+let linesStopId = null;       // the stop chosen in the Lines tab
 let refreshTimer = null;
 let rateLimited = false;      // WMATA returned 429 → slow the refresh down
 let busy = false;             // re-entrancy guard for runFlow()
 let lastRefreshAt = 0;
-// map tab
-let mapVisible = false;       // which tab is showing
-let mapDataReady = false;     // resolveMapStops() has loaded the map context (coords + neighborhood)
-let mapDataPending = false;   // resolveMapStops() is in flight
-let mapDataFailed = false;    // context load failed → no auto-retry (a tab click or runFlow retries)
-let mapFitted = false;        // fit the viewport to the stops once per runFlow()
-let selectedRoute = null;     // the route highlighted on the map (null = show all)
-let selectedRouteStops = [];  // every stop on the picked route (from the full dump)
-let drawnStops = [];          // the set renderMap() last drew (live stops + picked route's stops)
-let allStopsCache = null;     // one-shot full-stops dump, cached per page load
+// stop directory
+// The full jStops dump (812 KB, ~7.5k stops) is fetched once per page load
+// and feeds both autocomplete entry fields plus the Lines tab.
+let allStopsCache = null;     // the full stop dump, cached per page load
+let stopDirLoad = null;       // in-flight loadStopDirectory() promise (dedupes the fetch)
 
 const gStatus = document.getElementById("statusmessage");
 const gClock = document.getElementById("clock");
 const gTableHost = document.getElementById("tINSERTHERE");
-const gMap = document.getElementById("map");
+const gStopEntry = document.getElementById("stopEntry");
+const gStopEntryClear = document.getElementById("stopEntryClear");
+const gStopEntryList = document.getElementById("stopEntryList");
 const gViewArrivals = document.getElementById("viewArrivals");
-const gViewMap = document.getElementById("viewMap");
+const gViewLines = document.getElementById("viewLines");
 const gTabArrivals = document.getElementById("tabBtnArrivals");
-const gTabMap = document.getElementById("tabBtnMap");
-const gMapNote = document.getElementById("mapnote");
-const gRouteList = document.getElementById("routelist");
+const gTabLines = document.getElementById("tabBtnLines");
+const gLineStopEntry = document.getElementById("lineStopEntry");
+const gLineStopClear = document.getElementById("lineStopClear");
+const gLineStopList = document.getElementById("lineStopList");
+const gLinesNote = document.getElementById("linesNote");
+const gLinesHost = document.getElementById("linesHost");
+const gHoverTip = document.getElementById("hovertip");
 
 // ════════════════════════════════════════════════════════════════════
 // WMATA API
@@ -338,13 +341,25 @@ async function fetchStopsNear(lat, lon, radius) {
 
 // All stops: GET /Bus.svc/json/jStops (no params)
 // The API silently IGNORES a StopID-only query and returns every stop in the
-// system (~7.5k, ~800 KB) — that full dump is the only way to resolve a
-// stop's coordinates from its ID, since jPredictions returns no location.
-// Used once per page load, and only in ?busstop= mode.
+// system (~7.5k, ~800 KB). Each entry is { StopID, Name, Lon, Lat, Routes[] }
+// — that dump is the only source of stop names, coordinates and routes.
+// Fetched once per page load via loadStopDirectory(); it powers BOTH
+// autocomplete entry fields and the Lines tab.
 async function fetchAllStops() {
     const { data, error } = await apiGet("/Bus.svc/json/jStops", {}, 30000);
     if (error) throw error;
     return (data && data.Stops) || [];
+}
+
+// The stop directory, deduped: concurrent callers (both autocompletes, the
+// Lines tab) share one in-flight fetch, and failures are not retried.
+function loadStopDirectory() {
+    if (!stopDirLoad) {
+        stopDirLoad = fetchAllStops()
+            .then(stops => { allStopsCache = stops; return stops; })
+            .catch(err => { stopDirLoad = null; throw err; });   // allow a later retry
+    }
+    return stopDirLoad;
 }
 
 // Arrival predictions:  GET /NextBusService.svc/json/jPredictions?StopID
@@ -378,24 +393,17 @@ async function runFlow() {
     if (busy) return;                    // don't stack flows when buttons are clicked
     busy = true;
     try {
-        mapFitted = false;              // a full load may move the area → let the map re-fit
-        selectedRoute = null;           // ...and a new area means a fresh, unfiltered map
-        selectedRouteStops = [];
-        if (stopListFromURL) {
+        resetPick();                     // a new flow starts from the session's list (any picked stop is undone)
+        if (stopListFromURL && !forceNearby) {
             // ?busstop= given: use it as-is, ignore lat/lon (as documented).
-            // Coordinates stay null until the map tab asks resolveMapStops()
-            // for them (jStops ignores a StopID-only query; jPredictions
-            // returns no location) — the arrivals list never needs them.
+            // Coordinates stay null — the arrivals list never needs them,
+            // and the stop directory (the jStops dump) is the coord source.
             gStatus.textContent = `${stopListFromURL.length} stop${stopListFromURL.length > 1 ? "s" : ""} from URL`;
             stops = stopListFromURL.map(id => makeStop(id, null, null, null));
-            mapStops = stops.slice();   // resolveMapStops() grows this with a neighborhood context
-            mapDataReady = false;
-            mapDataFailed = false;      // a new flow clears a stale failure (the map tab retries)
         } else {
             // ?lat&lon (or HOME): find stops near the search point
             const d = distance(DC_CENTER.lat, DC_CENTER.lon, searchPoint.lat, searchPoint.lon, "m");
             const at = d > 50 ? DC_CENTER : searchPoint;     // far from DC → search DC center
-            searchAt = at;
             gStatus.textContent = `${d.toFixed(1)} mi to the Whitehouse` + (at === DC_CENTER ? " (searching DC center)" : "") + " …";
             const raw = await fetchStopsNear(at.lat, at.lon, gRadius);
             // Distance is measured from the point we actually searched —
@@ -412,28 +420,37 @@ async function runFlow() {
                 gStatus.textContent = `No stops within ${gRadius} m — try ?radius=600`;
                 stops = [];
             }
-            mapStops = stops.slice();      // in ?busstop= mode, resolveMapStops() set this
-            mapDataReady = true;           // nearby stops already have coordinates
         }
         await refreshPredictions();
+        // ?busstop= deep link with a single stop: prefill the entry field so
+        // the visitor sees where they are (✕ returns to the nearby search —
+        // forceNearby, since the URL would otherwise just pick the same stop).
+        if (stopListFromURL && stopListFromURL.length === 1 && !forceNearby && !pickedStop) {
+            const s = stops[0];
+            pickedStop = s.StopID;
+            gStopEntry.value = s.Name || `#${s.StopID}`;
+            acStop.setPicked(true);
+        }
     } catch (e) {
-        // Stops lookup failed (bad key / network): keep whatever is shown
+        // Stops lookup failed (bad key / network): keep whatever is shown —
+        // but re-render, since the pick was reset above (the table must match
+        // the entry field).
         gStatus.textContent = `Could not reach WMATA: ${e.message}`;
+        render();
     } finally {
         busy = false;
         scheduleRefresh();
     }
 }
 
-// Re-fetch predictions for the current stops. Promise.all so the render
+// Re-fetch predictions for the stops currently shown. Promise.all so the render
 // happens exactly once, after every request has settled — including the
 // ones that failed (the old code only rendered when the last request
-// SUCCEEDED, so one 400/429 left a blank page). With a route picked, its
-// stops are included too — that is what keeps the bus icons moving.
+// SUCCEEDED, so one 400/429 left a blank page). With a stop picked in the
+// entry field, only that stop is fetched.
 async function refreshPredictions() {
     const toFetch = new Map();              // StopID → stop object
-    for (const s of selectedRouteStops) toFetch.set(s.StopID, s);
-    for (const s of stops) toFetch.set(s.StopID, s);   // live copy wins on overlap
+    for (const s of shownStops()) toFetch.set(s.StopID, s);
     if (!toFetch.size) return;
     let saw429 = false;
     await Promise.all([...toFetch.values()].map(async (stop) => {
@@ -453,7 +470,8 @@ async function refreshPredictions() {
     render();
     scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
     const t = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
-    gStatus.textContent = `${stops.length} stop${stops.length > 1 ? "s" : ""} · updated ${t}` +
+    const shownCount = shownStops().length;
+    gStatus.textContent = `${shownCount} stop${shownCount > 1 ? "s" : ""} · updated ${t}` +
         (rateLimited ? " · API rate limit hit, slowing refresh" : "");
 }
 
@@ -491,9 +509,21 @@ function fmtDistance(ft) {
     return ft < 5280 ? `${ft} ft` : `${(ft / 5280).toFixed(1)} mi`;
 }
 
+// The stops the arrivals table tracks. No pick: the nearby / ?busstop= list.
+// With a pick: just that stop — resolved from the list when it's there, or
+// materialized from the stop directory when the user picked a stop that is
+// not in the list (it is then live-tracked like any other).
+function shownStops() {
+    if (!pickedStop) return stops;
+    if (pickedStopObj) return [pickedStopObj];
+    const inList = stops.find(s => s.StopID === pickedStop);
+    return inList ? [inList] : stops;
+}
+
 function render() {
+    const shown = shownStops();
     let rows = "";
-    for (const s of stops) {
+    for (const s of shown) {
         rows += "<tr class='table-primary vert'>"
             + "<td class='text-center'><i class='fa-solid fa-person-walking'></i></td>"
             + `<td>${fmtDistance(s.Distance)}</td>`
@@ -516,7 +546,7 @@ function render() {
             }
         }
     }
-    gTableHost.innerHTML = stops.length
+    gTableHost.innerHTML = shown.length
         ? `<div class="container">
              <table class="table table-sm table-hover">
                  <thead><tr><th style="width:8%"></th><th style="width:18%"></th><th style="width:20%"></th><th>destination</th></tr></thead>
@@ -524,8 +554,6 @@ function render() {
              </table>
            </div>`
         : "";
-
-    renderMap();     // keeps the map in sync with the data; no-op unless the tab is visible
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -556,16 +584,171 @@ document.getElementById("btnLocate").addEventListener("click", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// Map tab
-// Leaflet + OpenStreetMap tiles — no API key, no geometry files. WMATA
-// publishes no line geometry, so each route's line is synthesized as the
-// nearest-neighbor chain through its own stops (approximate in shape, but
-// self-heals if WMATA renumbers stops again).
+// Stop-name autocomplete (shared by the Arrivals + Lines entry fields)
 // ════════════════════════════════════════════════════════════════════
+// Both entry fields are comboboxes over the stop directory (the one jStops
+// full dump, deduped by loadStopDirectory()). The factory owns the entry UI
+// (suggestion list, ✕, keyboard); what each tab does with a picked stop is
+// up to its callbacks:
+//   onPick(dirStop)  — a stop was chosen (Enter on the highlighted match,
+//                      or a row click)
+//   onClear()        — the ✕ was pressed
+//   onPickLost()     — the user started typing while a pick was active
+function makeAutocomplete(input, listEl, clearBtn, onPick, onClear, onPickLost) {
+    let matches = [];
+    let active = -1;
+    let picked = false;
 
-let leaflet = null;           // the L.map instance, created lazily on first view
-let mapLayer = null;          // the L.layerGroup that gets cleared + redrawn each render
-const MAP_CONTEXT_RADIUS = 1600;   // meters (~1 mi) — neighborhood context for ?busstop=
+    function closeList() {
+        listEl.hidden = true;
+        listEl.innerHTML = "";
+        input.setAttribute("aria-expanded", "false");
+        active = -1;
+    }
+
+    function setPicked(v) {
+        picked = v;
+        clearBtn.hidden = !v;
+        if (!v) closeList();
+    }
+
+    function openList(html) {
+        listEl.innerHTML = html;
+        listEl.hidden = false;
+        input.setAttribute("aria-expanded", "true");
+    }
+
+    // Case-insensitive name search plus StopID prefix; at most 8 rows.
+    // null = the directory isn't loaded yet.
+    function matchesFor(q) {
+        if (!allStopsCache) return null;
+        const s = q.trim().toLowerCase();
+        if (!s) return [];
+        const out = [];
+        for (const st of allStopsCache) {
+            if (st.Name && st.Name.toLowerCase().includes(s)) out.push(st);
+            else if (String(st.StopID).toLowerCase().startsWith(s)) out.push(st);
+            if (out.length >= 8) break;
+        }
+        out.sort((a, b) => a.Name.localeCompare(b.Name) ||
+            a.StopID.localeCompare(b.StopID, undefined, { numeric: true }));
+        return out;
+    }
+
+    function renderMatches(items) {
+        matches = items;
+        active = items.length ? 0 : -1;
+        openList(items.length
+            ? items.map((s, i) =>
+                `<div class="ac-item${i === active ? " active" : ""}" data-i="${i}" role="option" aria-selected="${i === active}">` +
+                `${esc(s.Name || "#" + s.StopID)}<span class="code">#${esc(s.StopID)}</span></div>`).join("")
+            : `<div class="ac-none">no matching stops</div>`);
+    }
+
+    function pick(st) {
+        input.value = st.Name || `#${st.StopID}`;
+        setPicked(true);
+        if (onPick) onPick(st);
+    }
+
+    input.addEventListener("input", () => {
+        if (picked) { setPicked(false); if (onPickLost) onPickLost(); }
+        const q = input.value.trim();
+        if (!q) { closeList(); return; }
+        const items = matchesFor(q);
+        if (items === null) {                       // directory not loaded yet
+            matches = [];
+            openList(`<div class="ac-none">loading stops…</div>`);
+            loadStopDirectory().then(() => {
+                if (input.value.trim() === q) renderMatches(matchesFor(q) || []);
+            }).catch(() => {
+                if (input.value.trim() === q) openList(`<div class="ac-none">could not load the stop list</div>`);
+            });
+        } else {
+            renderMatches(items);
+        }
+    });
+
+    input.addEventListener("keydown", e => {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            if (listEl.hidden || !matches.length) return;
+            e.preventDefault();
+            if (active === -1) active = e.key === "ArrowDown" ? 0 : matches.length - 1;
+            else active = (active + (e.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length;
+            [...listEl.children].forEach((el, i) => el.classList.toggle("active", i === active));
+            if (listEl.children[active]) listEl.children[active].scrollIntoView({ block: "nearest" });
+        } else if (e.key === "Enter" && !listEl.hidden && active >= 0 && matches[active]) {
+            e.preventDefault();
+            pick(matches[active]);
+        } else if (e.key === "Escape" && !listEl.hidden) {
+            closeList();
+        }
+    });
+
+    // mousedown, not click: preventDefault keeps the input focused, so the
+    // blur handler can't close the list before the row gets picked.
+    listEl.addEventListener("mousedown", e => {
+        const item = e.target.closest(".ac-item");
+        if (!item) return;
+        e.preventDefault();
+        pick(matches[+item.dataset.i]);
+    });
+
+    input.addEventListener("blur", closeList);
+    clearBtn.addEventListener("click", () => {
+        setPicked(false);
+        input.value = "";
+        if (onClear) onClear();
+    });
+
+    return {
+        setPicked,
+        reset() { setPicked(false); input.value = ""; },
+    };
+}
+
+// A directory stop (from the full dump) becomes a tracked stop. It may be
+// outside the nearby list — it is then materialized with a null distance.
+function materializeDirStop(st) {
+    const s = makeStop(st.StopID, st.Name, st.Lat, st.Lon);
+    s.Routes = st.Routes || [];
+    return s;
+}
+
+// Undo the entry-field pick: state + field only. The caller decides what
+// happens next — ✕ re-runs runFlow() (the nearby search); typing just
+// re-renders the list that is already on screen.
+function resetPick() {
+    if (pickedStop === null && pickedStopObj === null) return;
+    pickedStop = null;
+    pickedStopObj = null;
+    acStop.reset();
+}
+
+const acStop = makeAutocomplete(
+    gStopEntry, gStopEntryList, gStopEntryClear,
+    st => {                       // pick: track just this stop
+        pickedStop = st.StopID;
+        const inList = stops.find(s => s.StopID === st.StopID);
+        pickedStopObj = inList || materializeDirStop(st);
+        refreshPredictions();     // its predictions, then the 30 s cycle tracks it
+    },
+    () => {                       // ✕: back to the nearby search
+        resetPick();
+        forceNearby = true;       // matters when a ?busstop= deep link prefilled the field
+        runFlow();
+    },
+    () => { resetPick(); render(); },
+);
+
+// ════════════════════════════════════════════════════════════════════
+// Lines tab
+// One horizontal line per route that serves the picked stop, colored from
+// the shared route palette. Each line runs through the route's stops
+// (nearest-neighbor chain — WMATA publishes no line geometry); the picked
+// stop is marked, and hovering any stop pulls its live arrivals once
+// (cached for the page load).
+// ════════════════════════════════════════════════════════════════════
 
 // A small distinguishable palette; routes hash into it (stable across loads).
 const ROUTE_COLORS = ["#c62828", "#1565c0", "#2e7d32", "#ef6c00", "#6a1b9a", "#00838f",
@@ -595,293 +778,159 @@ function chainStops(pts) {
     return out;
 }
 
-// Give the map its coordinates. In nearby mode the stops already have them;
-// in ?busstop= mode jStops ignores a StopID-only query, so pull the one-shot
-// full dump (cached per page load), look the requested stops up in it, then
-// add a ~1-mile neighborhood for context. Deliberately deferred: the arrivals
-// flow never waits for it — it runs when the Map tab is shown.
-async function resolveMapStops() {
-    if (mapDataReady || mapDataPending) return;
-    const needsCoords = stops.some(s => s.Lat == null || s.Lon == null);
-    if (!needsCoords) {                       // already resolved (a re-run in ?busstop=)
-        mapDataReady = true;
-        if (mapVisible) renderMap();
+// Entry field: picking a stop makes the rows below every route that
+// serves it. All three exits (pick, ✕, typing) re-render.
+const acLine = makeAutocomplete(
+    gLineStopEntry, gLineStopList, gLineStopClear,
+    st => { linesStopId = st.StopID; renderLines(); },
+    () => { linesStopId = null; renderLines(); },      // ✕ → back to the prompt
+    () => { linesStopId = null; renderLines(); },      // started typing → the pick is gone
+);
+
+// One horizontal row per route: badge, then the route's stops as a dot
+// chain (nearest-neighbor order). The picked stop is the bigger dot.
+function lineRow(route) {
+    const color = routeColor(route);
+    const onRoute = allStopsCache.filter(s => (s.Routes || []).includes(route));
+    const chain = chainStops(onRoute);
+    let inner = "";
+    for (let i = 0; i < chain.length; i++) {
+        if (i) inner += `<span class="line-seg" style="color:${color}"></span>`;
+        const here = String(chain[i].StopID) === String(linesStopId);
+        inner += `<span class="line-dot${here ? " here" : ""}" data-stop="${esc(String(chain[i].StopID))}" style="color:${color}"></span>`;
+    }
+    return `<div class="line-row"><span class="line-badge" style="background:${color}">${esc(route)}</span><span class="line-chain">${inner}</span></div>`;
+}
+
+// The hover card: a stop's live arrivals, fetched once per page load and
+// then cached (a hover is a peek — the Arrivals tab already refreshes the
+// stops it tracks; the dots it peeks at are usually not among them).
+const hoverPredictions = new Map();   // StopID → { name, predictions }
+let hoverTok = 0;                     // invalidates in-flight card writes
+
+function hideHoverTip() {
+    hoverTok++;
+    gHoverTip.hidden = true;
+    gHoverTip.innerHTML = "";
+}
+
+// Floats above the hovered dot (below, when there is no room), clamped to
+// the viewport. Measured while visibility:hidden so it never flickers at
+// the corner before it lands.
+function positionHoverTip(dot) {
+    const r = dot.getBoundingClientRect();
+    const w = gHoverTip.offsetWidth;
+    const h = gHoverTip.offsetHeight;
+    let x = r.left + r.width / 2 - w / 2;
+    let y = r.top - h - 10;
+    if (y < 8) y = r.bottom + 10;
+    gHoverTip.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + "px";
+    gHoverTip.style.top = y + "px";
+}
+
+function hoverTipHtml(st, pred) {
+    const head = `${esc(st.Name || "#" + st.StopID)} <small style="opacity:.75">(#${esc(st.StopID)})</small>`;
+    if (!pred.predictions.length) return head + "<br><small>no arrivals scheduled</small>";
+    const rows = pred.predictions.map(p =>
+        `<div><b>${esc(p.route)}</b> · ${esc(p.min)} min <small style="opacity:.75">${esc(p.dir || "")}</small></div>`).join("");
+    return head + "<br>" + rows;
+}
+
+async function hoverTipFor(dot) {
+    const tok = ++hoverTok;
+    const st = (allStopsCache || []).find(s => String(s.StopID) === String(dot.dataset.stop));
+    if (!st) return;
+    const show = html => {
+        gHoverTip.style.visibility = "hidden";
+        gHoverTip.hidden = false;
+        gHoverTip.innerHTML = html;
+        positionHoverTip(dot);
+        gHoverTip.style.visibility = "";
+    };
+    let pred = hoverPredictions.get(st.StopID);
+    if (pred) { show(hoverTipHtml(st, pred)); return; }     // cached: instant
+    show(`${esc(st.Name || "#" + st.StopID)} <small style="opacity:.75">(#${esc(st.StopID)})</small><br>loading…`);
+    try {
+        pred = await fetchPredictions(st.StopID);
+        hoverPredictions.set(st.StopID, pred);
+    } catch (e) {
+        pred = null;
+    }
+    if (tok !== hoverTok || !dot.isConnected) return;       // card moved on, or the row was redrawn
+    show(pred ? hoverTipHtml(st, pred)
+              : `${esc(st.Name || "#" + st.StopID)}<br><small>couldn't load arrivals</small>`);
+}
+
+// Dots are redrawn on every renderLines(), so the card is driven by
+// delegated mouseover/mouseout on the host (survives re-renders).
+gLinesHost.addEventListener("mouseover", e => {
+    const dot = e.target.closest(".line-dot");
+    if (dot) hoverTipFor(dot);
+});
+gLinesHost.addEventListener("mouseout", e => {
+    const from = e.target.closest(".line-dot");
+    if (!from) return;
+    const to = e.relatedTarget;
+    if (to && to.nodeType === 1 && to.closest(".line-dot")) return;   // dot→dot: the new dot takes over
+    hideHoverTip();
+});
+// A row scrolling out from under the cursor also retires the card.
+gLinesHost.addEventListener("scroll", hideHoverTip, true);
+
+function renderLines() {
+    hideHoverTip();
+    if (!linesStopId) {
+        gLinesNote.textContent = "Pick a stop to see every line that serves it.";
+        gLinesHost.innerHTML = "";
         return;
     }
-    mapDataPending = true;
-    mapDataFailed = false;
-    gMapNote.textContent = "Loading stops …";
-    try {
-        if (!allStopsCache) allStopsCache = await fetchAllStops();   // ~7.5k stops, once per load
-        const byId = new Map(allStopsCache.map(s => [s.StopID, s]));
-        let found = 0;
-        for (const stop of stops) {
-            const hit = byId.get(stop.StopID);
-            if (hit) {
-                stop.Lat = hit.Lat;
-                stop.Lon = hit.Lon;
-                if (!stop.Name) stop.Name = hit.Name;
-                if (!stop.Routes.length) stop.Routes = hit.Routes || [];
-                found++;
-            }
-        }
-        mapStops = stops.filter(s => s.Lat != null && s.Lon != null);
-        if (mapStops.length) {
-            // Neighborhood context around the requested stops: the route lines
-            // need nearby stops, and it makes the map feel like a place.
-            const cLat = mapStops.reduce((a, s) => a + s.Lat, 0) / mapStops.length;
-            const cLon = mapStops.reduce((a, s) => a + s.Lon, 0) / mapStops.length;
-            for (const s of await fetchStopsNear(cLat, cLon, MAP_CONTEXT_RADIUS)) {
-                if (!mapStops.some(t => t.StopID === s.StopID)) {
-                    const ctx = makeStop(s.StopID, s.Name, s.Lat, s.Lon);
-                    ctx.Routes = s.Routes || [];
-                    ctx.Context = true;
-                    mapStops.push(ctx);
+    if (!allStopsCache) {
+        // The directory is still loading (or a previous attempt failed):
+        // ask for it, then come back for the real picture.
+        const want = linesStopId;
+        gLinesNote.textContent = "loading the stop list…";
+        gLinesHost.innerHTML = "";
+        loadStopDirectory()
+            .then(() => { if (linesStopId === want) renderLines(); })
+            .catch(() => {
+                if (linesStopId === want) {
+                    gLinesNote.textContent = "could not load the stop list — the lines view needs it.";
+                    gLinesHost.innerHTML = "";
                 }
-            }
-        }
-        mapDataReady = true;
-        mapFitted = false;                   // new area → let renderMap() re-fit
-        gMapNote.textContent = found === stops.length
-            ? "Lines are drawn through each route's stops (WMATA publishes no geometry). Hover a circle for details."
-            : `${found} of ${stops.length} requested stops found — the rest may have been renumbered.`;
-    } catch (e) {
-        mapDataFailed = true;                // no auto-retry; a tab click or new flow retries
-        gMapNote.textContent = `Map data unavailable: ${e.message} — click the tab to retry.`;
-    } finally {
-        mapDataPending = false;
-    }
-    if (mapVisible) renderMap();
-}
-
-// One pill per route in view, colored like its line, plus an "All routes"
-// reset. Rebuilt on every render — the list always mirrors the map.
-function renderRouteList(pts) {
-    const ids = [...new Set(pts.flatMap(s => s.Routes || []))]
-        .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
-    gRouteList.replaceChildren(
-        routeChip("All routes", null, null),
-        ...ids.map(id => routeChip(id, id, routeColor(id)))
-    );
-    for (const chip of gRouteList.children) {
-        chip.classList.toggle("sel", selectedRoute !== null && chip.dataset.route === selectedRoute);
-    }
-}
-
-function routeChip(label, routeId, color) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "routechip" + (color ? "" : " all");
-    btn.textContent = label;
-    btn.title = routeId ? "Show all of " + label + " — every stop on the route, and its buses" : "Show all routes";
-    btn.dataset.route = routeId || "";
-    if (color) btn.style.background = color;
-    btn.addEventListener("click", () => toggleRoute(routeId));
-    return btn;
-}
-
-// Pick a route: EVERY stop on that route is drawn (the full dump is the API's
-// only source of a complete route), its buses appear as icons, and the view
-// fits the whole line. Pick the same one again — or "All routes" — to undo.
-async function toggleRoute(routeId) {
-    const next = (selectedRoute === routeId) ? null : routeId;
-    if (next === selectedRoute) return;          // "All routes" while already showing all
-    selectedRoute = next;
-    selectedRouteStops = [];
-    if (next) {
-        renderMap(null);                        // recolor now; the camera moves once the full route is known
-    } else {
-        renderMap("all");                       // unpick → zoom back to fit the whole set again
-    }
-    if (!next) return;
-    try {
-        if (!allStopsCache) allStopsCache = await fetchAllStops();   // one ~800 KB fetch per page load
-        if (selectedRoute !== next) return;     // superseded by a newer pick while the dump was loading
-        const have = new Set(mapStops.map(s => s.StopID));
-        selectedRouteStops = allStopsCache
-            .filter(s => (s.Routes || []).includes(next) && !have.has(s.StopID))
-            .map(s => {
-                const stop = makeStop(s.StopID, s.Name, s.Lat, s.Lon);
-                stop.Routes = s.Routes || [];
-                stop.RouteStop = true;          // a full-route stop — not live-tracked, no table row
-                return stop;
             });
-        if (selectedRoute !== next) return;
-        await refreshPredictions();             // the route's buses show up now, not on the next 30-s tick
-        if (selectedRoute !== next) return;
-        renderMap(next);                        // fit the viewport to the whole route
-    } catch (e) {
-        if (selectedRoute !== next) return;
-        gMapNote.textContent = `Full ${next} stop list unavailable: ${e.message}`;
-        renderMap(null);
-    }
-}
-
-// Redraw the map to match the current data. Called from render() on every
-// pass, but a no-op unless the Map tab is showing. If Leaflet failed to load
-// (CDN blocked / offline), the route list and the rest of the page keep
-// working as-is. `fitTo` (a route id, or "all") re-fits the viewport — set
-// by a route pick; the 30-second refresh passes nothing and keeps the view.
-function renderMap(fitTo = null) {
-    if (!mapVisible) return;
-    if (!mapDataReady) {
-        if (!mapDataPending && !mapDataFailed) resolveMapStops();   // map showing, data missing
-        return;                                                     // the note is set by resolveMapStops
-    }
-
-    // The drawn set: the live-tracked stops (plus their neighborhood
-    // context)… and, with a route picked, EVERY stop on that route, pulled
-    // from the full dump — the API's only source of a route's complete
-    // stop list. A stop already drawn keeps its live copy: it has real
-    // arrivals, and the arrivals table is built from those.
-    const pts = mapStops.filter(s => s.Lat != null && s.Lon != null);
-    if (selectedRouteStops.length) {
-        const have = new Set(pts.map(s => s.StopID));
-        for (const s of selectedRouteStops) {
-            if (s.Lat != null && s.Lon != null && !have.has(s.StopID)) pts.push(s);
-        }
-    }
-    drawnStops = pts;
-    renderRouteList(pts);
-    if (!pts.length) {
-        gMapNote.textContent = "No stops with coordinates to draw.";
         return;
     }
-    if (typeof L === "undefined") {
-        gMapNote.textContent = "Map unavailable — the Leaflet CDN could not be loaded.";
+    const st = allStopsCache.find(s => String(s.StopID) === String(linesStopId));
+    if (!st) {
+        gLinesNote.textContent = `no stop #${linesStopId} in the DC system`;
+        gLinesHost.innerHTML = "";
         return;
     }
-    if (!leaflet) {
-        leaflet = L.map(gMap, {
-            zoomSnap: 0.25,     // wheel zoom in quarter-level steps…
-            zoomDelta: 0.25,    // …so one notch nudges ~12% instead of a full 2× jump
-        });
-        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            maxZoom: 19,
-            attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors",
-        }).addTo(leaflet);
-        mapLayer = L.layerGroup().addTo(leaflet);
+    const routes = (st.Routes || []).slice().sort((a, b) => a.localeCompare(b));
+    if (!routes.length) {
+        gLinesNote.textContent = `${st.Name || "#" + st.StopID} — no routes in the stop list (it may be out of date)`;
+        gLinesHost.innerHTML = "";
+        return;
     }
-
-    mapLayer.clearLayers();
-
-    // Route lines: one thick colored polyline per route, through its stops.
-    // With a route picked, the others recede so the pick reads at a glance.
-    const byRoute = new Map();
-    for (const s of pts) {
-        for (const r of s.Routes || []) {
-            if (!byRoute.has(r)) byRoute.set(r, []);
-            byRoute.get(r).push(s);
-        }
-    }
-    for (const [routeId, stopsForRoute] of byRoute) {
-        const chain = chainStops(stopsForRoute);
-        if (chain.length < 2) continue;               // one stop doesn't make a line
-        const color = routeColor(routeId);
-        const picked = selectedRoute === routeId;
-        L.polyline(chain.map(s => [s.Lat, s.Lon]), {
-            color,
-            weight: picked ? 9 : 6,
-            opacity: selectedRoute ? (picked ? 1 : 0.25) : 0.8,
-            lineCap: "round", lineJoin: "round",
-        }).addTo(mapLayer);
-        if (!selectedRoute || picked) {               // one label at a time while a route is picked
-            const mid = chain[Math.floor((chain.length - 1) / 2)];   // label above the line's middle
-            L.marker([mid.Lat, mid.Lon], {
-                icon: L.divIcon({
-                    className: "routetag-wrap", iconSize: [0, 0],
-                    html: `<span class="routetag" style="background:${color}">${esc(routeId)}</span>`,
-                }),
-                interactive: false,                       // the label must not block stop tooltips
-            }).addTo(mapLayer);
-        }
-    }
-
-    // Stops: circle markers; hover → address, routes, next arrivals.
-    // Off-route stops fade back while a route is picked.
-    for (const s of pts) {
-        const onPick = selectedRoute === null || (s.Routes || []).includes(selectedRoute);
-        const color = (s.Routes || []).length ? routeColor(s.Routes[0]) : "#455a64";
-        const next = (s.Arrivals || []).slice(0, 3)
-            .map(a => `${esc(a.route)} · ${esc(a.dir)} in ${esc(a.min)} min`)
-            .join("<br>");
-        L.circleMarker([s.Lat, s.Lon], {
-            radius: s.Context ? 5 : 7,
-            color: "#fff", weight: 1.5,
-            fillColor: color,
-            fillOpacity: onPick ? 1 : 0.3,
-            opacity: onPick ? 1 : 0.3,
-        }).bindTooltip(
-            `<b>${esc(s.Name || s.StopID)}</b>`
-            + (s.Routes && s.Routes.length ? `<br>${esc(s.Routes.join(", "))}` : "")
-            + (next ? `<br>${next}` : "")
-            + (s.Context ? "<br><i>context stop</i>" : ""),
-            { direction: "top", opacity: 0.95 }
-        ).addTo(mapLayer);
-    }
-
-    // Buses: with a route picked, every vehicle predicted ON that route is
-    // drawn once — a bus icon at the stop of its nearest arrival. WMATA
-    // publishes no live vehicle feed, so this is derived from the per-stop
-    // predictions; the 30-second tick re-derives it, so the icons move.
-    if (selectedRoute) {
-        const color = routeColor(selectedRoute);
-        const nearest = new Map();           // vehicle ID → { stop, min, dir }
-        for (const s of pts) {
-            for (const a of s.Arrivals || []) {
-                if (a.route !== selectedRoute || !a.vehicle) continue;
-                const cur = nearest.get(a.vehicle);
-                if (!cur || a.min < cur.min) nearest.set(a.vehicle, { vehicle: a.vehicle, stop: s, min: a.min, dir: a.dir });
-            }
-        }
-        for (const v of nearest.values()) {
-            L.marker([v.stop.Lat, v.stop.Lon], {
-                icon: L.divIcon({
-                    className: "busicon-wrap",
-                    iconSize: [24, 24], iconAnchor: [12, 12],
-                    html: `<span class="busicon" style="background:${color}"><i class="fa-solid fa-bus"></i></span>`,
-                }),
-                zIndexOffset: 500,
-                keyboard: false,
-            }).bindTooltip(
-                `<b>Bus #${esc(String(v.vehicle))}</b> · ${esc(v.dir)} in ${esc(v.min)} min`,
-                { direction: "top", opacity: 0.95 }
-            ).addTo(mapLayer);
-        }
-    }
-
-    // Fit the viewport once per full load — not on every 30-second refresh.
-    // An explicit route pick (fitTo) is a deliberate move, so it always fits.
-    if (!mapFitted) {
-        leaflet.fitBounds(L.latLngBounds(pts.map(s => [s.Lat, s.Lon])).pad(0.15), { maxZoom: 16 });
-        mapFitted = true;
-    } else if (fitTo) {
-        const selPts = fitTo === "all" ? pts : pts.filter(s => (s.Routes || []).includes(fitTo));
-        leaflet.fitBounds(
-            L.latLngBounds((selPts.length ? selPts : pts).map(s => [s.Lat, s.Lon])).pad(0.2),
-            { maxZoom: 17 });
-    }
+    gLinesNote.innerHTML = `${esc(st.Name || "#" + st.StopID)} <span class="text-muted">(#${esc(st.StopID)})</span> · ${routes.length} line${routes.length > 1 ? "s" : ""} · hover a stop dot for its arrivals`;
+    gLinesHost.innerHTML = routes.map(lineRow).join("");
 }
 
 // Tab buttons (plain JS — no Bootstrap JS)
 function showTab(which) {
-    const showMap = which === "map";
-    mapVisible = showMap;
-    gViewArrivals.style.display = showMap ? "none" : "";
-    gViewMap.style.display = showMap ? "" : "none";
-    gTabArrivals.classList.toggle("active", !showMap);
-    gTabArrivals.setAttribute("aria-selected", String(!showMap));
-    gTabMap.classList.toggle("active", showMap);
-    gTabMap.setAttribute("aria-selected", String(showMap));
-    if (showMap) {
-        if (!mapDataReady && !mapDataPending) resolveMapStops();   // explicit click → retry even after a failure
-        if (leaflet) leaflet.invalidateSize();                    // the map was display:none while hidden
-        renderMap();
-    }
+    const showLines = which === "lines";
+    gViewArrivals.style.display = showLines ? "none" : "";
+    gViewLines.style.display = showLines ? "" : "none";
+    gTabArrivals.classList.toggle("active", !showLines);
+    gTabArrivals.setAttribute("aria-selected", String(!showLines));
+    gTabLines.classList.toggle("active", showLines);
+    gTabLines.setAttribute("aria-selected", String(showLines));
+    hideHoverTip();
+    if (showLines) renderLines();   // the directory may have loaded since the last visit
 }
 
 gTabArrivals.addEventListener("click", () => showTab("arrivals"));
-gTabMap.addEventListener("click", () => showTab("map"));
+gTabLines.addEventListener("click", () => showTab("lines"));
 
 // ════════════════════════════════════════════════════════════════════
 // Distance between two GPS points (spherical law of cosines — plenty
