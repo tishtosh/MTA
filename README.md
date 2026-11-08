@@ -15,7 +15,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 ## What it does
 
 - On load it finds the bus stops near a location and lists their next arrivals, refreshing
-  automatically (default every 60 s).
+  automatically (default every 30 s).
 - Three buttons in the top bar:
   - **🚌 (bus)** — reload the page.
   - **🏠 (house)** — show stops near the *home* location (the 20010 corner, or whatever
@@ -23,7 +23,8 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   - **📍 (location)** — use your browser's **geolocation** to find the stops nearest *you*.
 - Distances are shown from the point actually searched, so the geolocation view is honest.
 - A **Map** tab shows the same stops geographically: each route as a thick colored line,
-  each stop as a circle (hover for the address and next arrivals). Details under
+  each stop as a circle (hover for the address and next arrivals); picking a route draws
+  the whole line and its buses. Details under
   [Map tab](#map-tab).
 - If one stop's prediction request fails (e.g. a stop that no longer exists), the page
   still renders the others and shows a muted "predictions unavailable" row instead of
@@ -36,7 +37,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 | `busstop` | Comma-separated explicit stop IDs. **When set, `lat`/`lon`/`radius` are ignored.** | — |
 | `lat`, `lon` | Search for stops near this GPS point (both required to take effect). | the 20010 corner |
 | `radius` | Nearby-search radius, meters. | `300` |
-| `refresh` | Prediction refresh interval, seconds (clamped to 15–600). | `60` |
+| `refresh` | Prediction refresh interval, seconds (clamped to 15–600). | `30` |
 
 Examples:
 
@@ -44,7 +45,7 @@ Examples:
 /mta26.html                                          # stops near the 20010 corner
 /mta26.html?busstop=1002135,1002130                  # just these two stops
 /mta26.html?lat=38.934&lon=-77.045&radius=500        # stops within 500 m of a point
-/mta26.html?refresh=30                               # refresh every 30 s
+/mta26.html?refresh=45                               # refresh every 45 s (default: 30)
 ```
 
 The current 20010 corner stops (useful for building `?busstop=` links):
@@ -64,9 +65,19 @@ The **Map** tab draws the same stops geographically with **Leaflet 1.9.4** on
 
 - Each bus route is a **thick colored line** with its name labelled; each stop is a
   **circle**. Hover a circle for the stop's address, its routes, and the next arrivals.
-- A row of **route pills** lists every route in view. Click one to highlight it — bold
-  line, other routes and off-route stops fade back, and the map zooms to it; click it
-  again (or the "All routes" pill) to restore the whole network.
+- A row of **route pills** lists every route in view. Click one and the map shows the
+  **whole route**: every stop on it is drawn (pulled from the full-stops dump — the API
+  has no per-route stop list, and a `RouteID` query on `jStops` is silently ignored) and
+  the route's **buses** appear as icons — each vehicle predicted on the route is drawn
+  once, at the stop of its nearest arrival. WMATA publishes no live vehicle feed, so
+  buses are derived from the per-stop `VehicleID`s, and the 30 s refresh re-derives them,
+  so the icons move. Other routes and off-route stops fade back, and the map fits the
+  whole line; click the pill again (or the "All routes" pill) to restore the whole
+  network — the view zooms back out to fit everything.
+- The price of "whole route": each refresh also fetches predictions for **every** stop on
+  the picked route — a long route like M44 (214 stops) is 214 `jPredictions` calls per
+  tick, so expect the rate-limit backoff to engage on long routes. The full dump itself
+  is fetched once per page load and reused.
 - WMATA publishes **no line geometry**, so a route's line is *synthesized* as the
   nearest-neighbor chain through that route's own stops. It's approximate in shape, and
   it self-heals if WMATA renumbers stops again (see [Maintenance](#maintenance)).
@@ -132,9 +143,12 @@ WMATA enforces per-key request limits (the exact number isn't published). The ap
 politely on its own:
 
 - Each request retries **once** after a 1.5 s backoff on a `429` or timeout.
-- If a `429` is still returned, the refresh interval stretches **5×** for the next cycle and
-  the status line shows "API rate limit hit, slowing refresh".
-- Keep `?refresh` reasonable. Don't run a 15 s interval against many stops with a shared key.
+- If a `429` is still returned, the refresh interval stretches **5×** for the next cycle
+  (150 s at the 30 s default) and the status line shows "API rate limit hit, slowing
+  refresh".
+- Keep `?refresh` reasonable. Don't run a 15 s interval against many stops with a shared
+  key — and remember that picking a route on the Map tab adds a prediction fetch for every
+  stop on that route to each cycle (see [Map tab](#map-tab)).
 
 ### If you'd rather the key never be public
 

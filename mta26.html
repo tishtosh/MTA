@@ -83,6 +83,25 @@
             border-color: #212529;
             box-shadow: 0 0 0 2px rgba(33, 37, 41, .35);
         }
+
+        /* bus icon drawn on the map (centered on its stop, above the circle) */
+        .busicon-wrap {
+            background: transparent;
+            border: none;
+        }
+
+        .busicon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            color: #fff;
+            font-size: 13px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, .92);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+        }
     </style>
 </head>
 
@@ -168,9 +187,9 @@ const DC_CENTER = { lat: 38.89790, lon: -77.03661 };
 //   ?busstop=1002135,1002130   explicit stops (lat/lon/radius ignored)
 //   ?lat=38.934&lon=-77.045    search for stops near this point
 //   ?radius=300                search radius in meters
-//   ?refresh=60                prediction refresh interval, seconds (15..600)
+//   ?refresh=30                prediction refresh interval, seconds (15..600)
 // No params: live nearby search at the 20010 corner (HOME) above.
-// Defaults: radius 300 m, refresh 60 s.
+// Defaults: radius 300 m, refresh 30 s.
 const params = new URLSearchParams(location.search);
 
 function num(value, fallback) {
@@ -188,7 +207,7 @@ const urlPoint = hasLatLon
     : HOME;
 
 const gRadius = num(params.get("radius"), 300);
-const REFRESH_MS = Math.min(Math.max(num(params.get("refresh"), 60), 15), 600) * 1000;
+const REFRESH_MS = Math.min(Math.max(num(params.get("refresh"), 30), 15), 600) * 1000;
 
 // ════════════════════════════════════════════════════════════════════
 // State
@@ -208,7 +227,9 @@ let mapDataPending = false;   // resolveMapStops() is in flight
 let mapDataFailed = false;    // context load failed → no auto-retry (a tab click or runFlow retries)
 let mapFitted = false;        // fit the viewport to the stops once per runFlow()
 let selectedRoute = null;     // the route highlighted on the map (null = show all)
-let allStopsCache = null;     // one-shot full-stops dump (?busstop= mode), cached per page load
+let selectedRouteStops = [];  // every stop on the picked route (from the full dump)
+let drawnStops = [];          // the set renderMap() last drew (live stops + picked route's stops)
+let allStopsCache = null;     // one-shot full-stops dump, cached per page load
 
 const gStatus = document.getElementById("statusmessage");
 const gClock = document.getElementById("clock");
@@ -276,9 +297,11 @@ async function fetchAllStops() {
 }
 
 // Arrival predictions:  GET /NextBusService.svc/json/jPredictions?StopID
-// Returns { name, predictions: [{ min, route, dir }] }.
+// Returns { name, predictions: [{ min, route, dir, vehicle }] }.
 // `name` (StopName) also labels stops given via ?busstop=, since there is
-// no single-stop lookup in the nearby-search endpoint.
+// no single-stop lookup in the nearby-search endpoint. `vehicle`
+// (VehicleID) may be null — it identifies the physical bus, which is how
+// "all buses on the picked route" is derived (there is no vehicle feed).
 async function fetchPredictions(stopId) {
     const { data, error } = await apiGet("/NextBusService.svc/json/jPredictions", { StopID: stopId });
     if (error) throw error;
@@ -286,6 +309,7 @@ async function fetchPredictions(stopId) {
         name: (data && data.StopName) || null,
         predictions: ((data && data.Predictions) || []).map(p => ({
             min: p.Minutes, route: p.RouteID, dir: p.DirectionText,
+            vehicle: p.VehicleID || null,
         })),
     };
 }
@@ -305,6 +329,7 @@ async function runFlow() {
     try {
         mapFitted = false;              // a full load may move the area → let the map re-fit
         selectedRoute = null;           // ...and a new area means a fresh, unfiltered map
+        selectedRouteStops = [];
         if (stopListFromURL) {
             // ?busstop= given: use it as-is, ignore lat/lon (as documented).
             // Coordinates stay null until the map tab asks resolveMapStops()
@@ -352,11 +377,15 @@ async function runFlow() {
 // Re-fetch predictions for the current stops. Promise.all so the render
 // happens exactly once, after every request has settled — including the
 // ones that failed (the old code only rendered when the last request
-// SUCCEEDED, so one 400/429 left a blank page).
+// SUCCEEDED, so one 400/429 left a blank page). With a route picked, its
+// stops are included too — that is what keeps the bus icons moving.
 async function refreshPredictions() {
-    if (!stops.length) return;
+    const toFetch = new Map();              // StopID → stop object
+    for (const s of selectedRouteStops) toFetch.set(s.StopID, s);
+    for (const s of stops) toFetch.set(s.StopID, s);   // live copy wins on overlap
+    if (!toFetch.size) return;
     let saw429 = false;
-    await Promise.all(stops.map(async (stop) => {
+    await Promise.all([...toFetch.values()].map(async (stop) => {
         try {
             const { name, predictions } = await fetchPredictions(stop.StopID);
             if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
@@ -371,6 +400,7 @@ async function refreshPredictions() {
     rateLimited = saw429;          // → next refresh is delayed (self-throttling)
     lastRefreshAt = Date.now();
     render();
+    scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
     const t = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
     gStatus.textContent = `${stops.length} stop${stops.length > 1 ? "s" : ""} · updated ${t}` +
         (rateLimited ? " · API rate limit hit, slowing refresh" : "");
@@ -592,27 +622,55 @@ function routeChip(label, routeId, color) {
     btn.type = "button";
     btn.className = "routechip" + (color ? "" : " all");
     btn.textContent = label;
-    btn.title = routeId ? "Highlight " + label + " on the map" : "Show all routes";
+    btn.title = routeId ? "Show all of " + label + " — every stop on the route, and its buses" : "Show all routes";
     btn.dataset.route = routeId || "";
     if (color) btn.style.background = color;
     btn.addEventListener("click", () => toggleRoute(routeId));
     return btn;
 }
 
-// Pick a route (bold line, everything else recedes, view fits it); pick the
-// same one again — or "All routes" — to undo.
-function toggleRoute(routeId) {
+// Pick a route: EVERY stop on that route is drawn (the full dump is the API's
+// only source of a complete route), its buses appear as icons, and the view
+// fits the whole line. Pick the same one again — or "All routes" — to undo.
+async function toggleRoute(routeId) {
     const next = (selectedRoute === routeId) ? null : routeId;
     if (next === selectedRoute) return;          // "All routes" while already showing all
     selectedRoute = next;
-    renderMap(next || "all");
+    selectedRouteStops = [];
+    if (next) {
+        renderMap(null);                        // recolor now; the camera moves once the full route is known
+    } else {
+        renderMap("all");                       // unpick → zoom back to fit the whole set again
+    }
+    if (!next) return;
+    try {
+        if (!allStopsCache) allStopsCache = await fetchAllStops();   // one ~800 KB fetch per page load
+        if (selectedRoute !== next) return;     // superseded by a newer pick while the dump was loading
+        const have = new Set(mapStops.map(s => s.StopID));
+        selectedRouteStops = allStopsCache
+            .filter(s => (s.Routes || []).includes(next) && !have.has(s.StopID))
+            .map(s => {
+                const stop = makeStop(s.StopID, s.Name, s.Lat, s.Lon);
+                stop.Routes = s.Routes || [];
+                stop.RouteStop = true;          // a full-route stop — not live-tracked, no table row
+                return stop;
+            });
+        if (selectedRoute !== next) return;
+        await refreshPredictions();             // the route's buses show up now, not on the next 30-s tick
+        if (selectedRoute !== next) return;
+        renderMap(next);                        // fit the viewport to the whole route
+    } catch (e) {
+        if (selectedRoute !== next) return;
+        gMapNote.textContent = `Full ${next} stop list unavailable: ${e.message}`;
+        renderMap(null);
+    }
 }
 
 // Redraw the map to match the current data. Called from render() on every
 // pass, but a no-op unless the Map tab is showing. If Leaflet failed to load
 // (CDN blocked / offline), the route list and the rest of the page keep
 // working as-is. `fitTo` (a route id, or "all") re-fits the viewport — set
-// by a route pick; the 60-second refresh passes nothing and keeps the view.
+// by a route pick; the 30-second refresh passes nothing and keeps the view.
 function renderMap(fitTo = null) {
     if (!mapVisible) return;
     if (!mapDataReady) {
@@ -620,7 +678,19 @@ function renderMap(fitTo = null) {
         return;                                                     // the note is set by resolveMapStops
     }
 
+    // The drawn set: the live-tracked stops (plus their neighborhood
+    // context)… and, with a route picked, EVERY stop on that route, pulled
+    // from the full dump — the API's only source of a route's complete
+    // stop list. A stop already drawn keeps its live copy: it has real
+    // arrivals, and the arrivals table is built from those.
     const pts = mapStops.filter(s => s.Lat != null && s.Lon != null);
+    if (selectedRouteStops.length) {
+        const have = new Set(pts.map(s => s.StopID));
+        for (const s of selectedRouteStops) {
+            if (s.Lat != null && s.Lon != null && !have.has(s.StopID)) pts.push(s);
+        }
+    }
+    drawnStops = pts;
     renderRouteList(pts);
     if (!pts.length) {
         gMapNote.textContent = "No stops with coordinates to draw.";
@@ -631,7 +701,10 @@ function renderMap(fitTo = null) {
         return;
     }
     if (!leaflet) {
-        leaflet = L.map(gMap);
+        leaflet = L.map(gMap, {
+            zoomSnap: 0.25,     // wheel zoom in quarter-level steps…
+            zoomDelta: 0.25,    // …so one notch nudges ~12% instead of a full 2× jump
+        });
         L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
             maxZoom: 19,
             attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors",
@@ -696,7 +769,37 @@ function renderMap(fitTo = null) {
         ).addTo(mapLayer);
     }
 
-    // Fit the viewport once per full load — not on every 60-second refresh.
+    // Buses: with a route picked, every vehicle predicted ON that route is
+    // drawn once — a bus icon at the stop of its nearest arrival. WMATA
+    // publishes no live vehicle feed, so this is derived from the per-stop
+    // predictions; the 30-second tick re-derives it, so the icons move.
+    if (selectedRoute) {
+        const color = routeColor(selectedRoute);
+        const nearest = new Map();           // vehicle ID → { stop, min, dir }
+        for (const s of pts) {
+            for (const a of s.Arrivals || []) {
+                if (a.route !== selectedRoute || !a.vehicle) continue;
+                const cur = nearest.get(a.vehicle);
+                if (!cur || a.min < cur.min) nearest.set(a.vehicle, { vehicle: a.vehicle, stop: s, min: a.min, dir: a.dir });
+            }
+        }
+        for (const v of nearest.values()) {
+            L.marker([v.stop.Lat, v.stop.Lon], {
+                icon: L.divIcon({
+                    className: "busicon-wrap",
+                    iconSize: [24, 24], iconAnchor: [12, 12],
+                    html: `<span class="busicon" style="background:${color}"><i class="fa-solid fa-bus"></i></span>`,
+                }),
+                zIndexOffset: 500,
+                keyboard: false,
+            }).bindTooltip(
+                `<b>Bus #${esc(String(v.vehicle))}</b> · ${esc(v.dir)} in ${esc(v.min)} min`,
+                { direction: "top", opacity: 0.95 }
+            ).addTo(mapLayer);
+        }
+    }
+
+    // Fit the viewport once per full load — not on every 30-second refresh.
     // An explicit route pick (fitTo) is a deliberate move, so it always fits.
     if (!mapFitted) {
         leaflet.fitBounds(L.latLngBounds(pts.map(s => [s.Lat, s.Lon])).pad(0.15), { maxZoom: 16 });
