@@ -8,6 +8,7 @@
     <link href="./css/all.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@800" rel="stylesheet" type="text/css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
     <style>
         .fa-xl-mta {
             font-size: 3em;
@@ -37,6 +38,24 @@
             padding: 0;
             cursor: pointer;
         }
+
+        /* route-name badge drawn on the map (centered above its anchor point) */
+        .routetag-wrap {
+            background: transparent;
+            border: none;
+        }
+
+        .routetag {
+            display: inline-block;
+            color: #fff;
+            font: 700 11px/1.5 system-ui, -apple-system, sans-serif;
+            padding: 0 6px;
+            border-radius: 9px;
+            border: 2px solid rgba(255, 255, 255, .92);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+            white-space: nowrap;
+            transform: translate(-50%, -130%);
+        }
     </style>
 </head>
 
@@ -65,7 +84,24 @@
 
 <div style="margin-top:100px" class="container">
     <h3><small id="statusmessage" aria-live="polite"></small></h3>
-    <div id="tINSERTHERE"></div>
+
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button type="button" class="nav-link active" id="tabBtnArrivals" role="tab"
+                    aria-controls="viewArrivals" aria-selected="true">Arrivals</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button type="button" class="nav-link" id="tabBtnMap" role="tab"
+                    aria-controls="viewMap" aria-selected="false">Map</button>
+        </li>
+    </ul>
+
+    <div id="viewArrivals" role="tabpanel" aria-labelledby="tabBtnArrivals">
+        <div id="tINSERTHERE"></div>
+    </div>
+    <div id="viewMap" role="tabpanel" aria-labelledby="tabBtnMap" style="display:none">
+        <div id="map" class="border rounded-bottom" style="height:62vh;min-height:380px"></div>
+    </div>
 </div>
 
 <script>
@@ -126,16 +162,29 @@ const REFRESH_MS = Math.min(Math.max(num(params.get("refresh"), 60), 15), 600) *
 // ════════════════════════════════════════════════════════════════════
 // State
 // ════════════════════════════════════════════════════════════════════
-let stops = [];               // [{ StopID, Name, Lat, Lon, Distance, Arrivals, Error }]
+let stops = [];               // [{ StopID, Name, Lat, Lon, Distance, Routes, Arrivals, Error }]
+let mapStops = [];            // stops drawn on the map (= stops, plus context stops in ?busstop= mode)
 let searchPoint = urlPoint;   // where to look for stops (updated by geolocation)
+let searchAt = null;          // the point actually searched (may be DC_CENTER) — for the map
 let refreshTimer = null;
 let rateLimited = false;      // WMATA returned 429 → slow the refresh down
 let busy = false;             // re-entrancy guard for runFlow()
 let lastRefreshAt = 0;
+// map tab
+let mapVisible = false;       // which tab is showing
+let mapDataReady = false;     // mapStops have coordinates (nearby mode: yes; ?busstop=: after resolve)
+let mapDataPending = false;   // resolveMapStops() is in flight
+let mapFitted = false;        // fit the viewport to the stops once per runFlow()
+let allStopsCache = null;     // one-shot full-stops dump (?busstop= mode), cached per page load
 
 const gStatus = document.getElementById("statusmessage");
 const gClock = document.getElementById("clock");
 const gTableHost = document.getElementById("tINSERTHERE");
+const gMap = document.getElementById("map");
+const gViewArrivals = document.getElementById("viewArrivals");
+const gViewMap = document.getElementById("viewMap");
+const gTabArrivals = document.getElementById("tabBtnArrivals");
+const gTabMap = document.getElementById("tabBtnMap");
 
 // ════════════════════════════════════════════════════════════════════
 // WMATA API
@@ -180,6 +229,17 @@ async function fetchStopsNear(lat, lon, radius) {
     return (data && data.Stops) || [];
 }
 
+// All stops: GET /Bus.svc/json/jStops (no params)
+// The API silently IGNORES a StopID-only query and returns every stop in the
+// system (~7.5k, ~800 KB) — that full dump is the only way to resolve a
+// stop's coordinates from its ID, since jPredictions returns no location.
+// Used once per page load, and only in ?busstop= mode.
+async function fetchAllStops() {
+    const { data, error } = await apiGet("/Bus.svc/json/jStops", {}, 30000);
+    if (error) throw error;
+    return (data && data.Stops) || [];
+}
+
 // Arrival predictions:  GET /NextBusService.svc/json/jPredictions?StopID
 // Returns { name, predictions: [{ min, route, dir }] }.
 // `name` (StopName) also labels stops given via ?busstop=, since there is
@@ -200,7 +260,7 @@ async function fetchPredictions(stopId) {
 // ════════════════════════════════════════════════════════════════════
 
 function makeStop(id, name, lat, lon) {
-    return { StopID: id, Name: name, Lat: lat, Lon: lon, Distance: null, Arrivals: [], Error: null };
+    return { StopID: id, Name: name, Lat: lat, Lon: lon, Distance: null, Routes: [], Arrivals: [], Error: null };
 }
 
 // Full (re)load: resolve the stop list, then fetch predictions for it.
@@ -208,14 +268,21 @@ async function runFlow() {
     if (busy) return;                    // don't stack flows when buttons are clicked
     busy = true;
     try {
+        mapFitted = false;              // a full load may move the area → let the map re-fit
         if (stopListFromURL) {
-            // ?busstop= given: use it as-is, ignore lat/lon (as documented)
+            // ?busstop= given: use it as-is, ignore lat/lon (as documented).
+            // Coordinates stay null until the map tab asks resolveMapStops()
+            // for them (jStops ignores a StopID-only query; jPredictions
+            // returns no location) — the arrivals list never needs them.
             gStatus.textContent = `${stopListFromURL.length} stop${stopListFromURL.length > 1 ? "s" : ""} from URL`;
             stops = stopListFromURL.map(id => makeStop(id, null, null, null));
+            mapStops = stops.slice();   // resolveMapStops() grows this with a neighborhood context
+            mapDataReady = false;
         } else {
             // ?lat&lon (or HOME): find stops near the search point
             const d = distance(DC_CENTER.lat, DC_CENTER.lon, searchPoint.lat, searchPoint.lon, "m");
             const at = d > 50 ? DC_CENTER : searchPoint;     // far from DC → search DC center
+            searchAt = at;
             gStatus.textContent = `${d.toFixed(1)} mi to the Whitehouse` + (at === DC_CENTER ? " (searching DC center)" : "") + " …";
             const raw = await fetchStopsNear(at.lat, at.lon, gRadius);
             // Distance is measured from the point we actually searched —
@@ -224,6 +291,7 @@ async function runFlow() {
                 .map(s => {
                     const stop = makeStop(s.StopID, s.Name, s.Lat, s.Lon);
                     stop.Distance = distance(at.lat, at.lon, s.Lat, s.Lon, "f");
+                    stop.Routes = s.Routes || [];
                     return stop;
                 })
                 .sort((a, b) => a.Distance - b.Distance);   // sorted; one array, so no index drift
@@ -231,6 +299,8 @@ async function runFlow() {
                 gStatus.textContent = `No stops within ${gRadius} m — try ?radius=600`;
                 stops = [];
             }
+            mapStops = stops.slice();      // in ?busstop= mode, resolveMapStops() set this
+            mapDataReady = true;           // nearby stops already have coordinates
         }
         await refreshPredictions();
     } catch (e) {
@@ -336,6 +406,8 @@ function render() {
              </table>
            </div>`
         : "";
+
+    renderMap();     // keeps the map in sync with the data; no-op unless the tab is visible
 }
 
 // ════════════════════════════════════════════════════════════════════
