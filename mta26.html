@@ -87,43 +87,23 @@
 
         .ac-none { padding: 4px 12px; color: #6c757d; cursor: default; }
 
-        /* Lines tab: one horizontal row per route through the picked stop.
-           Long routes scroll horizontally — the row never wraps. */
-        .line-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 2px;
-            border-bottom: 1px solid #e9ecef;
-            overflow-x: auto;
-        }
+        /* Lines tab (v3): one <svg> holds the whole picture — a scale
+           strip, then one row per route through the picked stop. Each row
+           is an x-axis of travel time from the picked stop, quantized into
+           five equal-width bands (5/15/30/60/120 min); every route lives
+           in the same svg, so the picked stop sits at the same x in every
+           route and the picture scrolls as one piece. The route code
+           (colored, in the left gutter) replaces the old badge pill. */
+        .lines-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .lines-scroll svg { display: block; }
 
-        .line-badge {
-            flex: none;
-            color: #fff;
-            border-radius: 999px;
-            padding: 2px 10px;
-            font: 700 12px/1.6 system-ui, -apple-system, sans-serif;
-            text-align: center;
-            min-width: 56px;
-        }
+        .line-dot { cursor: help; }       /* a stop dot (an <g> in the svg) */
 
-        .line-chain { display: flex; align-items: center; flex: none; }
+        .lines-routelabel { font: 700 13px/1 system-ui, -apple-system, sans-serif; }
 
-        .line-dot {
-            flex: none;
-            width: 11px;
-            height: 11px;
-            border-radius: 50%;
-            border: 2px solid #fff;
-            background: currentColor;
-            box-shadow: 0 0 0 1.5px currentColor;
-            cursor: help;
-        }
+        .lines-minlabel { font: 10px/1.4 system-ui, -apple-system, sans-serif; fill: #8a959e; }
 
-        .line-dot.here { width: 17px; height: 17px; }
-
-        .line-seg { flex: none; width: 16px; height: 2px; background: currentColor; opacity: .65; }
+        .line-bus { font-size: 17px; }
 
         /* floating tooltip that follows a hovered stop dot (Lines tab) */
         .hovertip {
@@ -167,6 +147,15 @@
 <div style="margin-top:100px" class="container">
     <h3><small id="statusmessage" aria-live="polite"></small></h3>
 
+    <div class="ac-wrap">
+        <input id="stopEntry" class="form-control form-control-lg" type="text"
+               placeholder="Look up a bus stop by name (drives both tabs)…" autocomplete="off" spellcheck="false"
+               role="combobox" aria-expanded="false" aria-controls="stopEntryList" aria-label="Bus stop name">
+        <button id="stopEntryClear" class="navicon ac-clear" type="button" title="Clear — back to nearby stops"
+                aria-label="Clear stop selection" hidden><i class="fa-solid fa-xmark"></i></button>
+        <div id="stopEntryList" class="ac-list" role="listbox" aria-label="Matching stops" hidden></div>
+    </div>
+
     <ul class="nav nav-tabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button type="button" class="nav-link active" id="tabBtnArrivals" role="tab"
@@ -179,27 +168,11 @@
     </ul>
 
     <div id="viewArrivals" role="tabpanel" aria-labelledby="tabBtnArrivals">
-        <div class="ac-wrap">
-            <input id="stopEntry" class="form-control form-control-lg" type="text"
-                   placeholder="Look up a bus stop by name…" autocomplete="off" spellcheck="false"
-                   role="combobox" aria-expanded="false" aria-controls="stopEntryList" aria-label="Bus stop name">
-            <button id="stopEntryClear" class="navicon ac-clear" type="button" title="Clear — back to nearby stops"
-                    aria-label="Clear stop selection" hidden><i class="fa-solid fa-xmark"></i></button>
-            <div id="stopEntryList" class="ac-list" role="listbox" aria-label="Matching stops" hidden></div>
-        </div>
         <div id="tINSERTHERE"></div>
     </div>
     <div id="viewLines" role="tabpanel" aria-labelledby="tabBtnLines" style="display:none">
-        <div class="ac-wrap">
-            <input id="lineStopEntry" class="form-control form-control-lg" type="text"
-                   placeholder="Pick a stop — every line that serves it appears below" autocomplete="off" spellcheck="false"
-                   role="combobox" aria-expanded="false" aria-controls="lineStopList" aria-label="Bus stop for the lines view">
-            <button id="lineStopClear" class="navicon ac-clear" type="button" title="Clear"
-                    aria-label="Clear stop" hidden><i class="fa-solid fa-xmark"></i></button>
-            <div id="lineStopList" class="ac-list" role="listbox" aria-label="Matching stops" hidden></div>
-        </div>
-        <small id="linesNote" class="text-muted" aria-live="polite" style="display:block">Pick a stop to see every line that serves it.</small>
-        <div id="linesHost"></div>
+        <small id="linesNote" class="text-muted" aria-live="polite" style="display:block">Pick a stop above to see every line that serves it.</small>
+        <div id="linesScroll" class="lines-scroll"></div>
     </div>
 </div>
 
@@ -268,14 +241,13 @@ let searchPoint = urlPoint;   // where to look for stops (updated by geolocation
 let pickedStop = null;        // the stop chosen in the entry field (null = nearby search)
 let pickedStopObj = null;     // the stop object actually shown (may be a directory stop outside the list)
 let forceNearby = false;      // the user dismissed a ?busstop= prefill (✕) → search nearby even with the param
-let linesStopId = null;       // the stop chosen in the Lines tab
 let refreshTimer = null;
 let rateLimited = false;      // WMATA returned 429 → slow the refresh down
 let busy = false;             // re-entrancy guard for runFlow()
 let lastRefreshAt = 0;
 // stop directory
 // The full jStops dump (812 KB, ~7.5k stops) is fetched once per page load
-// and feeds both autocomplete entry fields plus the Lines tab.
+// and feeds the shared entry field's autocomplete plus the Lines tab.
 let allStopsCache = null;     // the full stop dump, cached per page load
 let stopDirLoad = null;       // in-flight loadStopDirectory() promise (dedupes the fetch)
 
@@ -289,11 +261,8 @@ const gViewArrivals = document.getElementById("viewArrivals");
 const gViewLines = document.getElementById("viewLines");
 const gTabArrivals = document.getElementById("tabBtnArrivals");
 const gTabLines = document.getElementById("tabBtnLines");
-const gLineStopEntry = document.getElementById("lineStopEntry");
-const gLineStopClear = document.getElementById("lineStopClear");
-const gLineStopList = document.getElementById("lineStopList");
 const gLinesNote = document.getElementById("linesNote");
-const gLinesHost = document.getElementById("linesHost");
+const gLinesScroll = document.getElementById("linesScroll");
 const gHoverTip = document.getElementById("hovertip");
 
 // ════════════════════════════════════════════════════════════════════
@@ -343,15 +312,15 @@ async function fetchStopsNear(lat, lon, radius) {
 // The API silently IGNORES a StopID-only query and returns every stop in the
 // system (~7.5k, ~800 KB). Each entry is { StopID, Name, Lon, Lat, Routes[] }
 // — that dump is the only source of stop names, coordinates and routes.
-// Fetched once per page load via loadStopDirectory(); it powers BOTH
-// autocomplete entry fields and the Lines tab.
+// Fetched once per page load via loadStopDirectory(); it powers the
+// shared entry field's autocomplete and the Lines tab.
 async function fetchAllStops() {
     const { data, error } = await apiGet("/Bus.svc/json/jStops", {}, 30000);
     if (error) throw error;
     return (data && data.Stops) || [];
 }
 
-// The stop directory, deduped: concurrent callers (both autocompletes, the
+// The stop directory, deduped: concurrent callers (the entry field, the
 // Lines tab) share one in-flight fetch, and failures are not retried.
 function loadStopDirectory() {
     if (!stopDirLoad) {
@@ -468,6 +437,9 @@ async function refreshPredictions() {
     rateLimited = saw429;          // → next refresh is delayed (self-throttling)
     lastRefreshAt = Date.now();
     render();
+    // The Lines tab's 🚌 icons ride on the same predictions: keep them
+    // moving while the tab is on screen.
+    if (gViewLines.style.display !== "none") renderLines();
     scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
     const t = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
     const shownCount = shownStops().length;
@@ -584,11 +556,11 @@ document.getElementById("btnLocate").addEventListener("click", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// Stop-name autocomplete (shared by the Arrivals + Lines entry fields)
+// Stop-name autocomplete (the single shared entry field above the tabs)
 // ════════════════════════════════════════════════════════════════════
-// Both entry fields are comboboxes over the stop directory (the one jStops
+// The entry field is a combobox over the stop directory (the one jStops
 // full dump, deduped by loadStopDirectory()). The factory owns the entry UI
-// (suggestion list, ✕, keyboard); what each tab does with a picked stop is
+// (suggestion list, ✕, keyboard); what the page does with a picked stop is
 // up to its callbacks:
 //   onPick(dirStop)  — a stop was chosen (Enter on the highlighted match,
 //                      or a row click)
@@ -737,17 +709,29 @@ const acStop = makeAutocomplete(
         resetPick();
         forceNearby = true;       // matters when a ?busstop= deep link prefilled the field
         runFlow();
+        renderLines();            // the Lines tab (if active) falls back to its prompt
     },
-    () => { resetPick(); render(); },
+    () => { resetPick(); render(); renderLines(); },
 );
 
 // ════════════════════════════════════════════════════════════════════
-// Lines tab
-// One horizontal line per route that serves the picked stop, colored from
-// the shared route palette. Each line runs through the route's stops
-// (nearest-neighbor chain — WMATA publishes no line geometry); the picked
-// stop is marked, and hovering any stop pulls its live arrivals once
-// (cached for the page load).
+// Lines tab (v3)
+// One row per route that serves the picked stop, colored from the shared
+// route palette. WMATA publishes no line geometry, so each route's stops
+// are ordered as a chain (150-ft collapse + two-sided nearest-neighbor
+// walk) and drawn on an x-axis of travel time from the picked stop: five
+// equal-width bands (0–5 / 5–15 / 15–30 / 30–60 / 60–120 min; stops
+// beyond 120 min are clipped) with the picked stop at the same fixed
+// center in every row, so the rows line up vertically. A 🚌 marks each
+// live prediction's estimated position (approaching the picked stop, on
+// the arm opposite its destination). Hovering any stop dot pulls its live
+// arrivals once (cached for the page load).
+//
+// The whole picture is one <svg> (a scale strip, then one row per route)
+// inside .lines-scroll: everything shares a single coordinate system and
+// one horizontal scrollbar, so the picked stop sits at the same x in every
+// route and the bands/ticks/dots line up vertically. Route identity is a
+// colored route code in the left gutter (the old badge pill is gone).
 // ════════════════════════════════════════════════════════════════════
 
 // A small distinguishable palette; routes hash into it (stable across loads).
@@ -760,46 +744,219 @@ function routeColor(routeId) {
     return ROUTE_COLORS[h % ROUTE_COLORS.length];
 }
 
-// Order a route's stops as a chain: start at the first, repeatedly visit the
-// nearest unvisited stop. (Squared degree distance is plenty for ordering.)
-function chainStops(pts) {
-    if (pts.length < 2) return pts.slice();
-    const rest = pts.slice();
-    const out = [rest.shift()];
-    while (rest.length) {
-        const last = out[out.length - 1];
-        let bi = 0, bd = Infinity;
-        for (let i = 0; i < rest.length; i++) {
-            const d = (rest[i].Lat - last.Lat) ** 2 + (rest[i].Lon - last.Lon) ** 2;
-            if (d < bd) { bd = d; bi = i; }
-        }
-        out.push(rest.splice(bi, 1)[0]);
+// ── Lines-v3 geometry ─────────────────────────────────────────────────
+// x = travel time from the picked stop, quantized into five equal-width
+// bands so a 5-min, a 15-min and a 60-min stop sit one band apart; stops
+// beyond 120 min are clipped. Travel time = haversine chain distance ÷
+// 8 mph, the speed calibrated against live predictions (median ≈7.5 mph
+// across 83 samples, range 3.8–16.8).
+const BAND_MIN = [0, 5, 15, 30, 60, 120];   // band boundaries, minutes
+const BAND_PX = 110;                        // each band this wide (both sides)
+const FT_PER_MIN = 8 * 5280 / 60;           // 8 mph
+
+// Minutes from the picked stop → px from the row's center. Piecewise
+// linear: proportional within each equal-width band.
+function bandX(min) {
+    const m = Math.max(0, Math.min(BAND_MIN[BAND_MIN.length - 1], min));
+    for (let k = 0; k < BAND_MIN.length - 1; k++) {
+        if (m <= BAND_MIN[k + 1])
+            return (k + (m - BAND_MIN[k]) / (BAND_MIN[k + 1] - BAND_MIN[k])) * BAND_PX;
+    }
+    return (BAND_MIN.length - 1) * BAND_PX;
+}
+
+// Feet between two stops (the page's haversine, "f" = feet).
+function distFt(a, b) {
+    return distance(a.Lat, a.Lon, b.Lat, b.Lon, "f");
+}
+
+// Merge stops within 150 ft: WMATA publishes every busbay as its own stop,
+// and a shared bay is not a leg of the line.
+function collapse(pts, R = 150) {
+    const out = [];
+    for (const s of pts) {
+        let twin = null, bd = R;
+        for (const q of out) { const d = distFt(q, s); if (d < bd) { bd = d; twin = q; } }
+        if (twin) { for (const r of s.Routes || []) if (!twin.Routes.includes(r)) twin.Routes.push(r); }
+        else out.push(Object.assign({}, s));
     }
     return out;
 }
 
-// Entry field: picking a stop makes the rows below every route that
-// serves it. All three exits (pick, ✕, typing) re-render.
-const acLine = makeAutocomplete(
-    gLineStopEntry, gLineStopList, gLineStopClear,
-    st => { linesStopId = st.StopID; renderLines(); },
-    () => { linesStopId = null; renderLines(); },      // ✕ → back to the prompt
-    () => { linesStopId = null; renderLines(); },      // started typing → the pick is gone
-);
+// Order a route's collapsed stops as a chain from the anchor: repeatedly
+// take the nearest unvisited stop. Each arm grows away from the anchor, so
+// the route reads armB ← anchor → armA; a step's `d` is its leg length in
+// feet. T = 5000 ft joins every leg WMATA publishes (the probe routes
+// chain with 100% coverage); stops past it (rare off-route strays) are
+// left out of the picture rather than drawing a fake jump.
+function twoSidedWalk(anchor, pool, T = 5000) {
+    const unv = pool.filter(p => p !== anchor);
+    const take = (cur) => {
+        let bi = -1, bd = Infinity;
+        for (let i = 0; i < unv.length; i++) {
+            const d = distFt(cur, unv[i]);
+            if (d < bd) { bd = d; bi = i; }
+        }
+        if (bi < 0 || bd > T) return null;
+        return { stop: unv.splice(bi, 1)[0], d: bd };
+    };
+    const armA = [], armB = [];
+    let step = take(anchor);
+    while (step) { armA.push(step); step = take(step.stop); }
+    step = take(anchor);
+    while (step) { armB.push(step); step = take(step.stop); }
+    return { armA, armB, unv };
+}
 
-// One horizontal row per route: badge, then the route's stops as a dot
-// chain (nearest-neighbor order). The picked stop is the bigger dot.
-function lineRow(route) {
-    const color = routeColor(route);
-    const onRoute = allStopsCache.filter(s => (s.Routes || []).includes(route));
-    const chain = chainStops(onRoute);
-    let inner = "";
-    for (let i = 0; i < chain.length; i++) {
-        if (i) inner += `<span class="line-seg" style="color:${color}"></span>`;
-        const here = String(chain[i].StopID) === String(linesStopId);
-        inner += `<span class="line-dot${here ? " here" : ""}" data-stop="${esc(String(chain[i].StopID))}" style="color:${color}"></span>`;
+// Destination matching: the live feed's DirectionText is a terminal name
+// ("Shady Grove", "Glenmont"); the collapsed stop whose name contains the
+// most of its tokens is the bus's destination. (The bus is *approaching*
+// the picked stop, so it sits on the arm opposite that one.)
+const STOPW = new Set(["the", "and", "for", "from", "into", "onto", "with", "north", "south", "east", "west", "to"]);
+function toksOf(text) {
+    return String(text || "").toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 3 && !STOPW.has(t));
+}
+function destMatch(collapsed, destText) {
+    const toks = toksOf(destText);
+    if (!toks.length) return null;
+    let best = null, bs = 0;
+    for (const s of collapsed) {
+        const n = (s.Name || "").toLowerCase();
+        let sc = 0;
+        for (const t of toks) if (n.includes(t)) sc++;
+        if (sc > bs) { bs = sc; best = s; }
     }
-    return `<div class="line-row"><span class="line-badge" style="background:${color}">${esc(route)}</span><span class="line-chain">${inner}</span></div>`;
+    if (!bs) return null;
+    // require the match to be "strong": at least half the tokens, or all but one
+    const need = Math.min(2, Math.ceil(toks.length / 2));
+    return bs >= need ? { stop: best, score: bs, toks } : null;
+}
+
+// ── The one picture: a single <svg> ───────────────────────────────────
+// A scale strip, then one row per route, all inside one <svg> in
+// .lines-scroll. One coordinate system and one horizontal scrollbar for
+// the whole picture, so the picked stop — the track's center — sits at the
+// same x in every route.
+const GUT = 60;                       // left gutter (route code)
+const RH = 40;                        // route row height
+const SCALE_H = 36;                   // scale strip height
+const CX = GUT + 5 * BAND_PX;         // picked stop x (the track's center)
+
+// The track's shared furniture: five equal-width bands per side (nearer =
+// darker) and a tick at each band boundary. `cy` is the row's center line
+// (relative to the row's top); every row draws the same, so the bands — and
+// the track's center — line up vertically across rows.
+function lineTrackBg(cy) {
+    let bg = "";
+    const alphas = [0.10, 0.075, 0.055, 0.04, 0.025];
+    for (let k = 0; k < 5; k++) {
+        bg += `<rect x="${GUT + (5 + k) * BAND_PX}" y="${cy - 12}" width="${BAND_PX}" height="24" fill="#6c757d" opacity="${alphas[k]}"></rect>`;
+        bg += `<rect x="${GUT + (4 - k) * BAND_PX}" y="${cy - 12}" width="${BAND_PX}" height="24" fill="#6c757d" opacity="${alphas[k]}"></rect>`;
+    }
+    for (let k = 1; k <= 5; k++) {
+        bg += `<line x1="${GUT + (5 + k) * BAND_PX}" y1="${cy - 10}" x2="${GUT + (5 + k) * BAND_PX}" y2="${cy + 10}" stroke="#8a959e" opacity=".5"></line>`;
+        bg += `<line x1="${GUT + (5 - k) * BAND_PX}" y1="${cy - 10}" x2="${GUT + (5 - k) * BAND_PX}" y2="${cy + 10}" stroke="#8a959e" opacity=".5"></line>`;
+    }
+    return bg;
+}
+
+// Scale strip above the routes: the same band/tick geometry, with the band
+// boundaries labeled in minutes from the picked stop.
+function lineScale() {
+    const cy = 14;
+    let labels = `<text class="lines-minlabel" x="${CX}" y="${SCALE_H - 3}" text-anchor="middle">0</text>`;
+    for (let k = 1; k <= 5; k++) {
+        labels += `<text class="lines-minlabel" x="${GUT + (5 + k) * BAND_PX}" y="${SCALE_H - 3}" text-anchor="middle">${BAND_MIN[k]}</text>`;
+        labels += `<text class="lines-minlabel" x="${GUT + (5 - k) * BAND_PX}" y="${SCALE_H - 3}" text-anchor="middle">${BAND_MIN[k]}</text>`;
+    }
+    return `<text class="lines-minlabel" x="6" y="${cy}" dy=".35em">min</text>${lineTrackBg(cy)}${labels}`;
+}
+
+// One row per route: the route code (colored) in the left gutter, then the
+// track — the route's stops as dots on an x-axis of travel time from the
+// picked stop (armA right of center, armB left of it). Dots past the
+// 120-min edge are clipped.
+function lineRow(route, st, arrivals) {
+    const color = routeColor(route);
+    const onRoute = (allStopsCache || []).filter(s => s.Lat != null && (s.Routes || []).includes(route));
+    if (!onRoute.length) return "";                 // no coordinates — nothing to draw
+    const collapsed = collapse(onRoute);
+    // Anchor at the picked stop (or the collapsed twin that swallowed it).
+    let anchor = collapsed.find(c => String(c.StopID) === String(st.StopID));
+    if (!anchor) {
+        let bd = Infinity;
+        for (const c of collapsed) {
+            const d = distFt(c, st);
+            if (d < bd) { bd = d; anchor = c; }
+        }
+    }
+    if (!anchor) return "";
+    const { armA, armB } = twoSidedWalk(anchor, collapsed);
+
+    const cy = RH / 2;
+    let row = `<text class="lines-routelabel" x="6" y="${cy}" dy=".35em" fill="${color}">${esc(route)}</text>`;
+    row += lineTrackBg(cy);
+
+    let dots = "";
+    const dot = (s, cumMin, side, extra, title) => {
+        if (cumMin > BAND_MIN[BAND_MIN.length - 1]) return;
+        const x = CX + side * bandX(cumMin);
+        const t = title ? `<title>${esc(title)}</title>` : "";
+        const cls = extra ? "line-dot " + extra : "line-dot";
+        const c = `<circle cx="${x.toFixed(1)}" cy="${cy}" r="${extra === "here" ? 6 : 5}" fill="${color}" stroke="#fff" stroke-width="2"/>${t}`;
+        // The picked stop also gets a soft halo so it reads at a glance.
+        const halo = extra === "here" ? `<circle cx="${x.toFixed(1)}" cy="${cy}" r="10" fill="${color}" opacity=".2"/>` : "";
+        dots += `<g class="${cls}" data-stop="${esc(String(s.StopID))}">${halo}${c}</g>`;
+    };
+    let cum = 0;
+    for (const s of armB) { cum += s.d / FT_PER_MIN; dot(s.stop, cum, -1); }
+    dot(anchor, 0, 0, "here", `picked stop: ${st.Name || "#" + st.StopID}`);
+    cum = 0;
+    for (const s of armA) { cum += s.d / FT_PER_MIN; dot(s.stop, cum, +1); }
+
+    // A 🚌 per live prediction, deduped by vehicle (smallest Minutes). The
+    // feed says "N min from the picked stop" and the bus is approaching, so
+    // it is N min back — on the arm opposite its destination (DirectionText
+    // → best name match; if that fails, the arm whose span still fits N
+    // min; else the left arm).
+    const spanA = armA.reduce((c, s) => c + s.d, 0) / FT_PER_MIN;
+    const spanB = armB.reduce((c, s) => c + s.d, 0) / FT_PER_MIN;
+    const seen = new Map();                        // VehicleID → { min, dir }
+    for (const a of arrivals || []) {
+        if (a.route !== route || a.vehicle == null || a.min == null) continue;
+        const prev = seen.get(a.vehicle);
+        if (!prev || a.min < prev.min) seen.set(a.vehicle, { min: a.min, dir: a.dir });
+    }
+    let buses = "";
+    for (const b of seen.values()) {
+        if (b.min > BAND_MIN[BAND_MIN.length - 1]) continue;
+        let side = -1;
+        const dest = destMatch(collapsed, b.dir);
+        if (dest) {
+            const inA = armA.some(s => s.stop === dest.stop);
+            const inB = armB.some(s => s.stop === dest.stop);
+            side = inA ? -1 : (inB ? +1 : -1);    // approaching from the opposite arm
+        } else if (b.min > spanB && b.min <= spanA) side = +1;   // left arm too short → right
+        else if (b.min > spanA && b.min <= spanB) side = -1;     // right arm too short → left
+        const x = CX + side * bandX(b.min);
+        buses += `<g class="line-bus" transform="translate(${x.toFixed(1)},${cy})">`
+            + `<text text-anchor="middle" dy=".35em">🚌</text><title>${esc(route)} — about ${b.min} min from the picked stop</title></g>`;
+    }
+
+    row += dots + buses;
+    return row;
+}
+
+// Assembles the whole picture into one <svg>: the scale strip, then one row
+// per route. A route without coordinates returns "" and takes no space.
+function linesSvg(st, routes, arrivals) {
+    const rows = routes.map(r => lineRow(r, st, arrivals)).filter(r => r);
+    const w = GUT + 10 * BAND_PX + 8;
+    const h = SCALE_H + rows.length * RH;
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+        + `<g>${lineScale()}</g>`
+        + rows.map((r, i) => `<g transform="translate(0,${SCALE_H + i * RH})">${r}</g>`).join("")
+        + `</svg>`;
 }
 
 // The hover card: a stop's live arrivals, fetched once per page load and
@@ -838,7 +995,7 @@ function hoverTipHtml(st, pred) {
 
 async function hoverTipFor(dot) {
     const tok = ++hoverTok;
-    const st = (allStopsCache || []).find(s => String(s.StopID) === String(dot.dataset.stop));
+    const st = (allStopsCache || []).find(s => String(s.StopID) === String(dot.getAttribute("data-stop")));
     if (!st) return;
     const show = html => {
         gHoverTip.style.visibility = "hidden";
@@ -862,12 +1019,13 @@ async function hoverTipFor(dot) {
 }
 
 // Dots are redrawn on every renderLines(), so the card is driven by
-// delegated mouseover/mouseout on the host (survives re-renders).
-gLinesHost.addEventListener("mouseover", e => {
+// delegated mouseover/mouseout on the .lines-scroll wrapper (it survives
+// re-renders; the dots are <g class="line-dot"> in the svg).
+gLinesScroll.addEventListener("mouseover", e => {
     const dot = e.target.closest(".line-dot");
     if (dot) hoverTipFor(dot);
 });
-gLinesHost.addEventListener("mouseout", e => {
+gLinesScroll.addEventListener("mouseout", e => {
     const from = e.target.closest(".line-dot");
     if (!from) return;
     const to = e.relatedTarget;
@@ -875,45 +1033,50 @@ gLinesHost.addEventListener("mouseout", e => {
     hideHoverTip();
 });
 // A row scrolling out from under the cursor also retires the card.
-gLinesHost.addEventListener("scroll", hideHoverTip, true);
+gLinesScroll.addEventListener("scroll", hideHoverTip, true);
 
 function renderLines() {
     hideHoverTip();
-    if (!linesStopId) {
-        gLinesNote.textContent = "Pick a stop to see every line that serves it.";
-        gLinesHost.innerHTML = "";
+    if (!pickedStop) {
+        gLinesNote.textContent = "Pick a stop above to see every line that serves it.";
+        gLinesScroll.innerHTML = "";
         return;
     }
     if (!allStopsCache) {
         // The directory is still loading (or a previous attempt failed):
         // ask for it, then come back for the real picture.
-        const want = linesStopId;
+        const want = pickedStop;
         gLinesNote.textContent = "loading the stop list…";
-        gLinesHost.innerHTML = "";
+        gLinesScroll.innerHTML = "";
         loadStopDirectory()
-            .then(() => { if (linesStopId === want) renderLines(); })
+            .then(() => { if (pickedStop === want) renderLines(); })
             .catch(() => {
-                if (linesStopId === want) {
+                if (pickedStop === want) {
                     gLinesNote.textContent = "could not load the stop list — the lines view needs it.";
-                    gLinesHost.innerHTML = "";
+                    gLinesScroll.innerHTML = "";
                 }
             });
         return;
     }
-    const st = allStopsCache.find(s => String(s.StopID) === String(linesStopId));
+    const st = allStopsCache.find(s => String(s.StopID) === String(pickedStop));
     if (!st) {
-        gLinesNote.textContent = `no stop #${linesStopId} in the DC system`;
-        gLinesHost.innerHTML = "";
+        gLinesNote.textContent = `no stop #${pickedStop} in the DC system`;
+        gLinesScroll.innerHTML = "";
         return;
     }
     const routes = (st.Routes || []).slice().sort((a, b) => a.localeCompare(b));
     if (!routes.length) {
         gLinesNote.textContent = `${st.Name || "#" + st.StopID} — no routes in the stop list (it may be out of date)`;
-        gLinesHost.innerHTML = "";
+        gLinesScroll.innerHTML = "";
         return;
     }
-    gLinesNote.innerHTML = `${esc(st.Name || "#" + st.StopID)} <span class="text-muted">(#${esc(st.StopID)})</span> · ${routes.length} line${routes.length > 1 ? "s" : ""} · hover a stop dot for its arrivals`;
-    gLinesHost.innerHTML = routes.map(lineRow).join("");
+    // The bus icons ride on the picked stop's live predictions. A ?busstop=
+    // deep link never materializes pickedStopObj, so fall back to the stop
+    // the Arrivals tab tracks (the same stop in that mode).
+    const arrivals = (pickedStopObj ? pickedStopObj.Arrivals : (shownStops()[0] || {}).Arrivals) || [];
+    gLinesNote.innerHTML = `${esc(st.Name || "#" + st.StopID)} <span class="text-muted">(#${esc(st.StopID)})</span> · ${routes.length} line${routes.length > 1 ? "s" : ""}`
+        + ` <span class="text-muted">· dots spaced by travel time from this stop (bands of 5/15/30/60/120 min, 120+ clipped) · 🚌 = estimated bus position · hover a dot for its arrivals</span>`;
+    gLinesScroll.innerHTML = linesSvg(st, routes, arrivals);
 }
 
 // Tab buttons (plain JS — no Bootstrap JS)

@@ -22,10 +22,13 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
     `?lat`/`?lon` you passed).
   - **📍 (location)** — use your browser's **geolocation** to find the stops nearest *you*.
 - Distances are shown from the point actually searched, so the geolocation view is honest.
-- A **Map** tab shows the same stops geographically: each route as a thick colored line,
-  each stop as a circle (hover for the address and next arrivals); picking a route draws
-  the whole line and its buses. Details under
-  [Map tab](#map-tab).
+- A **stop lookup field** above the tabs (autocomplete over the full ~7,500-stop DC
+  directory) lets you jump to any stop; the **✕** next to it returns to the nearby list.
+  It drives **both** tabs at once.
+- Two tabs:
+  - **Arrivals** — the predictions table. With a stop picked, it tracks *just that stop*.
+  - **Lines** — one banded "track" per route through the picked stop, with live 🚌 icons
+    and hover cards. Details under [Lines tab](#lines-tab).
 - If one stop's prediction request fails (e.g. a stop that no longer exists), the page
   still renders the others and shows a muted "predictions unavailable" row instead of
   going blank.
@@ -58,36 +61,32 @@ The current 20010 corner stops (useful for building `?busstop=` links):
 
 ---
 
-## Map tab
+## Lines tab
 
-The **Map** tab draws the same stops geographically with **Leaflet 1.9.4** on
-**OpenStreetMap** tiles — both key-free, so the map adds zero load to the WMATA API:
+The **Lines** tab draws one row per route that serves the picked stop. There's no map:
+WMATA publishes no line geometry, so each row is a *synthetic* track, not a drawn route:
 
-- Each bus route is a **thick colored line** with its name labelled; each stop is a
-  **circle**. Hover a circle for the stop's address, its routes, and the next arrivals.
-- A row of **route pills** lists every route in view. Click one and the map shows the
-  **whole route**: every stop on it is drawn (pulled from the full-stops dump — the API
-  has no per-route stop list, and a `RouteID` query on `jStops` is silently ignored) and
-  the route's **buses** appear as icons — each vehicle predicted on the route is drawn
-  once, at the stop of its nearest arrival. WMATA publishes no live vehicle feed, so
-  buses are derived from the per-stop `VehicleID`s, and the 30 s refresh re-derives them,
-  so the icons move. Other routes and off-route stops fade back, and the map fits the
-  whole line; click the pill again (or the "All routes" pill) to restore the whole
-  network — the view zooms back out to fit everything.
-- The price of "whole route": each refresh also fetches predictions for **every** stop on
-  the picked route — a long route like M44 (214 stops) is 214 `jPredictions` calls per
-  tick, so expect the rate-limit backoff to engage on long routes. The full dump itself
-  is fetched once per page load and reused.
-- WMATA publishes **no line geometry**, so a route's line is *synthesized* as the
-  nearest-neighbor chain through that route's own stops. It's approximate in shape, and
-  it self-heals if WMATA renumbers stops again (see [Maintenance](#maintenance)).
-- In `?busstop=` mode the stops' coordinates aren't known until the map opens: the tab
-  then makes **one** full-stops `jStops` request — the API ignores a `StopID`-only
-  query, so the ~800 KB full dump is the only way to resolve an ID to coordinates —
-  cached for the page load, plus a ~1-mile neighborhood search for context. The arrivals
-  tab never waits for this.
-- If the Leaflet CDN can't be loaded (offline / blocked), the Map tab says so in its note
-  line and the rest of the page keeps working.
+- Each stop on the route is placed on a horizontal axis of **travel time from the picked
+  stop**: five equal-width bands (0–5, 5–15, 15–30, 30–60, 60–120 min) on each side of
+  the picked stop, which sits at the same fixed center in every row, so the rows line up
+  vertically. Stops whose cumulative travel time passes 120 min are clipped.
+- Travel time is **haversine distance ÷ 8 mph**, accumulated segment by segment along
+  the chain. 8 mph is a field calibration (median of 83 live vehicle samples was
+  7.5 mph, per route 6.9–7.6), so the positions are estimates, not survey-grade.
+- The chain is the route's stops ordered by a 150-ft collapse (busbays) plus a two-sided
+  nearest-neighbor walk from the picked stop. It's approximate in shape and self-heals
+  if WMATA renumbers stops again (see [Maintenance](#maintenance)).
+- A **🚌** marks each live prediction — one per unique `VehicleID`, positioned by its
+  predicted minutes from the picked stop, on the arm opposite its stated destination.
+  WMATA has no live vehicle-locations feed, so this is derived from the same 30 s
+  per-stop `jPredictions` polls that feed the Arrivals tab; the icons move as the
+  predictions move.
+- **Hover any stop dot** for a floating card with that stop's name, routes, and live
+  arrivals. The card's arrivals are fetched on first hover and cached for the page
+  load, so re-hovering is free.
+- The full ~800 KB `jStops` dump that powers the lookup field's autocomplete (and the
+  route→stop list) is fetched **lazily — only when you first type in the lookup field** —
+  never on page load, and fetched once per load.
 
 ---
 
@@ -147,8 +146,9 @@ politely on its own:
   (150 s at the 30 s default) and the status line shows "API rate limit hit, slowing
   refresh".
 - Keep `?refresh` reasonable. Don't run a 15 s interval against many stops with a shared
-  key — and remember that picking a route on the Map tab adds a prediction fetch for every
-  stop on that route to each cycle (see [Map tab](#map-tab)).
+  key. The Lines tab adds a little on top: each *first* hover on a stop dot costs one
+  `jPredictions` fetch (cached for the page load after), so working down a long line is
+  a one-time cost per stop, not a per-tick one.
 
 ### If you'd rather the key never be public
 
@@ -183,8 +183,8 @@ export default {
 | `css/all.css`, `webfonts/` | Self-hosted **Font Awesome** icons. |
 | `.github/workflows/static.yml` | GitHub Pages deploy (uploads the whole repo from `main`). |
 
-Bootstrap **5.3.3** (SRI-hashed), Leaflet **1.9.4** (SRI-hashed), and the Orbitron clock
-font load from CDN in the page; Font Awesome is self-hosted.
+Bootstrap **5.3.3** (SRI-hashed) and the Orbitron clock font load from CDN in the page;
+Font Awesome is self-hosted. There's no map and no Leaflet.
 
 ## Run it locally
 
