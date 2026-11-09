@@ -38,7 +38,7 @@
             cursor: pointer;
         }
 
-        /* stop-name entry with autocomplete (Arrivals + Lines tabs) */
+        /* stop-name entry with autocomplete (drives the one view) */
         .ac-wrap {
             position: relative;
             max-width: 460px;
@@ -87,13 +87,14 @@
 
         .ac-none { padding: 4px 12px; color: #6c757d; cursor: default; }
 
-        /* Lines tab (v3): one <svg> holds the whole picture — a scale
-           strip, then one row per route through the picked stop. Each row
-           is an x-axis of travel time from the picked stop, quantized into
-           five equal-width bands (5/15/30/60/120 min); every route lives
-           in the same svg, so the picked stop sits at the same x in every
-           route and the picture scrolls as one piece. The route code
-           (colored, in the left gutter) replaces the old badge pill. */
+        /* The route picture (v4): one <svg> holds the whole picture — a
+           scale strip, then one row per route through the anchor stop.
+           Each row is an x-axis of travel time from the anchor stop: a
+           45-minute window (40 min of approach behind, 5 min ahead);
+           every route lives in the same svg, so the anchor stop sits at
+           the same x in every route and the picture scrolls as one piece.
+           The route code (colored, in the left gutter) replaces the old
+           badge pill. */
         .lines-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .lines-scroll svg { display: block; }
 
@@ -105,7 +106,10 @@
 
         .line-bus { font-size: 17px; }
 
-        /* floating tooltip that follows a hovered stop dot (Lines tab) */
+        /* minutes-to-arrival beneath each bus (the stop sign stands above) */
+        .line-busmin { font: 700 10px/1 system-ui, -apple-system, sans-serif; fill: #343a40; }
+
+        /* floating tooltip that follows a hovered stop dot */
         .hovertip {
             position: fixed;
             z-index: 2000;
@@ -118,6 +122,51 @@
             line-height: 1.45;
             pointer-events: none;
         }
+
+        /* The arrivals ticker: a dark departures-board strip that scrolls
+           the anchor stop's next arrivals, like the sign at a real bus
+           stop. Two identical phrases + a −50% translate loop = seamless. */
+        .ticker {
+            display: flex;
+            align-items: center;
+            height: 38px;
+            background: #101418;
+            border: 1px solid #212529;
+            border-radius: 6px;
+            overflow: hidden;
+            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 15px;
+            color: #ffc94d;              /* LED amber */
+        }
+
+        .ticker-label {
+            flex: none;
+            align-self: stretch;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            background: #1b2129;
+            border-right: 1px solid #2d333b;
+            color: #8b949e;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+        }
+
+        .ticker-window { flex: 1; overflow: hidden; }
+
+        .ticker-inner {
+            display: inline-flex;
+            white-space: nowrap;
+            will-change: transform;
+            animation: tickerscroll 30s linear infinite;
+        }
+
+        .ticker-phrase { padding-right: 80px; }
+
+        .ticker-static { padding: 0 12px; color: #8b949e; }
+
+        @keyframes tickerscroll { to { transform: translateX(-50%); } }
     </style>
 </head>
 
@@ -156,23 +205,14 @@
         <div id="stopEntryList" class="ac-list" role="listbox" aria-label="Matching stops" hidden></div>
     </div>
 
-    <ul class="nav nav-tabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link active" id="tabBtnArrivals" role="tab"
-                    aria-controls="viewArrivals" aria-selected="true">Arrivals</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link" id="tabBtnLines" role="tab"
-                    aria-controls="viewLines" aria-selected="false">Lines</button>
-        </li>
-    </ul>
-
-    <div id="viewArrivals" role="tabpanel" aria-labelledby="tabBtnArrivals">
-        <div id="tINSERTHERE"></div>
-    </div>
-    <div id="viewLines" role="tabpanel" aria-labelledby="tabBtnLines" style="display:none">
+    <!-- v4: one view, laid out like a real bus stop — the route picture
+         (the old Lines tab, moved in here), a scrolling arrivals ticker,
+         then the arrivals table below. -->
+    <div id="viewArrivals">
         <small id="linesNote" class="text-muted" aria-live="polite" style="display:block">Pick a stop above to see every line that serves it.</small>
         <div id="linesScroll" class="lines-scroll"></div>
+        <div id="tickerHost" class="ticker" aria-live="polite"></div>
+        <div id="tINSERTHERE"></div>
     </div>
 </div>
 
@@ -257,12 +297,9 @@ const gTableHost = document.getElementById("tINSERTHERE");
 const gStopEntry = document.getElementById("stopEntry");
 const gStopEntryClear = document.getElementById("stopEntryClear");
 const gStopEntryList = document.getElementById("stopEntryList");
-const gViewArrivals = document.getElementById("viewArrivals");
-const gViewLines = document.getElementById("viewLines");
-const gTabArrivals = document.getElementById("tabBtnArrivals");
-const gTabLines = document.getElementById("tabBtnLines");
 const gLinesNote = document.getElementById("linesNote");
 const gLinesScroll = document.getElementById("linesScroll");
+const gTickerHost = document.getElementById("tickerHost");
 const gHoverTip = document.getElementById("hovertip");
 
 // ════════════════════════════════════════════════════════════════════
@@ -437,9 +474,10 @@ async function refreshPredictions() {
     rateLimited = saw429;          // → next refresh is delayed (self-throttling)
     lastRefreshAt = Date.now();
     render();
-    // The Lines tab's 🚌 icons ride on the same predictions: keep them
-    // moving while the tab is on screen.
-    if (gViewLines.style.display !== "none") renderLines();
+    // The picture and the ticker ride on the same predictions: keep them
+    // moving on every tick (single view — no tab to check for).
+    renderLines();
+    renderTicker();
     scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
     const t = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
     const shownCount = shownStops().length;
@@ -744,25 +782,29 @@ function routeColor(routeId) {
     return ROUTE_COLORS[h % ROUTE_COLORS.length];
 }
 
-// ── Lines-v3 geometry ─────────────────────────────────────────────────
-// x = travel time from the picked stop, quantized into five equal-width
-// bands so a 5-min, a 15-min and a 60-min stop sit one band apart; stops
-// beyond 120 min are clipped. Travel time = haversine chain distance ÷
-// 8 mph, the speed calibrated against live predictions (median ≈7.5 mph
-// across 83 samples, range 3.8–16.8).
-const BAND_MIN = [0, 5, 15, 30, 60, 120];   // band boundaries, minutes
-const BAND_PX = 110;                        // each band this wide (both sides)
-const FT_PER_MIN = 8 * 5280 / 60;           // 8 mph
+// ── Lines-v4 geometry ─────────────────────────────────────────────────
+// x = travel time from the anchor stop across a 45-minute window: 40 min
+// behind (the approach, five 8-min bands) and 5 min ahead (one band) — a
+// bus stop sign cares mostly about what is coming, not what has gone.
+// Stops past the window edge are clipped. Travel time = haversine chain
+// distance ÷ 8 mph, the speed calibrated against live predictions (median
+// ≈7.5 mph across 83 samples, range 3.8–16.8).
+const BANDS_BEHIND = [0, 8, 16, 24, 32, 40];   // behind: five 8-min bands
+const BANDS_AHEAD  = [0, 5];                   // ahead:  one 5-min band
+const BAND_PX = 110;                           // each band this wide
+const FT_PER_MIN = 8 * 5280 / 60;              // 8 mph
 
-// Minutes from the picked stop → px from the row's center. Piecewise
-// linear: proportional within each equal-width band.
-function bandX(min) {
-    const m = Math.max(0, Math.min(BAND_MIN[BAND_MIN.length - 1], min));
-    for (let k = 0; k < BAND_MIN.length - 1; k++) {
-        if (m <= BAND_MIN[k + 1])
-            return (k + (m - BAND_MIN[k]) / (BAND_MIN[k + 1] - BAND_MIN[k])) * BAND_PX;
+// Minutes from the anchor stop → px from the row's center. Piecewise
+// linear: proportional within each of the side's bands. `side` −1 = behind
+// (left), +1 = ahead (right); the side picks its band table.
+function bandX(min, side) {
+    const bands = side >= 0 ? BANDS_AHEAD : BANDS_BEHIND;
+    const m = Math.max(0, Math.min(bands[bands.length - 1], min));
+    for (let k = 0; k < bands.length - 1; k++) {
+        if (m <= bands[k + 1])
+            return (k + (m - bands[k]) / (bands[k + 1] - bands[k])) * BAND_PX;
     }
-    return (BAND_MIN.length - 1) * BAND_PX;
+    return (bands.length - 1) * BAND_PX;
 }
 
 // Feet between two stops (the page's haversine, "f" = feet).
@@ -838,44 +880,47 @@ function destMatch(collapsed, destText) {
 // the whole picture, so the picked stop — the track's center — sits at the
 // same x in every route.
 const GUT = 60;                       // left gutter (route code)
-const RH = 40;                        // route row height
+const RH = 60;                        // route row height (room for the stop sign)
 const SCALE_H = 36;                   // scale strip height
-const CX = GUT + 5 * BAND_PX;         // picked stop x (the track's center)
+const CX = GUT + 5 * BAND_PX;         // anchor stop x (the track's center)
 
-// The track's shared furniture: five equal-width bands per side (nearer =
-// darker) and a tick at each band boundary. `cy` is the row's center line
-// (relative to the row's top); every row draws the same, so the bands — and
-// the track's center — line up vertically across rows.
+// The track's shared furniture: five equal-width bands behind the anchor
+// (nearer = darker), one ahead, and a tick at each band boundary. `cy` is
+// the row's center line (relative to the row's top); every row draws the
+// same, so the bands — and the track's center — line up vertically across
+// rows.
 function lineTrackBg(cy) {
     let bg = "";
     const alphas = [0.10, 0.075, 0.055, 0.04, 0.025];
-    for (let k = 0; k < 5; k++) {
-        bg += `<rect x="${GUT + (5 + k) * BAND_PX}" y="${cy - 12}" width="${BAND_PX}" height="24" fill="#6c757d" opacity="${alphas[k]}"></rect>`;
-        bg += `<rect x="${GUT + (4 - k) * BAND_PX}" y="${cy - 12}" width="${BAND_PX}" height="24" fill="#6c757d" opacity="${alphas[k]}"></rect>`;
+    for (let k = 0; k < BANDS_BEHIND.length - 1; k++) {
+        bg += `<rect x="${CX - (k + 1) * BAND_PX}" y="${cy - 12}" width="${BAND_PX}" height="24" fill="#6c757d" opacity="${alphas[k]}"></rect>`;
     }
-    for (let k = 1; k <= 5; k++) {
-        bg += `<line x1="${GUT + (5 + k) * BAND_PX}" y1="${cy - 10}" x2="${GUT + (5 + k) * BAND_PX}" y2="${cy + 10}" stroke="#8a959e" opacity=".5"></line>`;
-        bg += `<line x1="${GUT + (5 - k) * BAND_PX}" y1="${cy - 10}" x2="${GUT + (5 - k) * BAND_PX}" y2="${cy + 10}" stroke="#8a959e" opacity=".5"></line>`;
+    bg += `<rect x="${CX}" y="${cy - 12}" width="${BAND_PX}" height="24" fill="#6c757d" opacity="0.12"></rect>`;
+    for (let k = 1; k <= BANDS_BEHIND.length - 1; k++) {
+        bg += `<line x1="${CX - k * BAND_PX}" y1="${cy - 10}" x2="${CX - k * BAND_PX}" y2="${cy + 10}" stroke="#8a959e" opacity=".5"></line>`;
     }
+    bg += `<line x1="${CX + BAND_PX}" y1="${cy - 10}" x2="${CX + BAND_PX}" y2="${cy + 10}" stroke="#8a959e" opacity=".5"></line>`;
     return bg;
 }
 
 // Scale strip above the routes: the same band/tick geometry, with the band
-// boundaries labeled in minutes from the picked stop.
+// boundaries labeled in minutes from the anchor stop (behind 8…40, ahead 5).
 function lineScale() {
     const cy = 14;
     let labels = `<text class="lines-minlabel" x="${CX}" y="${SCALE_H - 3}" text-anchor="middle">0</text>`;
-    for (let k = 1; k <= 5; k++) {
-        labels += `<text class="lines-minlabel" x="${GUT + (5 + k) * BAND_PX}" y="${SCALE_H - 3}" text-anchor="middle">${BAND_MIN[k]}</text>`;
-        labels += `<text class="lines-minlabel" x="${GUT + (5 - k) * BAND_PX}" y="${SCALE_H - 3}" text-anchor="middle">${BAND_MIN[k]}</text>`;
+    for (let k = 1; k <= BANDS_BEHIND.length - 1; k++) {
+        labels += `<text class="lines-minlabel" x="${CX - k * BAND_PX}" y="${SCALE_H - 3}" text-anchor="middle">${BANDS_BEHIND[k]}</text>`;
+        if (k < BANDS_AHEAD.length)
+            labels += `<text class="lines-minlabel" x="${CX + k * BAND_PX}" y="${SCALE_H - 3}" text-anchor="middle">${BANDS_AHEAD[k]}</text>`;
     }
     return `<text class="lines-minlabel" x="6" y="${cy}" dy=".35em">min</text>${lineTrackBg(cy)}${labels}`;
 }
 
 // One row per route: the route code (colored) in the left gutter, then the
 // track — the route's stops as dots on an x-axis of travel time from the
-// picked stop (armA right of center, armB left of it). Dots past the
-// 120-min edge are clipped.
+// anchor stop (armA right of center, armB left of it), a stop sign on the
+// anchor, and a 🚌 with its minutes beneath each live prediction. Dots past
+// the window edge (40 min behind / 5 ahead) are clipped.
 function lineRow(route, st, arrivals) {
     const color = routeColor(route);
     const onRoute = (allStopsCache || []).filter(s => s.Lat != null && (s.Routes || []).includes(route));
@@ -899,18 +944,20 @@ function lineRow(route, st, arrivals) {
 
     let dots = "";
     const dot = (s, cumMin, side, extra, title) => {
-        if (cumMin > BAND_MIN[BAND_MIN.length - 1]) return;
-        const x = CX + side * bandX(cumMin);
+        const lim = side >= 0 ? BANDS_AHEAD[BANDS_AHEAD.length - 1]
+                              : BANDS_BEHIND[BANDS_BEHIND.length - 1];
+        if (cumMin > lim) return;
+        const x = CX + side * bandX(cumMin, side);
         const t = title ? `<title>${esc(title)}</title>` : "";
         const cls = extra ? "line-dot " + extra : "line-dot";
         const c = `<circle cx="${x.toFixed(1)}" cy="${cy}" r="${extra === "here" ? 6 : 5}" fill="${color}" stroke="#fff" stroke-width="2"/>${t}`;
-        // The picked stop also gets a soft halo so it reads at a glance.
+        // The anchor stop also gets a soft halo so it reads at a glance.
         const halo = extra === "here" ? `<circle cx="${x.toFixed(1)}" cy="${cy}" r="10" fill="${color}" opacity=".2"/>` : "";
         dots += `<g class="${cls}" data-stop="${esc(String(s.StopID))}">${halo}${c}</g>`;
     };
     let cum = 0;
     for (const s of armB) { cum += s.d / FT_PER_MIN; dot(s.stop, cum, -1); }
-    dot(anchor, 0, 0, "here", `picked stop: ${st.Name || "#" + st.StopID}`);
+    dot(anchor, 0, 0, "here", `${st.Name || "#" + st.StopID} (anchor stop)`);
     cum = 0;
     for (const s of armA) { cum += s.d / FT_PER_MIN; dot(s.stop, cum, +1); }
 
