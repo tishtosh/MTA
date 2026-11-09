@@ -94,7 +94,8 @@
            every route lives in the same svg, so the anchor stop sits at
            the same x in every route and the picture scrolls as one piece.
            The route code (colored, in the left gutter) replaces the old
-           badge pill. */
+           badge pill; each row's destination terminal reads in the right
+           gutter. */
         .lines-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .lines-scroll svg { display: block; }
 
@@ -106,8 +107,11 @@
 
         .line-bus { font-size: 17px; }
 
-        /* minutes-to-arrival beneath each bus (the stop sign stands above) */
+        /* minutes-to-arrival beneath the track (the bus rides just above) */
         .line-busmin { font: 700 10px/1 system-ui, -apple-system, sans-serif; fill: #343a40; }
+
+        /* the row's destination terminal, in the right gutter (→ name) */
+        .lines-dest { font: 600 12px/1 system-ui, -apple-system, sans-serif; }
 
         /* floating tooltip that follows a hovered stop dot */
         .hovertip {
@@ -123,13 +127,11 @@
             pointer-events: none;
         }
 
-        /* The arrivals ticker: a dark departures-board strip that scrolls
-           the anchor stop's next arrivals, like the sign at a real bus
-           stop. Two identical phrases + a −50% translate loop = seamless. */
+        /* Next arrivals: a dark LED board under the picture. The anchor
+           stop's next arrivals scroll upward through a 3-line window, like
+           the display at a real bus stop; the list (doubled for a seamless
+           loop) translates −50% on the y-axis (see .ticker-inner). */
         .ticker {
-            display: flex;
-            align-items: center;
-            height: 38px;
             background: #101418;
             border: 1px solid #212529;
             border-radius: 6px;
@@ -140,35 +142,44 @@
         }
 
         .ticker-label {
-            flex: none;
-            align-self: stretch;
-            display: flex;
-            align-items: center;
-            padding: 0 12px;
+            display: block;
+            padding: 4px 12px;
             background: #1b2129;
-            border-right: 1px solid #2d333b;
+            border-bottom: 1px solid #2d333b;
             color: #8b949e;
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 1.5px;
         }
 
-        .ticker-window { flex: 1; overflow: hidden; }
+        .ticker-window { height: 66px; overflow: hidden; }   /* 3 lines × 22px */
 
         .ticker-inner {
-            display: inline-flex;
-            white-space: nowrap;
             will-change: transform;
-            animation: tickerscroll 30s linear infinite;
+            animation: tickerscroll 15s linear infinite;    /* duration set per refresh */
         }
 
-        .ticker-phrase { padding-right: 80px; }
+        .ticker-line {
+            display: flex;
+            align-items: center;
+            height: 22px;
+            padding: 0 12px;
+            white-space: nowrap;
+        }
 
-        .ticker-min { color: #fff; font-weight: 700; }
+        .ticker-rt { flex: none; width: 9px; height: 9px; border-radius: 2px; margin-right: 9px; }
 
-        .ticker-static { padding: 0 12px; color: #8b949e; }
+        .ticker-route { flex: none; width: 58px; font-weight: 700; }
 
-        @keyframes tickerscroll { to { transform: translateX(-50%); } }
+        .ticker-min { flex: none; width: 64px; color: #fff; font-weight: 700; }
+
+        .ticker-dir { overflow: hidden; text-overflow: ellipsis; opacity: .85; }
+
+        .ticker-blank .ticker-dir { color: #313843; }
+
+        .ticker-static { display: block; height: 22px; line-height: 22px; padding: 0 12px; color: #8b949e; }
+
+        @keyframes tickerscroll { to { transform: translateY(-50%); } }
     </style>
 </head>
 
@@ -208,8 +219,8 @@
     </div>
 
     <!-- v4: one view, laid out like a real bus stop — the route picture
-         (the old Lines tab, moved in here), a scrolling arrivals ticker,
-         then the arrivals table below. -->
+         (the old Lines tab, moved in here), a 3-line next-arrivals board
+         (scrolling upward), then the arrivals table below. -->
     <div id="viewArrivals">
         <small id="linesNote" class="text-muted" aria-live="polite" style="display:block">Pick a stop above to see every line that serves it.</small>
         <div id="linesScroll" class="lines-scroll"></div>
@@ -763,9 +774,13 @@ const acStop = makeAutocomplete(
 // 45-minute window, 40 min behind (five 8-min bands — the approach) and
 // 5 min ahead (one band — a bus stop sign cares about what is coming)
 // with the anchor stop at the same fixed center in every row, so the rows
-// line up vertically. A hand-drawn stop sign stands on the anchor; a 🚌
-// marks each live prediction's estimated position (approaching the anchor,
-// on the arm opposite its destination) with its minutes beneath.
+// line up vertically. A hand-drawn stop sign stands on the anchor. Each
+// row is oriented with its destination arm on the right, and every 🚌 is
+// drawn just above the stop dot, N minutes of chain distance back on the
+// left, with its minutes beneath — so each bus runs left → right toward
+// the anchor, the way a real bus approaches a sign. The destination
+// terminal name(s) are written in the right gutter (one line per
+// direction that serves the stop).
 // Hovering any stop dot pulls its live arrivals once (cached for the page
 // load).
 //
@@ -773,7 +788,8 @@ const acStop = makeAutocomplete(
 // inside .lines-scroll: everything shares a single coordinate system and
 // one horizontal scrollbar, so the anchor stop sits at the same x in every
 // route and the bands/ticks/dots line up vertically. Route identity is a
-// colored route code in the left gutter (the old badge pill is gone).
+// colored route code in the left gutter (the old badge pill is gone); the
+// destination lives in the right gutter.
 // ════════════════════════════════════════════════════════════════════
 
 // A small distinguishable palette; routes hash into it (stable across loads).
@@ -856,8 +872,9 @@ function twoSidedWalk(anchor, pool, T = 5000) {
 
 // Destination matching: the live feed's DirectionText is a terminal name
 // ("Shady Grove", "Glenmont"); the collapsed stop whose name contains the
-// most of its tokens is the bus's destination. (The bus is *approaching*
-// the anchor stop, so it sits on the arm opposite that one.)
+// most of its tokens is the bus's destination. (The picture orients each
+// row with the matched arm on the right, so a bus — always drawn
+// approaching from the left — runs toward its destination.)
 const STOPW = new Set(["the", "and", "for", "from", "into", "onto", "with", "north", "south", "east", "west", "to"]);
 function toksOf(text) {
     return String(text || "").toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 3 && !STOPW.has(t));
@@ -887,6 +904,8 @@ const GUT = 60;                       // left gutter (route code)
 const RH = 60;                        // route row height (room for the stop sign)
 const SCALE_H = 36;                   // scale strip height
 const CX = GUT + 5 * BAND_PX;         // anchor stop x (the track's center)
+const DEST_X = CX + BAND_PX + 12;     // right gutter: the row's destination text
+const DEST_W = 150;                   // right gutter width
 
 // The track's shared furniture: five equal-width bands behind the anchor
 // (nearer = darker), one ahead, and a tick at each band boundary. `cy` is
@@ -917,14 +936,17 @@ function lineScale() {
         if (k < BANDS_AHEAD.length)
             labels += `<text class="lines-minlabel" x="${CX + k * BAND_PX}" y="${SCALE_H - 3}" text-anchor="middle">${BANDS_AHEAD[k]}</text>`;
     }
-    return `<text class="lines-minlabel" x="6" y="${cy}" dy=".35em">min</text>${lineTrackBg(cy)}${labels}`;
+    return `<text class="lines-minlabel" x="6" y="${cy}" dy=".35em">min</text>${lineTrackBg(cy)}${labels}`
+        + `<text class="lines-minlabel" x="${DEST_X}" y="${cy}" dy=".35em">destination</text>`;
 }
 
-// One row per route: the route code (colored) in the left gutter, then the
+// One row per route: the route code (colored) in the left gutter, the
 // track — the route's stops as dots on an x-axis of travel time from the
-// anchor stop (armA right of center, armB left of it), a stop sign on the
-// anchor, and a 🚌 with its minutes beneath each live prediction. Dots past
-// the window edge (40 min behind / 5 ahead) are clipped.
+// anchor stop — a stop sign on the anchor, a 🚌 just above the track (its
+// minutes beneath) for each live prediction, and the destination terminal
+// name(s) in the right gutter. The row is oriented with the destination
+// arm on the right, so every bus approaches left → right. Dots past the
+// window edge (40 min behind / 5 ahead) are clipped.
 function lineRow(route, st, arrivals) {
     const color = routeColor(route);
     const onRoute = (allStopsCache || []).filter(s => s.Lat != null && (s.Routes || []).includes(route));
