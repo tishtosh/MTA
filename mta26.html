@@ -666,13 +666,14 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
         const key = p.route + "|" + (dirNum == null ? "?" : dirNum) + "|" + (p.heads || "");
         let v = variants.get(key);
         if (!v) {
-            v = { route: p.route, dirNum, heads: p.heads || "", mins: [], vehicles: [],
+            v = { route: p.route, dirNum, heads: p.heads || "", mins: [], vehicles: [], preds: [],
                   rep: { route: p.route, dirNum, heads: p.heads || "",
                          trip: p.trip || "", vehicle: p.vehicle || "" } };
             variants.set(key, v);
             rows.push(v);
         }
         v.mins.push(p.min);
+        v.preds.push(p);
         if (p.vehicle) v.vehicles.push(p.vehicle);
     }
     const covered = new Set(), ambiguous = new Set();
@@ -943,6 +944,63 @@ function boardGeometry(rows) {
     };
 }
 
+// Piece 8: project an arbitrary (lat, lon) — a live vehicle sample — onto a
+// row's track axis. Same convention as rowLayout: signed feet from the
+// anchor along the path rowLayout used (the published shape in mode
+// "shape", the ordered stop chain in mode "stops"); positive = past the
+// anchor, negative = the approach side where approaching buses sit. Also
+// returns `off`, the perpendicular distance (ft) from the sample to that
+// path, so callers can reject samples that are really on a parallel road or
+// a different branch of the same route.
+function pointOnTrack(pattern, anchorIdx, mode, lat, lon) {
+    if (!pattern || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    const aIdx = Math.max(0, anchorIdx | 0);
+    const useShape = mode === "shape" && pattern.shape && pattern.shape.length >= 2;
+    let src = useShape ? pattern.shape : pattern.stops;
+    if (useShape) src = src.filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon));
+    if (src.length < 2) return null;
+    const refPt = src.find(p => Number.isFinite(p.lat) && Number.isFinite(p.lon)) || src[0];
+    const ref = { lat: refPt.lat, lon: refPt.lon };
+    const cum = [0];
+    for (let i = 1; i < src.length; i++) {
+        const leg = Number.isFinite(src[i - 1].lat) && Number.isFinite(src[i].lat)
+            ? distance(src[i - 1].lat, src[i - 1].lon, src[i].lat, src[i].lon, "f") : 0;
+        cum.push(cum[i - 1] + leg);
+    }
+    const nearest = (pl, pn) => {
+        const p = localXY({ lat: pl, lon: pn }, ref);
+        let best = null;
+        for (let i = 1; i < src.length; i++) {
+            const a = localXY(src[i - 1], ref), b = localXY(src[i], ref);
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const L2 = dx * dx + dy * dy;
+            let t = L2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2 : 0;
+            // off = perpendicular distance to the segment's LINE (unclamped
+            // t), so a sample axially past an endpoint — a bus that has run
+            // past the terminal — is not misread as off-route; the arc below
+            // still uses the clamped t.
+            const off = L2
+                ? Math.abs((p.y - a.y) * dx - (p.x - a.x) * dy) / Math.sqrt(L2)
+                : Math.hypot(p.x - a.x, p.y - a.y);
+            const tc = Math.max(0, Math.min(1, t));
+            const qx = a.x + tc * dx, qy = a.y + tc * dy;
+            const d2 = (qx - p.x) * (qx - p.x) + (qy - p.y) * (qy - p.y);
+            if (!best || d2 < best.d2)
+                best = { d2, off, arc: cum[i - 1] + tc * (cum[i] - cum[i - 1]) };
+        }
+        return best ? { arc: best.arc, off: best.off } : null;
+    };
+    const n = nearest(lat, lon);
+    if (!n) return null;
+    const aStop = pattern.stops[aIdx];
+    // In shape mode the anchor's arc is its projection on the shape — exactly
+    // what trackArcs/projArcOnShape used to place the stop dots, so the
+    // marker shares their scale; in stops mode the anchor IS a chain vertex.
+    const anchorArc = useShape
+        ? (aStop && Number.isFinite(aStop.lat) ? (nearest(aStop.lat, aStop.lon) || { arc: 0 }).arc : 0)
+        : cum[aIdx] || 0;
+    return { ft: n.arc - anchorArc, off: n.off };
+}
 
 // ── Board drawing (plan §3) ──────────────────────────────────────────
 // One HTML row per pattern: a header with the route code, "toward
@@ -1574,13 +1632,81 @@ function boardHeaderHtml(st, arrivals) {
         + `</div>`;
 }
 
+// Piece 8: turn a row's predictions into track markers. Each prediction
+// gets one marker: a FILLED circle at the vehicle's last sample when that
+// sample is fresh (≤ 120 min) and projects close to the row's path,
+// otherwise a HOLLOW circle estimated from the ETA (ETA × 8 mph upstream of
+// the boarding stop; a 0-min ETA sits on the guide). Markers clamp to the
+// row's drawn extent, so a long-ETA bus never lands off the track.
+const BUS_EST_FT_PER_MIN = 704;          // 8 mph ≈ 704 ft/min
+const BUS_SAMPLE_MAX_AGE_MS = 120 * 60000;   // plan §3: the freshness gate
+const BUS_OFF_TOL_FT = 300;              // samples this far off the path (a
+                                          // parallel road, another branch) are
+                                          // not markers for this row
+
+// The position row a prediction refers to: a TripID match is the exact run;
+// a VehicleID match is the best effort (covers predictions without a trip).
+// A route match is required, and a conflicting DirectionNum rejects (a
+// vehicle switched to the opposite direction of the same route).
+function posRowFor(pred, posRows) {
+    if (!pred || !posRows || !posRows.length) return null;
+    const rt = String(pred.route || "");
+    const tt = String(pred.trip || "");
+    const vt = String(pred.vehicle || "");
+    let byVehicle = null;
+    for (const r of posRows) {
+        if (!r || String(r.route || "") !== rt) continue;
+        if (pred.dirNum !== "" && pred.dirNum != null && r.dirNum !== "" &&
+            String(pred.dirNum) !== String(r.dirNum)) continue;
+        if (tt && r.trip && String(r.trip) === tt) return r;
+        if (!byVehicle && vt && r.vehicle && String(r.vehicle) === vt) byVehicle = r;
+    }
+    return byVehicle;
+}
+
+// g = the row's boardGeometry entry; scale = the board's shared px/ft.
+// posRows = [] when the feed is stale (renderBoardNow applies the gate).
+function buildBusMarkers(row, g, scale, posRows, now) {
+    const markers = [];
+    if (!g || !g.hasTrack || !row.pattern || !g.stops.length || !(scale > 0)) return markers;
+    let minFt = Infinity, maxFt = -Infinity;
+    for (const s of g.stops) {
+        const ft = s.x / scale;
+        if (ft < minFt) minFt = ft;
+        if (ft > maxFt) maxFt = ft;
+    }
+    const clamp = (ft) => Math.max(minFt, Math.min(maxFt, ft));
+    for (const pred of row.preds || []) {
+        if (!pred) continue;
+        const min = Math.max(0, Number(pred.min));
+        if (!Number.isFinite(min)) continue;
+        const pr = posRowFor(pred, posRows);
+        let m = null;
+        if (pr && pr.lat != null && now - (pr.at || 0) <= BUS_SAMPLE_MAX_AGE_MS) {
+            const pj = pointOnTrack(row.pattern, row.anchorIdx, g.mode, pr.lat, pr.lon);
+            if (pj && pj.off <= BUS_OFF_TOL_FT) m = { x: clamp(pj.ft) * scale, min, live: true };
+        }
+        if (!m) m = { x: clamp(-min * BUS_EST_FT_PER_MIN) * scale, min, live: false };
+        markers.push(m);
+    }
+    return markers;
+}
+
 // Paint the board from fully resolved inputs.
 function renderBoardNow(anchorId, arrivals, routeDetails, posRows) {
     const rows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
-    for (const r of rows) r.busMarkers = [];   // piece 8 joins live/estimated positions
-    gLinesScroll.innerHTML = rows.length ? boardHtml(boardGeometry(rows), rows) : "";
+    const geo = boardGeometry(rows);
+    const now = Date.now();
+    // The 120-minute freshness gate (plan §3): when the feed's newest sample
+    // is older than that (including a feed that failed to refresh), no live
+    // markers — every vehicle estimates from its ETA instead. Dots change
+    // position but never vanish.
+    const liveRows = posFeed && now - posFeed.newestAt <= BUS_SAMPLE_MAX_AGE_MS
+        ? (posRows || []) : [];
+    rows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[i], geo.scale, liveRows, now); });
+    gLinesScroll.innerHTML = rows.length ? boardHtml(geo, rows) : "";
     gLinesNote.innerHTML = rows.length
-        ? `<span class="text-muted">dot = stop along the line · diamond = your stop / terminal · arrow = direction of travel</span>`
+        ? `<span class="text-muted">dot = stop · diamond = your stop / terminal · arrow = direction of travel · filled dot = live vehicle · open dot = position estimated from ETA</span>`
         : "";
 }
 
