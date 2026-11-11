@@ -128,7 +128,7 @@ const board = () => els.linesScroll.innerHTML;
   check("board header painted", h !== "");
   check("header: stop ID shown", h.includes("#" + ANCHOR));
   check("header: canonical directory name", h.includes("Park Rd NW+19 St NW"));
-  check("header: Next bus line", h.includes("Next bus:"));
+  check("header: Next bus line", h.includes("Next bus"));
 
   check("board painted into linesScroll", b !== "");
   check("board: every row on one shared width", new Set((b.match(/width="\d+\.\d+"/g) || [])).size <= 2);
@@ -142,22 +142,22 @@ const board = () => els.linesScroll.innerHTML;
     // the across section: counterpart label, both curb labels, two track rows
     check("across: section rendered", b.includes("Across the street"));
     check("across: counterpart named in label", /Across the street[\s\S]{0,80}#1002135/.test(b));
-    check("across: primary labeled 'Your side'", b.includes("Your side"));
+    check("across: primary labeled 'At the selected stop'", b.includes("At the selected stop"));
     check("across: both C87 patterns as track rows", (b.match(/bt-line/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
     check("across: prompt refresh re-fetches in-scope stops (7 fetches)", fetchCount === 7);
   } else if (ANCHOR === "1002130") {
-    check("130: next bus D72 @14 min", /Next bus:.*D72[\s\S]*?14 min/.test(h));
+    check("130: next bus D72 @14 min", h.includes("Next bus") && h.includes("D72") && h.includes("14 min"));
     check("130: D72 row is compact (route details unavailable)", b.includes("route details unavailable"));
     check("130: D72 compact keeps its live headsign", b.includes("North to Van Ness"));
     check("130: C87 service row toward TENLEYTOWN", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
     check("130: compact row before service row", b.indexOf("route details unavailable") < b.indexOf("TENLEYTOWN"));
     check("130: no track on the compact row", (b.match(/bt-line/g) || []).length === 1); // only C87 has a pattern
   } else {
-    check("135: next bus D72 @2 min", /Next bus:.*D72[\s\S]*?2 min/.test(h));
+    check("135: next bus D72 @2 min", h.includes("Next bus") && h.includes("D72") && h.includes("2 min"));
     check("135: D72 row compact", b.includes("route details unavailable"));
     check("135: NO service rows (C87 pattern lacks this corner)", !b.includes("TENLEYTOWN") && (b.match(/bt-line/g) || []).length === 0);
-    check("135: three ETAs on the compact row (2 · 17 · 39)", /2 min[\s\S]{0,80}17 min[\s\S]{0,80}39 min/.test(h) || /17 min/.test(b) && /39 min/.test(b));
+    check("135: three ETAs on the compact row (2 · 17 · 39)", h.includes("2 min") && b.includes("then 17 · 39 min"));
   }
 
   if (MULTI) {

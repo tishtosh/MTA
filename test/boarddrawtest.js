@@ -62,7 +62,7 @@ t("A3 empty list", ctx.boardEtasHtml([]).includes("no upcoming predictions"));
 {
   const h = ctx.boardEtasHtml([3, 14, 40]);
   t("A4 first emphasized, rest ascending",
-    h.includes('class="board-eta-first">3 min') && h.includes("14 min · 40 min"), h.slice(0, 90));
+    h.includes('class="board-eta-first">3 min') && h.includes("then 14 · 40 min"), h.slice(0, 90));
 }
 
 // ── trackRowSvg ───────────────────────────────────────────────────────
@@ -141,8 +141,8 @@ t("A3 empty list", ctx.boardEtasHtml([]).includes("no upcoming predictions"));
   const widths = [...html.matchAll(/board-tracksvg" width="(\d+)"/g)].map(m => +m[1]);
   t("D1 one guide x, shared by both tracks", new Set(guides).size === 1 && guides.length === 2, guides.join(","));
   t("D2 identical svg width across rows", new Set(widths).size === 1, widths.join(","));
-  t("D3 header: code + toward + first ETA",
-    html.includes('toward TerB') && html.includes('class="board-eta-first">4 min') && html.includes("12 min"));
+  t("D3 header: code + destination + first ETA",
+    html.includes('row-badge"') && html.includes("TerB") && html.includes('class="board-eta-first">4 min') && html.includes("12 min"));
   t("D4 compact row: header only, with note",
     html.includes("route details unavailable") && (html.match(/board-tracksvg/g) || []).length === 2);
   t("D5 row min-height + board width fixed", html.includes(`min-height:${64}px`) && /class="board" style="width:\d+px"/.test(html));

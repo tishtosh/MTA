@@ -81,7 +81,7 @@ const h1 = sandbox.boardHeaderHtml(
   [{ min: 14, route: "D72", dir: "North to Van Ness", heads: "North to Van Ness" }]);
 check("header: name", h1.includes("Park Rd &amp; 19th St NW"));
 check("header: #id after the name", /#1002130/.test(h1));
-check("header: next bus route + headsign", /Next bus:.*D72<\/b> · North to Van Ness/.test(h1));
+check("header: next bus route + headsign", /Next bus .*D72<\/span> North to Van Ness/.test(h1));
 check("header: ETA 14 min", h1.includes(">14 min<"));
 check("header: first ETA uses bt-next-eta", h1.includes("bt-next-eta"));
 
@@ -89,7 +89,7 @@ const h2 = sandbox.boardHeaderHtml(
   { StopID: "1002130", Name: null, Arrivals: [], Error: null },
   [{ min: 0, route: "C87", dir: "TENLEYTOWN", heads: "TENLEYTOWN" }]);
 check("header: no name → #id only, no doubled id", (h2.match(/#1002130/g) || []).length === 1);
-check("header: 0 min → Due", /C87<\/b> · TENLEYTOWN — <span class="bt-next-eta">Due<\/span>/.test(h2));
+check("header: 0 min → Due", /C87<\/span> TENLEYTOWN/.test(h2) && h2.includes('bt-next-eta">Due'));
 
 const h3 = sandbox.boardHeaderHtml({ StopID: "X", Name: "x", Error: { rateLimited: false }, Arrivals: [] }, []);
 check("header: failed predictions → 'arrivals unavailable'", h3.includes("arrivals unavailable"));
@@ -115,7 +115,7 @@ if (preds.length) {
     { StopID: "1002130", Name: raw.StopName || null, Error: null, Arrivals: preds }, preds);
   const first = preds[0];
   check(`live header: earliest ${first.route} @ ${first.min} min leads the Next bus line`,
-    new RegExp("Next bus:.*" + first.route).test(h5) && h5.includes(`>${first.min === 0 ? "Due" : first.min + " min"}<`));
+    new RegExp("Next bus .*" + first.route).test(h5) && h5.includes(`>${first.min === 0 ? "Due" : first.min + " min"}<`));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
