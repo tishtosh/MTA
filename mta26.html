@@ -702,6 +702,106 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
     return rows;
 }
 
+// ---- across-the-street resolver (plan §2.2) -----------------------------
+// Finds at most ONE opposite-side stop the board may present in its own
+// "Across the street" section. A nearby candidate is accepted only when ALL
+// hold:
+//   * within ACROSS_MAX_FT (~100 m) of the boarding anchor;
+//   * its name matches the anchor's street/intersection (≥1 shared street
+//     token, and each name's extra tokens contained in the other's — this
+//     rejects successive stops along the same street, which carry a different
+//     cross-street);
+//   * at least one route is shared between the anchor's patterns and the
+//     candidate's patterns (patterns = route-details directions);
+//   * the two stops are not listed in the SAME pattern (same-direction bays
+//     and consecutive stops on one side of a corridor);
+//   * the ordered paths give opposing travel bearings at the two stops (≥
+//     ACROSS_OPPOSE_DEG difference on a shared route).
+// Anything short of exactly one accepted candidate is ambiguous: the caller
+// keeps the primary board and lets riders pick the other stop via the lookup.
+// `patterns` maps stopId → [route-details direction entries that list it].
+const ACROSS_MAX_FT = 330;        // ~100 m
+const ACROSS_OPPOSE_DEG = 120;    // local bearings must differ by at least this
+
+function streetTokens(name) {
+    const out = new Set();
+    for (let part of String(name || "").split(/&|\band\b|\+/i)) {
+        let t = part.toUpperCase().replace(/[^A-Z0-9 ]/g, " ");
+        t = t.replace(/\b(NORTHWEST|NORTHEAST|SOUTHWEST|SOUTHEAST|NORTH|SOUTH|EAST|WEST|NW|NE|SW|SE|N|S|E|W)\b/g, " ");
+        t = t.replace(/\b(STREET|ST|AVENUE|AVE|BLVD|DRIVE|DR|PLAZA|PL|ROAD|RD|LANE|LN|COURT|CT|SQUARE|SQ|CIRCLE|CIR)\b/g, " ");
+        for (const w of t.split(/\s+/)) if (w) out.add(w);
+    }
+    return out;
+}
+
+function namesMatch(a, b) {
+    const A = streetTokens(a), B = streetTokens(b);
+    if (!A.size || !B.size) return false;
+    let shared = 0;
+    for (const t of A) if (B.has(t)) shared++;
+    if (!shared) return false;
+    const onlyA = [...A].filter(t => !B.has(t));
+    const onlyB = [...B].filter(t => !A.has(t));
+    return onlyA.every(t => onlyB.includes(t)) || onlyB.every(t => onlyA.includes(t));
+}
+
+function bearing(a, b) {
+    if (!a || !b || !Number.isFinite(a.lat) || !Number.isFinite(a.lon) ||
+        !Number.isFinite(b.lat) || !Number.isFinite(b.lon)) return null;
+    if (a.lat === b.lat && a.lon === b.lon) return null;
+    const dLon = (b.lon - a.lon) * Math.cos(a.lat * Math.PI / 180);
+    return (Math.atan2(dLon, b.lat - a.lat) * 180 / Math.PI + 360) % 360;
+}
+
+function angleDiffDeg(x, y) {
+    const d = Math.abs(x - y) % 360;
+    return d > 180 ? 360 - d : d;
+}
+
+// Local direction of travel through one stop occurrence in a pattern
+// (pattern stop order is travel order): toward the next occurrence, else
+// arriving from the previous. null when the occurrence has no neighbor.
+function localBearing(pattern, stopId) {
+    const stops = (pattern && pattern.stops) || [];
+    const i = stops.findIndex(s => s.id === String(stopId));
+    if (i < 0) return null;
+    const next = stops[i + 1], prev = stops[i - 1];
+    return next ? bearing(stops[i], next) : (prev ? bearing(prev, stops[i]) : null);
+}
+
+function acrossTheStreet(anchor, candidates, patterns) {
+    if (!anchor || anchor.lat == null || anchor.lon == null) return null;
+    const aId = String(anchor.id || "");
+    const pA = (patterns || {})[aId] || [];
+    if (!pA.length) return null;   // no ordered path boards the anchor
+    const accepted = [];
+    for (const c of candidates || []) {
+        const cId = String((c && c.id) || "");
+        if (!c || !cId || cId === aId) continue;
+        if (distance(anchor.lat, anchor.lon, c.lat, c.lon, "f") > ACROSS_MAX_FT) continue;
+        if (!namesMatch(anchor.name, c.name)) continue;
+        const pC = (patterns || {})[cId] || [];
+        if (!pC.length) continue;   // no ordered path boards the candidate
+        // Same pattern on both sides = same-direction bay / successive stops.
+        if (pA.some(pa => pC.some(pc => pc.route === pa.route && pc.dirNum === pa.dirNum))) continue;
+        // Opposing travel bearings, on a shared route, at the two stops.
+        let opposed = false;
+        for (const pa of pA) {
+            const x = localBearing(pa, aId);
+            if (x == null) continue;
+            for (const pc of pC) {
+                if (pc.route !== pa.route) continue;
+                const y = localBearing(pc, cId);
+                if (y != null && angleDiffDeg(x, y) >= ACROSS_OPPOSE_DEG) { opposed = true; break; }
+            }
+            if (opposed) break;
+        }
+        if (!opposed) continue;
+        accepted.push(c);
+    }
+    return accepted.length === 1 ? accepted[0] : null;
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Flow
 // ════════════════════════════════════════════════════════════════════
