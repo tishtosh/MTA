@@ -1240,10 +1240,12 @@ async function runFlow() {
             }
         }
         await refreshPredictions();
-        // ?busstop= deep link with a single stop: prefill the entry field so
-        // the visitor sees where they are (✕ returns to the nearby search —
-        // forceNearby, since the URL would otherwise just pick the same stop).
-        if (stopListFromURL && stopListFromURL.length === 1 && !forceNearby && !pickedStop) {
+        // ?busstop= deep link: prefill the entry field with the FIRST listed
+        // stop and anchor the board on it (plan §2) — even for multi-stop links,
+        // where shownStops() would otherwise sort by distance and anchor on the
+        // closest. ✕ returns to the nearby search (forceNearby, since the URL
+        // would otherwise just pick the same stop).
+        if (stopListFromURL.length && !forceNearby && !pickedStop && stops[0]) {
             const s = stops[0];
             pickedStop = s.StopID;
             gStopEntry.value = s.Name || `#${s.StopID}`;

@@ -166,7 +166,7 @@ const board = () => els.linesScroll.innerHTML;
       check(`multi: table keeps #${id}`, tab.includes("#" + id));
     }
     const hIds = h.match(/#\d{7}/g) || [];
-    check("multi: board anchors on the FIRST id", hIds.length >= 1 && hIds.every(x => x === ANCHOR));
+    check("multi: board anchors on the FIRST id", hIds.length >= 1 && hIds.every(x => x.slice(1) === ANCHOR));
     check("multi: status counts the URL list", (els.statusmessage?.textContent || "").startsWith(STOP.split(",").length + " stops"));
   }
 
