@@ -146,59 +146,6 @@
             pointer-events: none;
         }
 
-        /* Next arrivals: a dark LED board under the picture. The anchor
-           stop's next arrivals scroll upward through a 3-line window, like
-           the display at a real bus stop; the list (doubled for a seamless
-           loop) translates −50% on the y-axis (see .ticker-inner). */
-        .ticker {
-            background: #101418;
-            border: 1px solid #212529;
-            border-radius: 6px;
-            overflow: hidden;
-            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-            font-size: 15px;
-            color: #ffc94d;              /* LED amber */
-        }
-
-        .ticker-label {
-            display: block;
-            padding: 4px 12px;
-            background: #1b2129;
-            border-bottom: 1px solid #2d333b;
-            color: #8b949e;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 1.5px;
-        }
-
-        .ticker-window { height: 66px; overflow: hidden; }   /* 3 lines × 22px */
-
-        .ticker-inner {
-            will-change: transform;
-            animation: tickerscroll 15s linear infinite;    /* duration set per refresh */
-        }
-
-        .ticker-line {
-            display: flex;
-            align-items: center;
-            height: 22px;
-            padding: 0 12px;
-            white-space: nowrap;
-        }
-
-        .ticker-rt { flex: none; width: 9px; height: 9px; border-radius: 2px; margin-right: 9px; }
-
-        .ticker-route { flex: none; width: 58px; font-weight: 700; }
-
-        .ticker-min { flex: none; width: 64px; color: #fff; font-weight: 700; }
-
-        .ticker-dir { overflow: hidden; text-overflow: ellipsis; opacity: .85; }
-
-        .ticker-blank .ticker-dir { color: #313843; }
-
-        .ticker-static { display: block; height: 22px; line-height: 22px; padding: 0 12px; color: #8b949e; }
-
-        @keyframes tickerscroll { to { transform: translateY(-50%); } }
     </style>
 </head>
 
@@ -245,7 +192,6 @@
         <small id="linesNote" class="text-muted" aria-live="polite" style="display:block">Pick a stop above to see every line that serves it.</small>
         <div id="boardHeader"></div>
         <div id="linesScroll" class="lines-scroll"></div>
-        <div id="tickerHost" class="ticker" aria-live="polite"></div>
         <div id="tINSERTHERE"></div>
     </div>
 </div>
@@ -334,7 +280,6 @@ const gStopEntryList = document.getElementById("stopEntryList");
 const gLinesNote = document.getElementById("linesNote");
 const gBoardHeader = document.getElementById("boardHeader");
 const gLinesScroll = document.getElementById("linesScroll");
-const gTickerHost = document.getElementById("tickerHost");
 const gHoverTip = document.getElementById("hovertip");
 
 // ════════════════════════════════════════════════════════════════════
@@ -1299,10 +1244,9 @@ async function refreshPredictions() {
             return;
         }
         render();
-        // The picture and the ticker ride on the same predictions: keep them
-        // moving on every tick (single view — no tab to check for).
+        // The picture rides on the same predictions: keep it moving on every
+        // tick (single view — no tab to check for).
         renderLines();
-        renderTicker();
         scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
         const t = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
         const shownCount = shownStops().length;
@@ -1903,35 +1847,6 @@ function renderLines() {
         });
 }
 
-// The ticker: the anchor stop's next arrivals scrolling left like the
-// departures board at a real bus stop. It rides on the same predictions as
-// the picture's buses, so it moves on every 30 s refresh. Two identical
-// phrases side by side, the inner strip translating −50% forever = seamless
-// (see the .ticker CSS).
-function renderTicker() {
-    const st = pickedStopObj || shownStops()[0];
-    const label = `<span class="ticker-label">NEXT ARRIVALS</span>`;
-    if (!st) {
-        gTickerHost.innerHTML = label
-            + `<span class="ticker-static">no stops found — turn on location sharing, or search a stop name above</span>`;
-        return;
-    }
-    const name = esc(st.Name || "#" + st.StopID);
-    const preds = (st.Arrivals || []).slice().sort((a, b) => (a.min ?? 999) - (b.min ?? 999));
-    if (!preds.length) {
-        gTickerHost.innerHTML = label
-            + `<span class="ticker-static">${name} — no arrivals predicted right now</span>`;
-        return;
-    }
-    // Cap the marquee at a handful of arrivals so the loop stays readable.
-    const phrase = `${name} · next: ` + preds.slice(0, 8).map(p =>
-        `${esc(p.route)} <span class="ticker-min">${Math.max(0, Math.round(p.min))} min</span> ${esc(p.dir || "")}`
-    ).join("   ✦   ");
-    gTickerHost.innerHTML = label
-        + `<div class="ticker-window"><div class="ticker-inner">`
-        + `<span class="ticker-phrase">${phrase}</span><span class="ticker-phrase">${phrase}</span>`
-        + `</div></div>`;
-}
 
 // ════════════════════════════════════════════════════════════════════
 // Distance between two GPS points (spherical law of cosines — plenty
