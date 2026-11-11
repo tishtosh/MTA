@@ -65,7 +65,11 @@ function makeEl(id) {
     removeEventListener() {},
     appendChild(c) { this.children.push(c); return c; },
     setAttribute() {}, getAttribute() { return null; },
-    querySelector: () => null, querySelectorAll: () => [],
+    querySelector(sel) {
+      if (sel === ".bt-guide") return this._guide;
+      return null;
+    },
+    querySelectorAll: () => [],
     clientWidth: 0, clientHeight: 0, scrollWidth: 0,
     focus() {}, blur() {}, click() {}, scrollTo() {},
     getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }; },
@@ -76,7 +80,10 @@ const document = {
   getElementById: (id) => (els[id] = els[id] || makeEl(id)),
   addEventListener() {},
   createElement: (tag) => makeEl(tag),
-  querySelector: () => null,
+  querySelector(sel) {
+    if (sel === "#linesScroll") return els.linesScroll;
+    return null;
+  },
   querySelectorAll: () => []
 };
 
@@ -141,7 +148,10 @@ const board = () => els.linesScroll.innerHTML;
   if (ACROSS) {
     // the across section: counterpart label, both curb labels, two track rows
     check("across: section rendered", b.includes("Across the street"));
-    check("across: counterpart named in label", /Across the street[\s\S]{0,80}#1002135/.test(b));
+    // substring check (not a regex): node's engine rejects some quantified
+    // character-class patterns; the sub must name the counterpart within ~60 chars
+    const acrossIdx = b.indexOf("Across the street");
+    check("across: counterpart named in label", acrossIdx > -1 && b.slice(acrossIdx, acrossIdx + 60).includes("#1002135"));
     check("across: primary labeled 'At the selected stop'", b.includes("At the selected stop"));
     check("across: both C87 patterns as track rows", (b.match(/bt-line/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
@@ -156,7 +166,12 @@ const board = () => els.linesScroll.innerHTML;
   } else {
     check("135: next bus D72 @2 min", h.includes("Next bus") && h.includes("D72") && h.includes("2 min"));
     check("135: D72 row compact", b.includes("route details unavailable"));
-    check("135: NO service rows (C87 pattern lacks this corner)", !b.includes("TENLEYTOWN") && (b.match(/bt-line/g) || []).length === 0);
+    // The nearby section (within 500 ft) carries the C87 stop on the other
+    // side of Park Rd, so "no service rows" now means: none in the PRIMARY
+    // section — its board ends where the Nearby stops heading begins.
+    const nearIdx = b.indexOf('data-nearby="1"');
+    const mainOnly = nearIdx > -1 ? b.slice(0, nearIdx) : b;
+    check("135: no service rows in the primary section", !mainOnly.includes("TENLEYTOWN"));
     check("135: three ETAs on the compact row (2 · 17 · 39)", h.includes("2 min") && b.includes("then 17 · 39 min"));
   }
 
