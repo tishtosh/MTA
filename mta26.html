@@ -87,31 +87,50 @@
 
         .ac-none { padding: 4px 12px; color: #6c757d; cursor: default; }
 
-        /* The route picture (v4): one <svg> holds the whole picture — a
-           scale strip, then one row per route through the anchor stop.
-           Each row is an x-axis of travel time from the anchor stop: a
-           45-minute window (40 min of approach behind, 5 min ahead);
-           every route lives in the same svg, so the anchor stop sits at
-           the same x in every route and the picture scrolls as one piece.
-           The route code (colored, in the left gutter) replaces the old
-           badge pill; each row's destination terminal reads in the right
-           gutter. */
+        /* The board (v5): a quiet, high-contrast surface — saturated route
+           accents do the talking, stop dots stay muted, numerals are big
+           and tabular. One horizontal scroller (.lines-scroll) holds every
+           row of both curb sections; they share one x origin (the boarding
+           guide) and one px-per-foot scale, so the guides line up and the
+           board scrolls as one piece. */
         .lines-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        .lines-scroll svg { display: block; }
 
-        .line-dot { cursor: help; }       /* a stop dot (an <g> in the svg) */
+        .board { margin: 4px 2px 8px; }
 
-        .lines-routelabel { font: 700 13px/1 system-ui, -apple-system, sans-serif; }
+        .board-curblabel {
+            margin: 12px 2px 2px;
+            font: 600 11px/1.4 system-ui, -apple-system, sans-serif;
+            text-transform: uppercase; letter-spacing: .07em; color: #8a959e;
+        }
 
-        .lines-minlabel { font: 10px/1.4 system-ui, -apple-system, sans-serif; fill: #8a959e; }
+        .board-head {
+            display: flex; align-items: baseline; gap: 8px;
+            padding: 2px 2px 0;
+            font: 13px/1.4 system-ui, -apple-system, sans-serif;
+        }
+        .board-routecode { flex: none; min-width: 36px; font-weight: 700; font-size: 14px; }
+        .board-dest { opacity: .85; }
+        .board-note { font-size: 11px; opacity: .6; }
+        .board-etas {
+            margin-left: auto; white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+        .board-eta-first { font-weight: 700; font-size: 15px; }
+        .board-eta-rest { opacity: .65; }
 
-        .line-bus { font-size: 17px; }
+        .board-track { height: 34px; }      /* = B_TRACK_H in the script */
+        .board-tracksvg { display: block; }
+        .bt-guide { stroke: #495057; stroke-width: 1; opacity: .4; }
+        .bt-line { stroke-width: 2; }
+        .bt-dot { cursor: help; }
+        .bt-busmin { font: 700 10px/1 system-ui, -apple-system, sans-serif; fill: #343a40; }
 
-        /* minutes-to-arrival beneath the track (the bus rides just above) */
-        .line-busmin { font: 700 10px/1 system-ui, -apple-system, sans-serif; fill: #343a40; }
-
-        /* the row's destination terminal, in the right gutter (→ name) */
-        .lines-dest { font: 600 12px/1 system-ui, -apple-system, sans-serif; }
+        /* the stop header + next-bus summary above the board */
+        .board-stophead { margin: 8px 2px 4px; }
+        .board-stopname { margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.25; }
+        .board-stopid { margin-left: 8px; font: 500 12px/1.4 system-ui, -apple-system, sans-serif; color: #8a959e; }
+        .board-next { margin: 2px 0 0; font-size: 14px; color: #495057; }
+        .bt-next-eta { font-weight: 700; font-size: 16px; color: #212529; font-variant-numeric: tabular-nums; }
 
         /* floating tooltip that follows a hovered stop dot */
         .hovertip {
@@ -218,11 +237,13 @@
         <div id="stopEntryList" class="ac-list" role="listbox" aria-label="Matching stops" hidden></div>
     </div>
 
-    <!-- v4: one view, laid out like a real bus stop — the route picture
-         (the old Lines tab, moved in here), a 3-line next-arrivals board
-         (scrolling upward), then the arrivals table below. -->
+    <!-- v5: route picture first — the stop (name + ID) and its next bus
+         up top, then the board: one track per route+direction+destination
+         that boards here, the across-the-street stop in its own section,
+         all on one shared scale. The arrivals table follows. -->
     <div id="viewArrivals">
         <small id="linesNote" class="text-muted" aria-live="polite" style="display:block">Pick a stop above to see every line that serves it.</small>
+        <div id="boardHeader"></div>
         <div id="linesScroll" class="lines-scroll"></div>
         <div id="tickerHost" class="ticker" aria-live="polite"></div>
         <div id="tINSERTHERE"></div>
@@ -311,6 +332,7 @@ const gStopEntry = document.getElementById("stopEntry");
 const gStopEntryClear = document.getElementById("stopEntryClear");
 const gStopEntryList = document.getElementById("stopEntryList");
 const gLinesNote = document.getElementById("linesNote");
+const gBoardHeader = document.getElementById("boardHeader");
 const gLinesScroll = document.getElementById("linesScroll");
 const gTickerHost = document.getElementById("tickerHost");
 const gHoverTip = document.getElementById("hovertip");
@@ -1410,30 +1432,19 @@ const acStop = makeAutocomplete(
 );
 
 // ════════════════════════════════════════════════════════════════════
-// Route picture (v4 — the single view)
-// One row per route that serves the anchor stop, colored from the shared
-// route palette. WMATA publishes no line geometry, so each route's stops
-// are ordered as a chain (150-ft collapse + two-sided nearest-neighbor
-// walk) and drawn on an x-axis of travel time from the anchor stop: a
-// 45-minute window, 40 min behind (five 8-min bands — the approach) and
-// 5 min ahead (one band — a bus stop sign cares about what is coming)
-// with the anchor stop at the same fixed center in every row, so the rows
-// line up vertically. A hand-drawn stop sign stands on the anchor. Each
-// row is oriented with its destination arm on the right, and every 🚌 is
-// drawn just above the stop dot, N minutes of chain distance back on the
-// left, with its minutes beneath — so each bus runs left → right toward
-// the anchor, the way a real bus approaches a sign. The destination
-// terminal name(s) are written in the right gutter (one line per
-// direction that serves the stop).
-// Hovering any stop dot pulls its live arrivals once (cached for the page
-// load).
-//
-// The whole picture is one <svg> (a scale strip, then one row per route)
-// inside .lines-scroll: everything shares a single coordinate system and
-// one horizontal scrollbar, so the anchor stop sits at the same x in every
-// route and the bands/ticks/dots line up vertically. Route identity is a
-// colored route code in the left gutter (the old badge pill is gone); the
-// destination lives in the right gutter.
+// The board (v5 — the single view)
+// One row per route+direction+destination that boards the anchor stop,
+// drawn on the REAL route geometry (jRouteDetails shapes): stops the bus
+// passes before the anchor sit left of the shared boarding x, the terminal
+// right, rows read left → right, and the anchor stands on one vertical
+// guide at the same x in every row of both curb sections, so the whole
+// board scrolls as one piece. Approaching buses mark the track from the
+// live positions feed (filled when the sample is fresh, hollow when the
+// ETA is extrapolated). A route whose published pattern doesn't board the
+// anchor collapses to a header-only row; one with no route details at all
+// keeps its ETA list with a note.
+// The across-the-street resolver (≤1 unambiguous opposite stop) gets its
+// own named section, riding the same scale and the same guide.
 // ════════════════════════════════════════════════════════════════════
 
 // A small distinguishable palette; routes hash into it (stable across loads).
@@ -1445,250 +1456,6 @@ function routeColor(routeId) {
     for (const c of String(routeId)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     return ROUTE_COLORS[h % ROUTE_COLORS.length];
 }
-
-// ── Lines-v4 geometry ─────────────────────────────────────────────────
-// x = travel time from the anchor stop across a 45-minute window: 40 min
-// behind (the approach, five 8-min bands) and 5 min ahead (one band) — a
-// bus stop sign cares mostly about what is coming, not what has gone.
-// Stops past the window edge are clipped. Travel time = haversine chain
-// distance ÷ 8 mph, the speed calibrated against live predictions (median
-// ≈7.5 mph across 83 samples, range 3.8–16.8).
-const BANDS_BEHIND = [0, 8, 16, 24, 32, 40];   // behind: five 8-min bands
-const BANDS_AHEAD  = [0, 5];                   // ahead:  one 5-min band
-const BAND_PX = 110;                           // each band this wide
-const FT_PER_MIN = 8 * 5280 / 60;              // 8 mph
-
-// Minutes from the anchor stop → px from the row's center. Piecewise
-// linear: proportional within each of the side's bands. `side` −1 = behind
-// (left), +1 = ahead (right); the side picks its band table.
-function bandX(min, side) {
-    const bands = side >= 0 ? BANDS_AHEAD : BANDS_BEHIND;
-    const m = Math.max(0, Math.min(bands[bands.length - 1], min));
-    for (let k = 0; k < bands.length - 1; k++) {
-        if (m <= bands[k + 1])
-            return (k + (m - bands[k]) / (bands[k + 1] - bands[k])) * BAND_PX;
-    }
-    return (bands.length - 1) * BAND_PX;
-}
-
-// Feet between two stops (the page's haversine, "f" = feet).
-function distFt(a, b) {
-    return distance(a.Lat, a.Lon, b.Lat, b.Lon, "f");
-}
-
-// Merge stops within 150 ft: WMATA publishes every busbay as its own stop,
-// and a shared bay is not a leg of the line.
-function collapse(pts, R = 150) {
-    const out = [];
-    for (const s of pts) {
-        let twin = null, bd = R;
-        for (const q of out) { const d = distFt(q, s); if (d < bd) { bd = d; twin = q; } }
-        if (twin) { for (const r of s.Routes || []) if (!twin.Routes.includes(r)) twin.Routes.push(r); }
-        else out.push(Object.assign({}, s));
-    }
-    return out;
-}
-
-// Order a route's collapsed stops as a chain from the anchor: repeatedly
-// take the nearest unvisited stop. Each arm grows away from the anchor, so
-// the route reads armB ← anchor → armA; a step's `d` is its leg length in
-// feet. T = 5000 ft joins every leg WMATA publishes (the probe routes
-// chain with 100% coverage); stops past it (rare off-route strays) are
-// left out of the picture rather than drawing a fake jump.
-function twoSidedWalk(anchor, pool, T = 5000) {
-    const unv = pool.filter(p => p !== anchor);
-    const take = (cur) => {
-        let bi = -1, bd = Infinity;
-        for (let i = 0; i < unv.length; i++) {
-            const d = distFt(cur, unv[i]);
-            if (d < bd) { bd = d; bi = i; }
-        }
-        if (bi < 0 || bd > T) return null;
-        return { stop: unv.splice(bi, 1)[0], d: bd };
-    };
-    const armA = [], armB = [];
-    let step = take(anchor);
-    while (step) { armA.push(step); step = take(step.stop); }
-    step = take(anchor);
-    while (step) { armB.push(step); step = take(step.stop); }
-    return { armA, armB, unv };
-}
-
-// Destination matching: the live feed's DirectionText is a terminal name
-// ("Shady Grove", "Glenmont"); the collapsed stop whose name contains the
-// most of its tokens is the bus's destination. (The picture orients each
-// row with the matched arm on the right, so a bus — always drawn
-// approaching from the left — runs toward its destination.)
-const STOPW = new Set(["the", "and", "for", "from", "into", "onto", "with", "north", "south", "east", "west", "to"]);
-function toksOf(text) {
-    return String(text || "").toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 3 && !STOPW.has(t));
-}
-function destMatch(collapsed, destText) {
-    const toks = toksOf(destText);
-    if (!toks.length) return null;
-    let best = null, bs = 0;
-    for (const s of collapsed) {
-        const n = (s.Name || "").toLowerCase();
-        let sc = 0;
-        for (const t of toks) if (n.includes(t)) sc++;
-        if (sc > bs) { bs = sc; best = s; }
-    }
-    if (!bs) return null;
-    // require the match to be "strong": at least half the tokens, or all but one
-    const need = Math.min(2, Math.ceil(toks.length / 2));
-    return bs >= need ? { stop: best, score: bs, toks } : null;
-}
-
-// ── The one picture: a single <svg> ───────────────────────────────────
-// A scale strip, then one row per route, all inside one <svg> in
-// .lines-scroll. One coordinate system and one horizontal scrollbar for
-// the whole picture, so the anchor stop — the track's center — sits at the
-// same x in every route.
-const GUT = 60;                       // left gutter (route code)
-const RH = 60;                        // route row height (room for the stop sign)
-const SCALE_H = 36;                   // scale strip height
-const CX = GUT + 5 * BAND_PX;         // anchor stop x (the track's center)
-const DEST_X = CX + BAND_PX + 12;     // right gutter: the row's destination text
-const DEST_W = 150;                   // right gutter width
-
-// The track's shared furniture: five equal-width bands behind the anchor
-// (nearer = darker), one ahead, and a tick at each band boundary. `cy` is
-// the row's center line (relative to the row's top); every row draws the
-// same, so the bands — and the track's center — line up vertically across
-// rows.
-function lineTrackBg(cy) {
-    let bg = "";
-    const alphas = [0.10, 0.075, 0.055, 0.04, 0.025];
-    for (let k = 0; k < BANDS_BEHIND.length - 1; k++) {
-        bg += `<rect x="${CX - (k + 1) * BAND_PX}" y="${cy - 12}" width="${BAND_PX}" height="24" fill="#6c757d" opacity="${alphas[k]}"></rect>`;
-    }
-    bg += `<rect x="${CX}" y="${cy - 12}" width="${BAND_PX}" height="24" fill="#6c757d" opacity="0.12"></rect>`;
-    for (let k = 1; k <= BANDS_BEHIND.length - 1; k++) {
-        bg += `<line x1="${CX - k * BAND_PX}" y1="${cy - 10}" x2="${CX - k * BAND_PX}" y2="${cy + 10}" stroke="#8a959e" opacity=".5"></line>`;
-    }
-    bg += `<line x1="${CX + BAND_PX}" y1="${cy - 10}" x2="${CX + BAND_PX}" y2="${cy + 10}" stroke="#8a959e" opacity=".5"></line>`;
-    return bg;
-}
-
-// Scale strip above the routes: the same band/tick geometry, with the band
-// boundaries labeled in minutes from the anchor stop (behind 8…40, ahead 5).
-function lineScale() {
-    const cy = 14;
-    let labels = `<text class="lines-minlabel" x="${CX}" y="${SCALE_H - 3}" text-anchor="middle">0</text>`;
-    for (let k = 1; k <= BANDS_BEHIND.length - 1; k++) {
-        labels += `<text class="lines-minlabel" x="${CX - k * BAND_PX}" y="${SCALE_H - 3}" text-anchor="middle">${BANDS_BEHIND[k]}</text>`;
-        if (k < BANDS_AHEAD.length)
-            labels += `<text class="lines-minlabel" x="${CX + k * BAND_PX}" y="${SCALE_H - 3}" text-anchor="middle">${BANDS_AHEAD[k]}</text>`;
-    }
-    return `<text class="lines-minlabel" x="6" y="${cy}" dy=".35em">min</text>${lineTrackBg(cy)}${labels}`
-        + `<text class="lines-minlabel" x="${DEST_X}" y="${cy}" dy=".35em">destination</text>`;
-}
-
-// One row per route: the route code (colored) in the left gutter, the
-// track — the route's stops as dots on an x-axis of travel time from the
-// anchor stop — a stop sign on the anchor, a 🚌 just above the track (its
-// minutes beneath) for each live prediction, and the destination terminal
-// name(s) in the right gutter. The row is oriented with the destination
-// arm on the right, so every bus approaches left → right. Dots past the
-// window edge (40 min behind / 5 ahead) are clipped.
-function lineRow(route, st, arrivals) {
-    const color = routeColor(route);
-    const onRoute = (allStopsCache || []).filter(s => s.Lat != null && (s.Routes || []).includes(route));
-    if (!onRoute.length) return "";                 // no coordinates — nothing to draw
-    const collapsed = collapse(onRoute);
-    // Anchor at the picture's stop (or the collapsed twin that swallowed it).
-    let anchor = collapsed.find(c => String(c.StopID) === String(st.StopID));
-    if (!anchor) {
-        let bd = Infinity;
-        for (const c of collapsed) {
-            const d = distFt(c, st);
-            if (d < bd) { bd = d; anchor = c; }
-        }
-    }
-    if (!anchor) return "";
-    const { armA, armB } = twoSidedWalk(anchor, collapsed);
-
-    const cy = RH / 2;
-    let row = `<text class="lines-routelabel" x="6" y="${cy}" dy=".35em" fill="${color}">${esc(route)}</text>`;
-    row += lineTrackBg(cy);
-
-    let dots = "";
-    const dot = (s, cumMin, side, extra, title) => {
-        const lim = side >= 0 ? BANDS_AHEAD[BANDS_AHEAD.length - 1]
-                              : BANDS_BEHIND[BANDS_BEHIND.length - 1];
-        if (cumMin > lim) return;
-        const x = CX + side * bandX(cumMin, side);
-        const t = title ? `<title>${esc(title)}</title>` : "";
-        const cls = extra ? "line-dot " + extra : "line-dot";
-        const c = `<circle cx="${x.toFixed(1)}" cy="${cy}" r="${extra === "here" ? 6 : 5}" fill="${color}" stroke="#fff" stroke-width="2"/>${t}`;
-        // The anchor stop also gets a soft halo so it reads at a glance.
-        const halo = extra === "here" ? `<circle cx="${x.toFixed(1)}" cy="${cy}" r="10" fill="${color}" opacity=".2"/>` : "";
-        dots += `<g class="${cls}" data-stop="${esc(String(s.StopID))}">${halo}${c}</g>`;
-    };
-    let cum = 0;
-    for (const s of armB) { cum += s.d / FT_PER_MIN; dot(s.stop, cum, -1); }
-    dot(anchor, 0, 0, "here", `${st.Name || "#" + st.StopID} (anchor stop)`);
-    cum = 0;
-    for (const s of armA) { cum += s.d / FT_PER_MIN; dot(s.stop, cum, +1); }
-
-    // A 🚌 per live prediction, deduped by vehicle (smallest Minutes). The
-    // feed says "N min from this stop" and the bus is approaching, so it is
-    // N min back — on the arm opposite its destination (DirectionText → best
-    // name match; if that fails, the arm whose span still fits N min; else
-    // the left arm). Buses outside the window are clipped like everything else.
-    const spanA = armA.reduce((c, s) => c + s.d, 0) / FT_PER_MIN;
-    const spanB = armB.reduce((c, s) => c + s.d, 0) / FT_PER_MIN;
-    const seen = new Map();                        // VehicleID → { min, dir }
-    for (const a of arrivals || []) {
-        if (a.route !== route || a.vehicle == null || a.min == null) continue;
-        const prev = seen.get(a.vehicle);
-        if (!prev || a.min < prev.min) seen.set(a.vehicle, { min: a.min, dir: a.dir });
-    }
-    let buses = "";
-    for (const b of seen.values()) {
-        let side = -1;
-        const dest = destMatch(collapsed, b.dir);
-        if (dest) {
-            const inA = armA.some(s => s.stop === dest.stop);
-            const inB = armB.some(s => s.stop === dest.stop);
-            side = inA ? -1 : (inB ? +1 : -1);    // approaching from the opposite arm
-        } else if (b.min > spanB && b.min <= spanA) side = +1;   // left arm too short → right
-        else if (b.min > spanA && b.min <= spanB) side = -1;     // right arm too short → left
-        const lim = side >= 0 ? BANDS_AHEAD[BANDS_AHEAD.length - 1]
-                              : BANDS_BEHIND[BANDS_BEHIND.length - 1];
-        if (b.min > lim) continue;                 // outside the −40/+5 window
-        const x = CX + side * bandX(b.min, side);
-        buses += `<g class="line-bus" transform="translate(${x.toFixed(1)},${cy})">`
-            + `<text text-anchor="middle" dy=".35em">🚌</text>`
-            + `<text class="line-busmin" text-anchor="middle" y="17">${b.min} min</text>`
-            + `<title>${esc(route)} — about ${b.min} min from this stop</title></g>`;
-    }
-
-    // The bus-stop sign on the anchor stop: a pole and a plate in the route's
-    // color (the FA subset has no bus-stop glyph, so it is hand-drawn). It
-    // stands over the dot; the minutes sit under each bus, clear of the pole.
-    const sign = `<g class="line-sign">`
-        + `<line x1="${CX}" y1="${cy - 1}" x2="${CX}" y2="${cy - 14}" stroke="#495057" stroke-width="2.5"/>`
-        + `<rect x="${CX - 17}" y="${cy - 28}" width="34" height="14" rx="3" fill="${color}" stroke="#fff" stroke-width="1.5"/>`
-        + `<text x="${CX}" y="${cy - 21}" dy=".35em" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">${esc(route)}</text>`
-        + `</g>`;
-
-    row += dots + sign + buses;
-    return row;
-}
-
-// Assembles the whole picture into one <svg>: the scale strip, then one row
-// per route. A route without coordinates returns "" and takes no space.
-function linesSvg(st, routes, arrivals) {
-    const rows = routes.map(r => lineRow(r, st, arrivals)).filter(r => r);
-    const w = GUT + (BANDS_BEHIND.length - 1 + BANDS_AHEAD.length - 1) * BAND_PX + 8;
-    const h = SCALE_H + rows.length * RH;
-    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
-        + `<g>${lineScale()}</g>`
-        + rows.map((r, i) => `<g transform="translate(0,${SCALE_H + i * RH})">${r}</g>`).join("")
-        + `</svg>`;
-}
-
 // The hover card: a stop's live arrivals, fetched once per page load and
 // then cached (a hover is a peek — the arrivals table already refreshes the
 // stops it tracks; the dots it peeks at are usually not among them).
@@ -1765,61 +1532,123 @@ gLinesScroll.addEventListener("mouseout", e => {
 // A row scrolling out from under the cursor also retires the card.
 gLinesScroll.addEventListener("scroll", hideHoverTip, true);
 
-// The stop the picture and the ticker anchor on: the picked stop, or (no
-// pick — nearby mode) the closest nearby stop, shownStops()[0] (the list is
+// The stop the board anchors on: the picked stop, or (no pick — nearby
+// mode) the closest nearby stop, shownStops()[0] (the list is
 // distance-sorted, and the view never prompts). With the directory loaded,
-// its entry is preferred (canonical name and coordinates).
+// its entry is preferred (canonical name, coordinates, and the full
+// Routes list the service rows need). A directory that is still loading or
+// failed must never block the board (plan §2) — the stop object at hand is
+// a sufficient fallback, and a name can also come from jPredictions.
 function anchorStop() {
-    if (pickedStop)
-        return allStopsCache && allStopsCache.find(s => String(s.StopID) === String(pickedStop));
-    const near = shownStops()[0];
-    if (!near) return null;
-    return (allStopsCache && allStopsCache.find(s => String(s.StopID) === String(near.StopID))) || near;
+    const want = String(pickedStop || ((shownStops()[0] || {}).StopID) || "");
+    if (!want) return null;
+    if (allStopsCache) {
+        const hit = allStopsCache.find(s => String(s.StopID) === want);
+        if (hit) return hit;
+    }
+    return shownStops().find(s => String(s.StopID) === want) || null;
 }
+
+// Stop header + next-bus summary (plan §2): name + ID, then the earliest
+// current prediction in one line.
+function boardHeaderHtml(st, arrivals) {
+    const id = String(st.StopID || "");
+    const label = st.Name || `#${id}`;
+    const next = (arrivals || [])[0] || null;
+    let nextLine;
+    if (next) {
+        const bits = [
+            `<b style="color:${routeColor(next.route)}">${esc(next.route)}</b>`,
+            esc(next.heads || next.dir || "")
+        ].filter(Boolean).join(" · ");
+        nextLine = `Next bus: ${bits} — <span class="bt-next-eta">${esc(fmtEta(next.min))}</span>`;
+    } else if (st.Error) {
+        nextLine = "Next bus: <span class=\"text-muted\">arrivals unavailable — retrying</span>";
+    } else {
+        nextLine = "Next bus: <span class=\"text-muted\">no upcoming predictions</span>";
+    }
+    return `<div class="board-stophead">`
+        + `<div class="board-stopname">${esc(label)}</div>`
+        + (st.Name ? `<span class="board-stopid">#${esc(id)}</span>` : "")
+        + `<div class="board-next">${nextLine}</div>`
+        + `</div>`;
+}
+
+// Paint the board from fully resolved inputs.
+function renderBoardNow(anchorId, arrivals, routeDetails, posRows) {
+    const rows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
+    for (const r of rows) r.busMarkers = [];   // piece 8 joins live/estimated positions
+    gLinesScroll.innerHTML = rows.length ? boardHtml(boardGeometry(rows), rows) : "";
+    gLinesNote.innerHTML = rows.length
+        ? `<span class="text-muted">dot = stop along the line · diamond = your stop / terminal · arrow = direction of travel</span>`
+        : "";
+}
+
+// (Re)draw the board: resolve the anchor, paint the header at once, then
+// fetch whatever route details are not cached plus the current bus-position
+// feed in parallel and paint. `boardToken` discards stale results when the
+// selection changes mid-flight.
+let boardToken = 0;
 
 function renderLines() {
     hideHoverTip();
-    if (!allStopsCache) {
-        // The directory is still loading (or a previous attempt failed):
-        // ask for it, then come back for the real picture.
-        const want = pickedStop || ((shownStops()[0] || {}).StopID) || null;
-        gLinesNote.textContent = "loading the stop list…";
-        gLinesScroll.innerHTML = "";
-        loadStopDirectory()
-            .then(() => {
-                const now = pickedStop || ((shownStops()[0] || {}).StopID) || null;
-                if (now === want) renderLines();
-            })
-            .catch(() => {
-                const now = pickedStop || ((shownStops()[0] || {}).StopID) || null;
-                if (now === want) {
-                    gLinesNote.textContent = "could not load the stop list — the picture needs it.";
-                    gLinesScroll.innerHTML = "";
-                }
-            });
-        return;
-    }
+    const token = ++boardToken;
     const st = anchorStop();
     if (!st) {
-        gLinesNote.textContent = pickedStop
-            ? `no stop #${pickedStop} in the DC system`
-            : "no nearby stops to picture — use the locate button or search a stop name above";
+        gBoardHeader.innerHTML = "";
         gLinesScroll.innerHTML = "";
+        gLinesNote.textContent = "no stops to show — use the locate button or search a stop name above";
         return;
     }
-    const routes = (st.Routes || []).slice().sort((a, b) => a.localeCompare(b));
-    if (!routes.length) {
-        gLinesNote.textContent = `${st.Name || "#" + st.StopID} — no routes in the stop list (it may be out of date)`;
-        gLinesScroll.innerHTML = "";
+    const anchorId = String(st.StopID);
+    // Live arrivals live on the tracked list stop (what refreshPredictions
+    // fills); a directory entry — a raw jStops row — never has them. Keep
+    // the directory for identity/name/coords, take Arrivals + Error from
+    // the tracked stop so the post-directory re-render keeps predictions.
+    const tracked = (pickedStopObj && String(pickedStopObj.StopID) === anchorId)
+        ? pickedStopObj
+        : shownStops().find(s => String(s.StopID) === anchorId) || null;
+    const arr = tracked ? (tracked.Arrivals || []) : [];
+    const headSt = tracked
+        ? Object.assign({}, st, { Error: tracked.Error || null, Arrivals: arr })
+        : st;
+    gBoardHeader.innerHTML = boardHeaderHtml(headSt, arr);
+    // The directory is NOT a hard dependency (plan §2): if it is not loaded
+    // yet, kick off the load and come back for a better name, the Routes
+    // list (service rows) and the across-the-street section — but paint
+    // whatever we have right now either way.
+    if (!allStopsCache)
+        loadStopDirectory()
+            .then(() => { if (token === boardToken) renderLines(); })
+            .catch(() => {});
+    // Every route the board should know: what is currently predicted, plus
+    // what the directory says boards here (service rows for directions with
+    // no current prediction).
+    const routes = [...new Set([
+        ...(st.Routes || []),
+        ...arr.map(p => p.route)
+    ].map(r => String(r || "").toUpperCase()).filter(Boolean))];
+    const have = {};
+    const missing = [];
+    for (const r of routes) {
+        if (routeDetailsCache[r] !== undefined) have[r] = routeDetailsCache[r];
+        else missing.push(r);
+    }
+    const paint = (pos) => {
+        if (token !== boardToken) return;    // the selection moved on mid-flight
+        renderBoardNow(anchorId, arr, have, pos ? pos.rows : []);
+    };
+    const posP = fetchBusPositions();
+    if (!missing.length) {
+        posP.then(paint);
         return;
     }
-    // The bus icons ride on the anchor stop's live predictions. A ?busstop=
-    // deep link never materializes pickedStopObj, so fall back to the stop
-    // the arrivals table tracks (the same stop in that mode).
-    const arrivals = (pickedStopObj ? pickedStopObj.Arrivals : (shownStops()[0] || {}).Arrivals) || [];
-    gLinesNote.innerHTML = `${esc(st.Name || "#" + st.StopID)} <span class="text-muted">(#${esc(st.StopID)})</span> · ${routes.length} line${routes.length > 1 ? "s" : ""}`
-        + ` <span class="text-muted">· window: 40 min behind / 5 min ahead (8-min bands, edges clipped) · sign = this stop · 🚌 = estimated bus position, minutes below · hover a dot for its arrivals</span>`;
-    gLinesScroll.innerHTML = linesSvg(st, routes, arrivals);
+    Promise.all([...missing.map(r => fetchRouteDetails(r)), posP])
+        .then(list => {
+            const pos = list[list.length - 1];
+            list.slice(0, -1).forEach((e, i) => { have[missing[i]] = e || null; });
+            paint(pos);
+        });
 }
 
 // The ticker: the anchor stop's next arrivals scrolling left like the
