@@ -921,6 +921,128 @@ function boardGeometry(rows) {
     };
 }
 
+
+// ── Board drawing (plan §3) ──────────────────────────────────────────
+// One HTML row per pattern: a header with the route code, "toward
+// <destination>" and the ETAs (the first emphasized, the rest ascending),
+// then an SVG track band. Every track band shares ONE x origin (the
+// boarding guide) and ONE px-per-foot scale (boardGeometry), and all rows
+// of both curb sections sit in one horizontal scroll area, so the guide
+// lines up and the whole board scrolls together.
+const B_PAD_L = 16;          // track-svg padding on the approach side
+const B_PAD_R = 30;          // …and past the terminal (the direction arrow)
+const B_TRACK_H = 34;        // track band height
+const B_RH = 64;             // full row height (header + track + breathing room)
+
+// "3 min" / "Due" — a zero-minute prediction reads "Due" (plan §2).
+function fmtEta(min) {
+    const m = Math.max(0, Math.round(min));
+    return m === 0 ? "Due" : `${m} min`;
+}
+
+// The first ETA emphasized, the later ones ascending, each with units.
+function boardEtasHtml(mins) {
+    const list = (mins || []).slice(0, 8);
+    if (!list.length)
+        return `<span class="board-eta-rest">no upcoming predictions</span>`;
+    let h = `<span class="board-eta-first">${esc(fmtEta(list[0]))}</span>`;
+    if (list.length > 1)
+        h += `<span class="board-eta-rest"> · ${list.slice(1).map(fmtEta).join(" · ")}</span>`;
+    return h;
+}
+
+// One row's track band as an SVG string. `g` is a boardGeometry row
+// ({stops, negPx, posPx, termX, row, …}), `originX` the shared boarding x
+// in this svg's coordinates, `W` the row's full width (equal for every row,
+// so the guides align), `color` the route accent, `busMarkers` piece 8's
+// [{x, min, live}] in the same signed px space.
+function trackRowSvg(g, originX, W, color, busMarkers) {
+    const cy = B_TRACK_H / 2;
+    const px = (v) => originX + v;
+    const X = (v) => px(v).toFixed(1);
+    let s = `<svg class="board-tracksvg" width="${W}" height="${B_TRACK_H}" viewBox="0 0 ${W} ${B_TRACK_H}" aria-hidden="true">`;
+    // The boarding guide: one vertical line through every row.
+    s += `<line class="bt-guide" x1="${originX}" y1="3" x2="${originX}" y2="${B_TRACK_H - 3}"/>`;
+    // The baseline, from the far approach through the guide to the terminal end.
+    s += `<line class="bt-line" x1="${X(-g.negPx)}" y1="${cy}" x2="${X(g.posPx)}" y2="${cy}" stroke="${color}"/>`;
+    // Direction of travel: an arrowhead at the right end, pointing right.
+    s += `<path class="bt-arrow" d="M ${px(g.posPx) - 9} ${cy - 4.5} L ${px(g.posPx) + 1} ${cy} L ${px(g.posPx) - 9} ${cy + 4.5} Z" fill="${color}"/>`;
+    // Muted stop dots: every ordered occurrence except the anchor and the
+    // terminal (both drawn as diamonds). A dot is a data point the reader
+    // can select; the <title> is the fallback reveal (piece 11 wires the
+    // tap/click/keyboard one).
+    for (const st of g.stops) {
+        if (st.anchor || st.terminal) continue;
+        s += `<circle class="bt-dot" cx="${X(st.x)}" cy="${cy}" r="3.5" fill="${color}" opacity=".45">`
+           + `<title>${esc(st.name || st.id)} (#${esc(st.id)})</title></circle>`;
+    }
+    // The terminal diamond. When the terminal IS the boarding stop (a short
+    // or terminal-only route), nudge it right so the two markers stay
+    // distinct (plan §3: keep both legible).
+    let tx = g.termX;
+    if (Math.abs(tx) < 10) tx += 12;
+    s += `<rect class="bt-term" x="${(originX + tx - 4.5).toFixed(1)}" y="${cy - 4.5}" width="9" height="9" rx="1.5" `
+       + `transform="rotate(45 ${originX + tx} ${cy})" fill="${color}">`
+       + `<title>${esc(g.row.dest || g.row.route)} — terminal</title></rect>`;
+    // Approaching buses (piece 8 supplies these): a marker on the track,
+    // the ETA above it; live samples filled, estimates hollow.
+    for (const b of busMarkers || []) {
+        const fill = b.live ? `fill="${color}"` : `fill="none" stroke="${color}" stroke-width="1.5"`;
+        s += `<g class="bt-bus${b.live ? " bt-bus-live" : ""}" transform="translate(${X(b.x)},${cy})">`
+           + `<circle r="6" ${fill}/>`
+           + `<text class="bt-busmin" y="-10" text-anchor="middle">${esc(b.min === 0 ? "Due" : String(b.min))}</text>`
+           + `<title>${esc(g.row.route)} — ${b.min === 0 ? "Due" : b.min + " min"}${b.live ? "" : " (estimated)"}</title></g>`;
+    }
+    // The anchor diamond on the guide, over a soft halo so it reads at a glance.
+    const aName = (g.row.anchorPatStop || {}).name || g.row.anchorId || "";
+    const aId = (g.row.anchorPatStop || {}).id || g.row.anchorId || "";
+    s += `<circle class="bt-anchor-halo" cx="${originX}" cy="${cy}" r="9" fill="${color}" opacity=".18"/>`
+       + `<rect class="bt-anchor" x="${originX - 5.5}" y="${cy - 5.5}" width="11" height="11" rx="2" `
+       + `transform="rotate(45 ${originX} ${cy})" fill="${color}" stroke="#fff" stroke-width="1.5">`
+       + `<title>${esc(aName || "your stop")} (#${esc(aId)}) — boarding</title></rect>`;
+    return s + `</svg>`;
+}
+
+// One row's header: the route code (saturated accent), the direction +
+// destination, and the ETA list. Stays readable above the track for every
+// row, including the compact "route details unavailable" ones.
+function boardRowHead(row, color) {
+    const dest = (row.kind === "track" || row.kind === "service")
+        ? (row.dest ? `toward ${esc(row.dest)}` : "")
+        : esc(row.dest || row.dir || "");
+    const note = row.kind !== "track" && row.note
+        ? `<span class="board-note">${esc(row.note)}</span>` : "";
+    return `<div class="board-head">`
+        + `<span class="board-routecode" style="color:${color}">${esc(row.route)}</span>`
+        + (dest ? `<span class="board-dest">${dest}</span>` : "")
+        + note
+        + `<span class="board-etas">${boardEtasHtml(row.mins)}</span>`
+        + `</div>`;
+}
+
+// The whole board as HTML: one row block per pattern (header + track band).
+// Compact rows (no usable track) get the header only. The caller wraps the
+// result in the shared scroll container; both curb sections pass through
+// the same boardGeometry, so they share the scale and the guide.
+function boardHtml(geom, rows) {
+    const trackRows = (geom.rows || []).filter(g => g && g.hasTrack);
+    const maxNeg = trackRows.reduce((m, g) => Math.max(m, g.negPx), 0);
+    const maxPos = trackRows.reduce((m, g) => Math.max(m, g.posPx), 0);
+    const originX = B_PAD_L + maxNeg;
+    const W = Math.ceil(originX + maxPos + B_PAD_R);
+    let out = "";
+    for (let i = 0; i < (rows || []).length; i++) {
+        const row = rows[i], g = geom.rows[i];
+        const color = routeColor(row.route);
+        row.anchorId = (row.anchorPatStop || {}).id || row.anchorId;
+        const track = g && g.hasTrack
+            ? `<div class="board-track">${trackRowSvg(g, originX, W, color, row.busMarkers)}</div>`
+            : "";
+        out += `<div class="board-row" style="height:${B_RH}px">${boardRowHead(row, color)}${track}</div>`;
+    }
+    return `<div class="board" style="width:${W}px">${out}</div>`;
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Flow
 // ════════════════════════════════════════════════════════════════════
