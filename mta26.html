@@ -802,6 +802,125 @@ function acrossTheStreet(anchor, candidates, patterns) {
     return accepted.length === 1 ? accepted[0] : null;
 }
 
+// ── Board geometry (plan §3) ──────────────────────────────────────────
+// Schematic signed along-route distance from the boarding occurrence:
+// stops the bus passes before the anchor sit LEFT of the shared boarding x
+// (the approach), the terminal RIGHT, and every row of both curb sections
+// shares ONE pixels-per-foot scale, so the boarding guides line up.
+// Distance is the cumulative arc along the published shape when the stops'
+// projections follow the published stop order; otherwise the straight-line
+// distance between consecutive ordered stops (plan §3, first bullet).
+
+const BOARD_MAX_SIDE_PX = 280;      // the board's longest path scales to this
+const BOARD_MIN_EXTENT_FT = 3000;   // short/terminal-only routes: scale floor
+const BOARD_MIN_EXTENT_PX = 120;    // …and the baseline extends at least this far each side
+const LAT_FT_PER_DEG = 364000;      // feet per degree of latitude (local projection)
+
+// Flat feet-space around a reference point — good enough for projection.
+function localXY(pt, ref) {
+    const kx = LAT_FT_PER_DEG * Math.cos(ref.lat * Math.PI / 180);
+    return { x: (pt.lon - ref.lon) * kx, y: (pt.lat - ref.lat) * LAT_FT_PER_DEG };
+}
+
+// Arc position (ft along the shape polyline) of the nearest point on the
+// shape to a stop; null when the shape is empty/too short.
+function projArcOnShape(stop, shape, cum, ref) {
+    if (shape.length < 2 || stop.lat == null || stop.lon == null) return null;
+    const p = localXY(stop, ref);
+    let best = null;
+    for (let i = 1; i < shape.length; i++) {
+        const a = localXY(shape[i - 1], ref), b = localXY(shape[i], ref);
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const L2 = dx * dx + dy * dy;
+        let t = L2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const qx = a.x + t * dx, qy = a.y + t * dy;
+        const d2 = (qx - p.x) * (qx - p.x) + (qy - p.y) * (qy - p.y);
+        if (!best || d2 < best.d2) best = { d2, arc: cum[i - 1] + t * (cum[i] - cum[i - 1]) };
+    }
+    return best ? best.arc : null;
+}
+
+// Cumulative distance (ft) to each stop occurrence of one pattern.
+// mode "shape" = projected onto the published shape — accepted only when the
+// projections follow the published stop order (50 ft tolerance); otherwise
+// mode "stops" = accumulated straight-line legs between consecutive stops.
+function trackArcs(pattern) {
+    const stops = (pattern && pattern.stops) || [];
+    if (!stops.length) return { arc: [], mode: "none" };
+    const shape = (pattern && pattern.shape) || [];
+    if (shape.length >= 2) {
+        const ref = shape[0];
+        const cum = [0];
+        for (let i = 1; i < shape.length; i++)
+            cum.push(cum[i - 1] + distance(shape[i - 1].lat, shape[i - 1].lon, shape[i].lat, shape[i].lon, "f"));
+        const proj = stops.map(s => projArcOnShape(s, shape, cum, ref));
+        if (proj.every(v => v != null)) {
+            let mono = true;
+            for (let i = 1; i < proj.length; i++)
+                if (proj[i] < proj[i - 1] - 50) { mono = false; break; }
+            if (mono) return { arc: proj, mode: "shape" };
+        }
+    }
+    const arc = [0];
+    for (let i = 1; i < stops.length; i++) {
+        const leg = stops[i - 1].lat != null && stops[i].lat != null
+            ? distance(stops[i - 1].lat, stops[i - 1].lon, stops[i].lat, stops[i].lon, "f") : 0;
+        arc.push(arc[i - 1] + leg);
+    }
+    return { arc, mode: "stops" };
+}
+
+// One row's layout in feet: signed distance from the anchor occurrence to
+// every stop occurrence, the extent on each side, and the terminal
+// occurrence (the pattern's last stop).
+function rowLayout(pattern, anchorIdx) {
+    const { arc, mode } = trackArcs(pattern);
+    const a = arc[anchorIdx] || 0;
+    const signed = arc.map(v => v - a);
+    let negFt = 0, posFt = 0;
+    for (const v of signed) { if (v < 0) negFt = Math.max(negFt, -v); else posFt = Math.max(posFt, v); }
+    return { mode, signed, negFt, posFt, termIdx: signed.length - 1 };
+}
+
+// One scale for the whole board: the longest path across all rows (both
+// curb sections) maps to BOARD_MAX_SIDE_PX; a floor keeps short routes from
+// collapsing to a dot.
+function boardScale(layouts) {
+    let maxFt = 0;
+    for (const l of layouts || []) if (l) maxFt = Math.max(maxFt, l.negFt, l.posFt);
+    return BOARD_MAX_SIDE_PX / Math.max(maxFt, BOARD_MIN_EXTENT_FT);
+}
+
+// Pixel geometry for every board row: per-stop x (shared scale, anchor at 0),
+// the baseline extents (padded to the minimum), and the terminal x.
+// Compact rows (no pattern) carry no track.
+function boardGeometry(rows) {
+    const trackable = (r) => r && (r.kind === "track" || r.kind === "service") && r.pattern;
+    const layouts = (rows || []).map(r => trackable(r) ? rowLayout(r.pattern, Math.max(0, r.anchorIdx | 0)) : null);
+    const scale = boardScale(layouts.filter(Boolean));
+    return {
+        scale,
+        rows: (rows || []).map((r, i) => {
+            const l = layouts[i];
+            if (!l || !r) return { row: r, hasTrack: false };
+            const aIdx = Math.max(0, r.anchorIdx | 0);
+            const stops = l.signed.map((v, j) => {
+                const s = r.pattern.stops[j] || {};
+                return { id: s.id, name: s.name, x: v * scale,
+                         anchor: j === aIdx, terminal: j === l.termIdx };
+            });
+            return {
+                row: r, hasTrack: true, mode: l.mode, stops,
+                negPx: Math.max(l.negFt * scale, BOARD_MIN_EXTENT_PX),
+                posPx: Math.max(l.posFt * scale, BOARD_MIN_EXTENT_PX),
+                termX: stops[l.termIdx] ? stops[l.termIdx].x : 0,
+                termId: stops[l.termIdx] ? stops[l.termIdx].id : ""
+            };
+        })
+    };
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Flow
 // ════════════════════════════════════════════════════════════════════
