@@ -17,7 +17,8 @@ const SUITES = [
   ["centeringtest.js"],    // piece 12: narrow-screen centering
   ["fullpagetest.js", "1002130"],   // piece 13: whole page, live C87/D72 captures
   ["fullpagetest.js", "1002135"],   // piece 13: whole page, opposite corner
-  ["fullpagetest.js", "1002130", "across"]  // piece 13: synthesized across section
+  ["fullpagetest.js", "1002130", "across"],      // piece 13: synthesized across section
+  ["fullpagetest.js", "1002135,1002130"]         // piece 14: multiple-ID deep link (plan §2)
 ];
 
 let failed = 0;

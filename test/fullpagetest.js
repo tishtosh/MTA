@@ -2,7 +2,9 @@
 // mta26.html via lib/extract) with a DOM stub and a network boundary
 // (fetch) backed by sanitized fixtures in test/fixtures/, loads
 // ?busstop=<id>, and asserts the board the visitor actually gets.
-// Usage: node fullpagetest.js [1002130 | 1002135] [across]
+// Usage: node fullpagetest.js [1002130 | 1002135 | 1002135,1002130] [across]
+//   A comma list is a multiple-ID deep link (plan §2): the arrivals table
+//   keeps every ID and the FIRST ID is the default board anchor.
 //   "across" swaps in route_C87_across.json (live C87 + the opposite
 //   corner added to Direction1) so the "Across the street" section
 //   renders — the positive path the locked live data cannot show (in
@@ -14,6 +16,8 @@ const vm = require("vm");
 const { pageScript } = require("./lib/extract");
 
 const STOP = process.argv[2] || "1002130";
+const ANCHOR = String(STOP).split(",")[0];   // multi-ID link: first ID anchors the board
+const MULTI = String(STOP).includes(",");
 const ACROSS = process.argv[3] === "across";
 const script = pageScript();
 const FX = (n) => path.join(__dirname, "fixtures", n);
@@ -122,7 +126,7 @@ const board = () => els.linesScroll.innerHTML;
   const h = header(), b = board();
 
   check("board header painted", h !== "");
-  check("header: stop ID shown", h.includes("#" + STOP));
+  check("header: stop ID shown", h.includes("#" + ANCHOR));
   check("header: canonical directory name", h.includes("Park Rd NW+19 St NW"));
   check("header: Next bus line", h.includes("Next bus:"));
 
@@ -142,7 +146,7 @@ const board = () => els.linesScroll.innerHTML;
     check("across: both C87 patterns as track rows", (b.match(/bt-line/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
     check("across: prompt refresh re-fetches in-scope stops (7 fetches)", fetchCount === 7);
-  } else if (STOP === "1002130") {
+  } else if (ANCHOR === "1002130") {
     check("130: next bus D72 @14 min", /Next bus:.*D72[\s\S]*?14 min/.test(h));
     check("130: D72 row is compact (route details unavailable)", b.includes("route details unavailable"));
     check("130: D72 compact keeps its live headsign", b.includes("North to Van Ness"));
@@ -154,6 +158,16 @@ const board = () => els.linesScroll.innerHTML;
     check("135: D72 row compact", b.includes("route details unavailable"));
     check("135: NO service rows (C87 pattern lacks this corner)", !b.includes("TENLEYTOWN") && (b.match(/bt-line/g) || []).length === 0);
     check("135: three ETAs on the compact row (2 · 17 · 39)", /2 min[\s\S]{0,80}17 min[\s\S]{0,80}39 min/.test(h) || /17 min/.test(b) && /39 min/.test(b));
+  }
+
+  if (MULTI) {
+    const tab = els.tINSERTHERE.innerHTML;
+    for (const id of STOP.split(",")) {
+      check(`multi: table keeps #${id}`, tab.includes("#" + id));
+    }
+    const hIds = h.match(/#\d{7}/g) || [];
+    check("multi: board anchors on the FIRST id", hIds.length >= 1 && hIds.every(x => x === ANCHOR));
+    check("multi: status counts the URL list", (els.statusmessage?.textContent || "").startsWith(STOP.split(",").length + " stops"));
   }
 
   check("no across section with live fixtures", !ACROSS ? !b.includes("Across the street") : true);
