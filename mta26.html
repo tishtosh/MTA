@@ -124,6 +124,23 @@
         .bt-line { stroke-width: 2; }
         .bt-dot { cursor: help; }
         .bt-busmin { font: 700 10px/1 system-ui, -apple-system, sans-serif; fill: #343a40; }
+        .bt-allstops {
+            flex: none; margin-left: 8px; padding: 0 7px;
+            font: 500 11px/1.6 system-ui, -apple-system, sans-serif;
+            color: #343a40; background: none; border: 1px solid #ced4da; border-radius: 4px;
+            cursor: pointer;
+        }
+        .bt-allstops:hover { background: #f1f3f5; }
+        .bt-allstops:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        /* Stroke-based ring: `outline` does not paint on SVG shapes in
+           Blink. opacity 1 lifts the muted dot so the ring reads clearly. */
+        .bt-stop:focus { stroke: #0056b3; stroke-width: 3; opacity: 1; }
+        .bt-stoplist {
+            margin: 6px 0 2px; padding-left: 20px;
+            font: 12px/1.55 system-ui, -apple-system, sans-serif;
+            color: #343a40; font-variant-numeric: tabular-nums;
+        }
+        .bt-stoplist .bt-mark { font-weight: 700; color: #0056b3; }
 
         /* the stop header + next-bus summary above the board */
         .board-stophead { margin: 8px 2px 4px; }
@@ -1056,7 +1073,7 @@ function trackRowSvg(g, originX, W, color, busMarkers) {
     const cy = B_TRACK_H / 2;
     const px = (v) => originX + v;
     const X = (v) => px(v).toFixed(1);
-    let s = `<svg class="board-tracksvg" width="${W}" height="${B_TRACK_H}" viewBox="0 0 ${W} ${B_TRACK_H}" aria-hidden="true">`;
+    let s = `<svg class="board-tracksvg" width="${W}" height="${B_TRACK_H}" viewBox="0 0 ${W} ${B_TRACK_H}">`;
     // The boarding guide: one vertical line through every row.
     s += `<line class="bt-guide" x1="${originX}" y1="3" x2="${originX}" y2="${B_TRACK_H - 3}"/>`;
     // The baseline, from the far approach through the guide to the terminal end.
@@ -1064,12 +1081,14 @@ function trackRowSvg(g, originX, W, color, busMarkers) {
     // Direction of travel: an arrowhead at the right end, pointing right.
     s += `<path class="bt-arrow" d="M ${px(g.posPx) - 9} ${cy - 4.5} L ${px(g.posPx) + 1} ${cy} L ${px(g.posPx) - 9} ${cy + 4.5} Z" fill="${color}"/>`;
     // Muted stop dots: every ordered occurrence except the anchor and the
-    // terminal (both drawn as diamonds). A dot is a data point the reader
-    // can select; the <title> is the fallback reveal (piece 11 wires the
-    // tap/click/keyboard one).
+    // terminal (both drawn as diamonds). Each marker is a data point the
+    // reader can select — tabindex + role + aria-label keep it reachable by
+    // keyboard even when dots overlap; the <title> is the native fallback
+    // (the hover card is wired in piece 11's delegated handlers).
     for (const st of g.stops) {
         if (st.anchor || st.terminal) continue;
-        s += `<circle class="bt-dot" cx="${X(st.x)}" cy="${cy}" r="3.5" fill="${color}" opacity=".45">`
+        s += `<circle class="bt-dot bt-stop" data-stop="${esc(st.id)}" cx="${X(st.x)}" cy="${cy}" r="3.5" fill="${color}" opacity=".45" `
+           + `tabindex="0" role="img" aria-label="Stop: ${esc(st.name || "#" + st.id)} (${esc(st.id)})">`
            + `<title>${esc(st.name || st.id)} (#${esc(st.id)})</title></circle>`;
     }
     // The terminal diamond. When the terminal IS the boarding stop (a short
@@ -1077,14 +1096,16 @@ function trackRowSvg(g, originX, W, color, busMarkers) {
     // distinct (plan §3: keep both legible).
     let tx = g.termX;
     if (Math.abs(tx) < 10) tx += 12;
-    s += `<rect class="bt-term" x="${(originX + tx - 4.5).toFixed(1)}" y="${cy - 4.5}" width="9" height="9" rx="1.5" `
-       + `transform="rotate(45 ${originX + tx} ${cy})" fill="${color}">`
+    const tName = (g.stops[g.stops.length - 1] || {}).name;
+    s += `<rect class="bt-term bt-stop" data-stop="${esc(g.termId || "")}" x="${(originX + tx - 4.5).toFixed(1)}" y="${cy - 4.5}" width="9" height="9" rx="1.5" `
+       + `transform="rotate(45 ${originX + tx} ${cy})" fill="${color}" tabindex="0" role="img" `
+       + `aria-label="Terminal: ${esc(tName || g.row.dest || g.row.route)}${g.termId ? " (#" + esc(g.termId) + ")" : ""}">`
        + `<title>${esc(g.row.dest || g.row.route)} — terminal</title></rect>`;
     // Approaching buses (piece 8 supplies these): a marker on the track,
     // the ETA above it; live samples filled, estimates hollow.
     for (const b of busMarkers || []) {
         const fill = b.live ? `fill="${color}"` : `fill="none" stroke="${color}" stroke-width="1.5"`;
-        s += `<g class="bt-bus${b.live ? " bt-bus-live" : ""}" transform="translate(${X(b.x)},${cy})">`
+        s += `<g class="bt-bus${b.live ? " bt-bus-live" : ""}" transform="translate(${X(b.x)},${cy})" aria-hidden="true">`
            + `<circle r="6" ${fill}/>`
            + `<text class="bt-busmin" y="-10" text-anchor="middle">${esc(b.min === 0 ? "Due" : String(b.min))}</text>`
            + `<title>${esc(g.row.route)} — ${b.min === 0 ? "Due" : b.min + " min"}${b.live ? "" : " (estimated)"}</title></g>`;
@@ -1093,26 +1114,37 @@ function trackRowSvg(g, originX, W, color, busMarkers) {
     const aName = (g.row.anchorPatStop || {}).name || g.row.anchorId || "";
     const aId = (g.row.anchorPatStop || {}).id || g.row.anchorId || "";
     s += `<circle class="bt-anchor-halo" cx="${originX}" cy="${cy}" r="9" fill="${color}" opacity=".18"/>`
-       + `<rect class="bt-anchor" x="${originX - 5.5}" y="${cy - 5.5}" width="11" height="11" rx="2" `
-       + `transform="rotate(45 ${originX} ${cy})" fill="${color}" stroke="#fff" stroke-width="1.5">`
+       + `<rect class="bt-anchor bt-stop" data-stop="${esc(aId)}" x="${originX - 5.5}" y="${cy - 5.5}" width="11" height="11" rx="2" `
+       + `transform="rotate(45 ${originX} ${cy})" fill="${color}" stroke="#fff" stroke-width="1.5" tabindex="0" role="img" `
+       + `aria-label="Your stop: ${esc(aName || "boarding")} (${esc(aId)})">`
        + `<title>${esc(aName || "your stop")} (#${esc(aId)}) — boarding</title></rect>`;
     return s + `</svg>`;
 }
 
+// Piece 11: which rows the user expanded in the "View all stops" disclosure.
+// The board re-renders every 30 s, so the open rows are remembered by key.
+const expandedStops = new Set();
+const rowKey = (r) => `${r.route}\u0000${String(r.dirNum ?? "")}\u0000${r.dest || ""}`;
+
 // One row's header: the route code (saturated accent), the direction +
 // destination, and the ETA list. Stays readable above the track for every
-// row, including the compact "route details unavailable" ones.
-function boardRowHead(row, color) {
+// row, including the compact "route details unavailable" ones. Track rows
+// also carry the "View all stops" disclosure button (piece 11).
+function boardRowHead(row, color, g, k) {
     const dest = (row.kind === "track" || row.kind === "service")
         ? (row.dest ? `toward ${esc(row.dest)}` : "")
         : esc(row.dest || row.dir || "");
     const note = row.kind !== "track" && row.note
         ? `<span class="board-note">${esc(row.note)}</span>` : "";
+    const all = g && g.hasTrack && (g.stops || []).length >= 2
+        ? `<button type="button" class="bt-allstops" aria-expanded="${expandedStops.has(k)}">View all stops</button>`
+        : "";
     return `<div class="board-head">`
         + `<span class="board-routecode" style="color:${color}">${esc(row.route)}</span>`
         + (dest ? `<span class="board-dest">${dest}</span>` : "")
         + note
         + `<span class="board-etas">${boardEtasHtml(row.mins)}</span>`
+        + all
         + `</div>`;
 }
 
@@ -1131,10 +1163,25 @@ function boardHtml(geom, rows) {
         const row = rows[i], g = geom.rows[i];
         const color = routeColor(row.route);
         row.anchorId = (row.anchorPatStop || {}).id || row.anchorId;
+        const k = rowKey(row);
+        const open = expandedStops.has(k);
         const track = g && g.hasTrack
             ? `<div class="board-track">${trackRowSvg(g, originX, W, color, row.busMarkers)}</div>`
             : "";
-        out += `<div class="board-row" style="height:${B_RH}px">${boardRowHead(row, color)}${track}</div>`;
+        // Piece 11: the ordered stop list behind the "View all stops" button —
+        // the reveal that works even when the dots overlap. The row uses
+        // min-height so opening the list grows it without disturbing the
+        // shared guide.
+        const list = g && g.hasTrack && (g.stops || []).length >= 2
+            ? `<ol class="bt-stoplist"${open ? "" : " hidden"}>`
+              + g.stops.map(s => {
+                  const mark = s.anchor ? ` <b class="bt-mark">your stop</b>`
+                     : s.terminal ? ` <b class="bt-mark">terminal</b>` : "";
+                  return `<li>${esc(s.name || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</li>`;
+                }).join("") + `</ol>`
+            : "";
+        out += `<div class="board-row" data-rowkey="${encodeURIComponent(k)}" style="min-height:${B_RH}px">`
+            + `${boardRowHead(row, color, g, k)}${track}${list}</div>`;
     }
     return `<div class="board" style="width:${W}px">${out}</div>`;
 }
@@ -1617,19 +1664,57 @@ async function hoverTipFor(dot) {
               : `${esc(st.Name || "#" + st.StopID)}<br><small>couldn't load arrivals</small>`);
 }
 
-// Dots are redrawn on every renderLines(), so the card is driven by
-// delegated mouseover/mouseout on the .lines-scroll wrapper (it survives
-// re-renders; the dots are <g class="line-dot"> in the svg).
+// Piece 11: the stop markers (dots + the anchor/terminal diamonds) reveal
+// on hover, tap, and keyboard focus. They are redrawn on every
+// renderLines(), so the card is driven by delegated handlers on the
+// .lines-scroll wrapper (it survives re-renders). Overlapping dots stay
+// reachable: every marker is tabbable, and the "View all stops" list
+// names every occurrence anyway.
+const BT_STOP = ".bt-stop";
 gLinesScroll.addEventListener("mouseover", e => {
-    const dot = e.target.closest(".line-dot");
+    const dot = e.target.closest(BT_STOP);
     if (dot) hoverTipFor(dot);
 });
 gLinesScroll.addEventListener("mouseout", e => {
-    const from = e.target.closest(".line-dot");
+    const from = e.target.closest(BT_STOP);
     if (!from) return;
     const to = e.relatedTarget;
-    if (to && to.nodeType === 1 && to.closest(".line-dot")) return;   // dot→dot: the new dot takes over
+    if (to && to.nodeType === 1 && to.closest(BT_STOP)) return;   // marker→marker: the new one takes over
     hideHoverTip();
+});
+gLinesScroll.addEventListener("click", e => {
+    const dot = e.target.closest(BT_STOP);
+    if (dot) hoverTipFor(dot);
+    else hideHoverTip();   // tapping/clicking off a marker dismisses the card
+});
+gLinesScroll.addEventListener("focusin", e => {
+    const dot = e.target.closest(BT_STOP);
+    if (dot) hoverTipFor(dot);
+});
+gLinesScroll.addEventListener("focusout", e => {
+    const from = e.target.closest(BT_STOP);
+    if (!from) return;
+    const to = e.relatedTarget;
+    if (to && to.nodeType === 1 && to.closest(BT_STOP)) return;
+    hideHoverTip();
+});
+gLinesScroll.addEventListener("keydown", e => {
+    if (e.key === "Escape") hideHoverTip();
+});
+// The "View all stops" disclosure: toggle the row's list and remember the
+// choice so the 30 s re-render keeps it open.
+gLinesScroll.addEventListener("click", e => {
+    const btn = e.target.closest(".bt-allstops");
+    if (!btn) return;
+    const rowEl = btn.closest(".board-row");
+    const ul = rowEl ? rowEl.querySelector(".bt-stoplist") : null;
+    const attr = rowEl ? rowEl.getAttribute("data-rowkey") : null;
+    const key = attr ? decodeURIComponent(attr) : null;
+    if (!ul || !key) return;
+    const open = ul.hasAttribute("hidden");
+    if (open) expandedStops.add(key); else expandedStops.delete(key);
+    if (open) ul.removeAttribute("hidden"); else ul.setAttribute("hidden", "");
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
 });
 // A row scrolling out from under the cursor also retires the card.
 gLinesScroll.addEventListener("scroll", hideHoverTip, true);
