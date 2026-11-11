@@ -38,6 +38,15 @@
             cursor: pointer;
         }
 
+        /* Piece 12: one clear, uniform keyboard focus ring. The SVG stop
+           markers get a stroke-based ring instead (outline does not paint
+           on SVG shapes in Blink — piece 11). */
+        .navicon:focus-visible,
+        .form-control:focus-visible {
+            outline: 2px solid #0056b3;
+            outline-offset: 2px;
+        }
+
         /* stop-name entry with autocomplete (drives the one view) */
         .ac-wrap {
             position: relative;
@@ -800,6 +809,8 @@ let selectionVersion = 0;
 function noteSelectionChange() {
     selectionVersion++;
     acrossStop = null;
+    boardUserScrolled = false;   // piece 12: a new board re-claims centering
+    boardAuto = { at: 0, left: null };
 }
 
 // The normalized seam (plan §4): jStops-shaped records — StopID/Name/Lat/Lon,
@@ -1719,6 +1730,42 @@ gLinesScroll.addEventListener("click", e => {
 // A row scrolling out from under the cursor also retires the card.
 gLinesScroll.addEventListener("scroll", hideHoverTip, true);
 
+// Piece 12 (narrow screens): on a phone the board overflows the shared
+// scroller, so center the boarding guide and its immediate approach on each
+// paint. A user scroll takes precedence until the selection changes; a
+// reduced-motion preference prefers the instant jump over the smooth one.
+const REDUCE_MOTION = matchMedia("(prefers-reduced-motion: reduce)");
+let boardUserScrolled = false;
+let boardAuto = { at: 0, left: null };   // the page's own scroll, with a settling window
+
+function centerBoard() {
+    if (boardUserScrolled) return;
+    const guide = gLinesScroll.querySelector(".bt-guide");
+    if (!guide) return;
+    const vw = gLinesScroll.clientWidth || 0;
+    if (!vw || gLinesScroll.scrollWidth <= vw) return;   // no overflow: nothing to center
+    const x = parseFloat(guide.getAttribute("x1")) || 0;
+    const target = Math.max(0, x - vw / 2);
+    if (Math.abs((gLinesScroll.scrollLeft || 0) - target) < 2) return;
+    boardAuto = { at: Date.now(), left: target };
+    if (REDUCE_MOTION.matches) gLinesScroll.scrollLeft = target;
+    else gLinesScroll.scrollTo({ left: target, behavior: "smooth" });
+}
+
+// A smooth animation crosses the gap gradually, so position alone cannot tell
+// the page's own scroll from a user's: the 1 s window after the page
+// initiated the scroll is the page, as is any event still sitting at the
+// page's target (a real user scroll moves away from it).
+function onBoardScroll() {
+    if (boardAuto.left != null) {
+        if (Date.now() - boardAuto.at < 1000) return;
+        if (Math.abs((gLinesScroll.scrollLeft || 0) - boardAuto.left) < 2) return;
+        boardAuto.left = null;
+    }
+    boardUserScrolled = true;
+}
+gLinesScroll.addEventListener("scroll", onBoardScroll);
+
 // The stop the board anchors on: the picked stop, or (no pick — nearby
 // mode) the closest nearby stop, shownStops()[0] (the list is
 // distance-sorted, and the view never prompts). With the directory loaded,
@@ -1856,6 +1903,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across) {
     gLinesScroll.innerHTML = (mainRows.length || acrossRows.length)
         ? mainLabel + boardHtml(geo, mainRows) + acrossLabel + acrossHtml
         : "";
+    centerBoard();   // piece 12: boarding guide centered on narrow screens
     gLinesNote.innerHTML = (mainRows.length || acrossRows.length)
         ? `<span class="text-muted">dot = stop · diamond = your stop / terminal · arrow = direction of travel · filled dot = live vehicle · open dot = position estimated from ETA</span>`
         : "";
