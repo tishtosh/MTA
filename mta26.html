@@ -825,6 +825,77 @@ function acrossTheStreet(anchor, candidates, patterns) {
     return accepted.length === 1 ? accepted[0] : null;
 }
 
+// The one confirmed opposite-side stop (plan §2.2), if the data supports
+// exactly one. Reset on every selection change; its predictions ride along
+// in refreshPredictions' deduped set, and its rows form the board's second
+// curb section on the same scale and the same guide.
+let acrossStop = null;
+
+// Every selection change (a new search, Home, Locate, a new or cleared
+// entry-field pick) voids the confirmed counterpart and any in-flight
+// refresh's right to render: the new selection's own refresh wins (plan §4).
+let selectionVersion = 0;
+function noteSelectionChange() {
+    selectionVersion++;
+    acrossStop = null;
+}
+
+// The normalized seam (plan §4): jStops-shaped records — StopID/Name/Lat/Lon,
+// what the nearby list and the directory carry — into the {id, name, lat,
+// lon} records acrossTheStreet consumes.
+function stopRec(s) {
+    return { id: String(s.StopID), name: s.Name || allStopsName(s.StopID),
+             lat: s.Lat, lon: s.Lon, routes: s.Routes || [] };
+}
+
+// Opposite-side candidates: the nearby results when they contain the anchor
+// (a fresh, radius-bounded set); otherwise the cached directory filtered to
+// ACROSS_MAX_FT around it. A ?busstop= deep link is not a nearby search —
+// its `stops` is a URL list without coordinates, so the directory is the
+// coord source there (no dedicated endpoint, plan §2.2).
+function acrossCandidates(st) {
+    if (!st || st.Lat == null || st.Lon == null) return [];
+    const aId = String(st.StopID);
+    const pool = !stopListFromURL && stops.some(s => String(s.StopID) === aId)
+        ? stops
+        : (allStopsCache || []).filter(s =>
+            s.Lat != null && s.Lon != null &&
+            distance(st.Lat, st.Lon, s.Lat, s.Lon, "f") <= ACROSS_MAX_FT);
+    return pool.filter(s => String(s.StopID) !== aId).map(stopRec);
+}
+
+// stopId → the route-details direction entries that list it, over the
+// patterns the board currently knows (the loaded jRouteDetails cache).
+function patternsByStop(have) {
+    const m = {};
+    for (const r in have) {
+        const e = have[r];
+        if (!e) continue;
+        for (const d of e.directions || [])
+            for (const s of d.stops || [])
+                (m[s.id] || (m[s.id] = [])).push(d);
+    }
+    return m;
+}
+
+// Confirm at most one opposite-side stop for the anchor. The result sticks
+// until the selection changes (noteSelectionChange resets it). A fresh
+// confirmation prompts the counterpart's first prediction fetch (plan §4),
+// so its rows get live ETAs on the very next board paint.
+function confirmAcross(st, have) {
+    if (acrossStop) return acrossStop;
+    const cands = acrossCandidates(st);
+    if (!cands.length) return null;
+    const hit = acrossTheStreet(stopRec(st), cands, patternsByStop(have));
+    if (!hit) return null;
+    const id = String(hit.id);
+    acrossStop = stops.find(s => String(s.StopID) === id)
+        || makeStop(id, hit.name, hit.lat, hit.lon);
+    acrossStop.Routes = hit.routes;
+    refreshPredictions();               // the counterpart's first predictions, promptly
+    return acrossStop;
+}
+
 // ── Board geometry (plan §3) ──────────────────────────────────────────
 // Schematic signed along-route distance from the boarding occurrence:
 // stops the bus passes before the anchor sit LEFT of the shared boarding x
@@ -1137,6 +1208,7 @@ async function runFlow() {
     busy = true;
     try {
         resetPick();                     // a new flow starts from the session's list (any picked stop is undone)
+        noteSelectionChange();           // void the old counterpart + any in-flight refresh
         if (stopListFromURL && !forceNearby) {
             // ?busstop= given: use it as-is, ignore lat/lon (as documented).
             // Coordinates stay null — the arrivals list never needs them,
@@ -1186,40 +1258,67 @@ async function runFlow() {
     }
 }
 
-// Re-fetch predictions for the stops currently shown. Promise.all so the render
-// happens exactly once, after every request has settled — including the
-// ones that failed (the old code only rendered when the last request
-// SUCCEEDED, so one 400/429 left a blank page). With a stop picked in the
-// entry field, only that stop is fetched.
+// Re-fetch predictions for the stops currently shown, plus the confirmed
+// across-the-street counterpart. Promise.all so the render happens exactly
+// once, after every request has settled — including the ones that failed
+// (the old code only rendered when the last request SUCCEEDED, so one
+// 400/429 left a blank page). With a stop picked in the entry field, only
+// that stop is fetched.
+let refreshInFlight = false, refreshQueued = false;
+
 async function refreshPredictions() {
-    const toFetch = new Map();              // StopID → stop object
-    for (const s of shownStops()) toFetch.set(s.StopID, s);
-    if (!toFetch.size) return;
-    let saw429 = false;
-    await Promise.all([...toFetch.values()].map(async (stop) => {
-        try {
-            const { name, predictions } = await fetchPredictions(stop.StopID);
-            if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
-            stop.Arrivals = predictions;
-            stop.Error = null;
-        } catch (e) {
-            stop.Arrivals = [];
-            stop.Error = e;                                 // rendered as a muted row
-            if (e.rateLimited) saw429 = true;
+    // Plan §4 coalescing: a timer tick, a tab return, and a selection change
+    // can land together — they collapse into one request set per endpoint.
+    if (refreshInFlight) { refreshQueued = true; return; }
+    refreshInFlight = true;
+    const v = selectionVersion;      // captured up front for the stale-result guard
+    try {
+        const toFetch = new Map();              // StopID → stop object
+        for (const s of shownStops()) toFetch.set(s.StopID, s);
+        if (acrossStop) toFetch.set(acrossStop.StopID, acrossStop);
+        if (!toFetch.size) return;
+        let saw429 = false;
+        await Promise.all([...toFetch.values()].map(async (stop) => {
+            try {
+                const { name, predictions } = await fetchPredictions(stop.StopID);
+                if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
+                stop.Arrivals = predictions;
+                stop.Error = null;
+            } catch (e) {
+                stop.Arrivals = [];
+                stop.Error = e;                                 // rendered as a muted row
+                if (e.rateLimited) saw429 = true;
+            }
+        }));
+        rateLimited = saw429;          // → next refresh is delayed (self-throttling)
+        lastRefreshAt = Date.now();
+        // Plan §4: a stale result must not land after a new selection —
+        // the new selection's own refresh wins; this one only re-arms the cycle.
+        if (v !== selectionVersion) {
+            scheduleRefresh();
+            return;
         }
-    }));
-    rateLimited = saw429;          // → next refresh is delayed (self-throttling)
-    lastRefreshAt = Date.now();
-    render();
-    // The picture and the ticker ride on the same predictions: keep them
-    // moving on every tick (single view — no tab to check for).
-    renderLines();
-    renderTicker();
-    scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
-    const t = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
-    const shownCount = shownStops().length;
-    gStatus.textContent = `${shownCount} stop${shownCount > 1 ? "s" : ""} · updated ${t}` +
-        (rateLimited ? " · API rate limit hit, slowing refresh" : "");
+        render();
+        // The picture and the ticker ride on the same predictions: keep them
+        // moving on every tick (single view — no tab to check for).
+        renderLines();
+        renderTicker();
+        scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
+        const t = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+        const shownCount = shownStops().length;
+        gStatus.textContent = `${shownCount} stop${shownCount > 1 ? "s" : ""} · updated ${t}` +
+            (rateLimited ? " · API rate limit hit, slowing refresh" : "");
+    } finally {
+        refreshInFlight = false;
+        if (refreshQueued) {
+            refreshQueued = false;
+            // A prompt trigger (confirmAcross' first fetch) runs as soon as the
+            // in-flight cycle settles; one that belonged to the old selection
+            // simply re-arms the cycle for the new one.
+            if (v === selectionVersion) refreshPredictions();
+            else scheduleRefresh();
+        }
+    }
 }
 
 // Periodic refresh: predictions only (the stop list itself rarely changes).
@@ -1478,7 +1577,8 @@ const acStop = makeAutocomplete(
         pickedStop = st.StopID;
         const inList = stops.find(s => s.StopID === st.StopID);
         pickedStopObj = inList || materializeDirStop(st);
-        refreshPredictions();     // its predictions, then the 30 s cycle tracks it
+        noteSelectionChange();     // void the old counterpart before its refresh
+        refreshPredictions();      // its predictions, then the 30 s cycle tracks it
     },
     () => {                       // ✕: back to the nearby search
         resetPick();
@@ -1486,7 +1586,7 @@ const acStop = makeAutocomplete(
         runFlow();
         renderLines();            // the picture falls back to the closest nearby stop
     },
-    () => { resetPick(); render(); renderLines(); },
+    () => { noteSelectionChange(); resetPick(); render(); renderLines(); },
 );
 
 // ════════════════════════════════════════════════════════════════════
@@ -1692,10 +1792,18 @@ function buildBusMarkers(row, g, scale, posRows, now) {
     return markers;
 }
 
-// Paint the board from fully resolved inputs.
-function renderBoardNow(anchorId, arrivals, routeDetails, posRows) {
-    const rows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
-    const geo = boardGeometry(rows);
+// Paint the board from fully resolved inputs. `across` (plan §2.2) is the
+// confirmed opposite-side stop: its rows form a labeled second curb section
+// that shares ONE px-per-foot scale and ONE boarding x with the primary
+// section — boardGeometry runs over BOTH row sets, and both .board blocks
+// line up on the same guide inside the one horizontal scroll area.
+function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across) {
+    const mainRows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
+    const acrossRows = across
+        ? buildBoardRows(String(across.StopID), across.Arrivals || [], routeDetails, posRows)
+        : [];
+    // ONE geometry over both curb sections: the shared scale and guide.
+    const geo = boardGeometry([...mainRows, ...acrossRows]);
     const now = Date.now();
     // The 120-minute freshness gate (plan §3): when the feed's newest sample
     // is older than that (including a feed that failed to refresh), no live
@@ -1703,9 +1811,23 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows) {
     // position but never vanish.
     const liveRows = posFeed && now - posFeed.newestAt <= BUS_SAMPLE_MAX_AGE_MS
         ? (posRows || []) : [];
-    rows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[i], geo.scale, liveRows, now); });
-    gLinesScroll.innerHTML = rows.length ? boardHtml(geo, rows) : "";
-    gLinesNote.innerHTML = rows.length
+    mainRows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[i], geo.scale, liveRows, now); });
+    acrossRows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[mainRows.length + i], geo.scale, liveRows, now); });
+    // The across section only appears once confirmed AND with rows; its label
+    // names the counterpart (plan §2.2), and the primary gets a matching one.
+    const acrossLabel = acrossRows.length && across
+        ? `<div class="board-curblabel">Across the street`
+            + (across.Name ? ` · ${esc(across.Name)} · #${esc(across.StopID)}` : "")
+            + `</div>`
+        : "";
+    const mainLabel = acrossRows.length ? `<div class="board-curblabel">Your side</div>` : "";
+    const acrossHtml = acrossRows.length
+        ? boardHtml({ ...geo, rows: geo.rows.slice(mainRows.length) }, acrossRows)
+        : "";
+    gLinesScroll.innerHTML = (mainRows.length || acrossRows.length)
+        ? mainLabel + boardHtml(geo, mainRows) + acrossLabel + acrossHtml
+        : "";
+    gLinesNote.innerHTML = (mainRows.length || acrossRows.length)
         ? `<span class="text-muted">dot = stop · diamond = your stop / terminal · arrow = direction of travel · filled dot = live vehicle · open dot = position estimated from ETA</span>`
         : "";
 }
@@ -1762,7 +1884,11 @@ function renderLines() {
     }
     const paint = (pos) => {
         if (token !== boardToken) return;    // the selection moved on mid-flight
-        renderBoardNow(anchorId, arr, have, pos ? pos.rows : []);
+        renderBoardNow(anchorId, arr, have, pos ? pos.rows : [], acrossStop);
+        // Plan §2.2: confirm the opposite-side counterpart once the patterns
+        // are resolved (it needs them). Sticky — a re-confirmation is a no-op,
+        // and a fresh confirmation prompts the counterpart's first fetch.
+        confirmAcross(st, have);
     };
     const posP = fetchBusPositions();
     if (!missing.length) {
