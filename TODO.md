@@ -1,0 +1,31 @@
+# MTA26 route-diagram-first waiting view — work tracker
+
+Date: 2026-11-11 · Target: `mta26.html` · Spec: `MTA26_IMPLEMENTATION_PLAN.md` (§1–§4 + 5 acceptance checks).
+Single-file page, inline CSS, vanilla JS, existing static hosting; all new endpoints via the existing `apiGet` wrapper.
+
+## COMPLETE
+
+- [x] Plan §1 endpoint verification against the live feed: `/Bus.svc/json/jRouteDetails` → 200 (fields `RouteID/Name/Direction0/Direction1`; each direction = `{TripHeadsign, DirectionText, DirectionNum, Shape[{Lat,Lon,SeqNum}], Stops[{StopID,Name,Lon,Lat,Routes}]}`) and `/Bus.svc/json/jBusPositions` → 200 (355 rows / ~110 KB; a `RouteID` filter honors only its FIRST value, so one unfiltered request is the shared feed). Raw captures locked in `/tmp/rt_C87.json`, `rt_D72.json`, `pred130.json`, `pred135.json`, `posAll.json`, `posM60.json`, `jstops300.json`.
+- [x] Data layer (plan §1): `fetchPredictions` → `{name, predictions:[{min, route, dir, dirNum, heads, vehicle, trip}]}` (string IDs, 0 min kept, malformed dropped, dedupe per stop+trip with vehicle+route+dirNum fallback, sorted min→route); `normalizeRouteDetails` + `fetchRouteDetails` (session cache `routeDetailsCache`, in-flight dedupe, never throws); `fetchBusPositions` (15 s cadence, in-flight dedupe, last good feed kept on failure); `allStopsName` directory index. `node --check` on the extracted script passes.
+- [x] Position-feed timestamp fix: capture shows 355/355 rows `YYYY-MM-DDTHH:MM:SS` (seconds present), so the old `Date.parse(b.DateTime + ":00")` → NaN → every row dropped. New `parseFeedTime` accepts with- and without-seconds forms (node-verified against the capture).
+
+## ACTION
+
+- [x] Piece 3 — prediction→pattern matcher (plan §1, last bullet): `normHeads` + `posDirFor` + `matchPattern(routeDetails, pred, posRows)`: exact `DirectionNum`, then position-row direction (same trip, else same vehicle+route), then unique normalized headsign; returns a pattern or null — the anchor-containment check and compact-row fallback live in the caller (piece 4). Node-verified against the real captures: 18/18 PASS (both D72 predictions resolve to the right direction and to patterns lacking both corner stops; C87 dir0 contains 1002130, not 1002135; all three fallback stages exercised).
+- [x] Piece 4 — board rows: `containsStopId` + `buildBoardRows(anchorId, predictions, routeDetails, posRows)` → ordered rows. One row per route+direction+destination (headsign) variant; a row is a "track" only when its matched pattern CONTAINS the anchor, else a compact "route details unavailable" row (per plan §1/§2 the single note covers both "pattern doesn't board here" and "no details"); directions whose pattern contains the anchor but have no current prediction get a service row; rows sort track → compact → service (real ETAs before notes), then ETA, then route. A directionless prediction inherits the pattern's direction. Node-verified (`/tmp/boardtest.js`, extracts the pure fns into a VM sandbox, no copy-drift): 21/21 PASS against the locked captures — `1002130` → C87 dir0 service ("TENLEYTOWN", anchored at stop idx 2 of 15) + one D72 dir0 compact [14,40]; `1002135` → one D72 dir1 compact [2,17,39], no service rows; synthetic cases cover exact-dirNum track, position-fallback track, compact+service coexistence, details-unavailable, two-direction service, and same-vehicle duplicate collapse.
+- [ ] Piece 5 — across-the-street confirmation: ≤100 m, matching street/intersection, ≥1 shared route, opposing-directions evidence from ordered paths (bearings from adjacent path points); ambiguity → keep primary board only.
+- [ ] Piece 6 — boarding geometry: schematic signed along-route distance (cumulative shape when projections follow stop order, else straight-line between consecutive stops); one pixels-per-distance scale + shared boarding x across both curb sections; terminal diamond at the actual terminal occurrence; minimum extent for short/terminal-only routes; retire `BANDS_*`/`FT_PER_MIN`/`GUT`/`RH`/`CX`/`DEST_X`.
+- [ ] Piece 7 — track rendering: direction arrow, destination + next ETA above the track, emphasize first bus, later ETAs ascending in the header, 0 min = "Due", muted stop dots, saturated route accent, tabular numerals.
+- [ ] Piece 8 — live vehicle dots: join positions by vehicle, verify route+trip, reject stale/ambiguous, project to shape/stop segments with the same distance scale, 120-min freshness gate on `newestAt`, hollow ETA×8 mph estimate clamped to first upstream stop (zero-minute sits on the guide), legend.
+- [ ] Piece 9 — refresh orchestration: deduped request set from `shownStops()` + confirmed opposite ID; selection-version guard (search/Home/Locate); coalesced timer/visibility/selection refreshes; prompt first fetch for a newly confirmed counterpart.
+- [ ] Piece 10 — stop header (name + ID) + "Next bus" summary (earliest current prediction; stale excluded); retire the ticker.
+- [ ] Piece 11 — dot reveal on tap/click/keyboard (name + ID) + "View all stops" disclosure per pattern (ordered list, boarding + terminal marked); accessible when dots overlap.
+- [ ] Piece 12 — responsive: shared horizontal scroll centered on boarding below 768 px; reduced motion; clear focus indicator; stable layout during refreshes.
+- [ ] Piece 13 — node vm harness + sanitized fixtures from the `/tmp` captures.
+- [ ] Piece 14 — live re-verification (`?busstop=1002130` / `?busstop=1002135` expectations) + acceptance summary.
+- [ ] Piece 15 — README (Lines tab, API table, URL examples) + commit.
+
+## PENDING
+
+- Visual acceptance (check 1: desktop + 360 px in a browser) cannot be done here — no browser/chromium/playwright on this machine; the vm harness approximates it. Must be noted as not visually verified in the final summary.
+- `?busstop=1002135,1002130` multiple-ID deep link behavior vs the board anchor (plan §2: multiple IDs are explicit requests, kept in the table; first ID is the default board anchor) — to verify in piece 14.

@@ -381,22 +381,325 @@ function loadStopDirectory() {
     return stopDirLoad;
 }
 
+// StopID → Name index over the directory dump (built lazily once): the
+// route-details normalization and the board's dot reveals fall back to it
+// when a stop's own Name is missing.
+let dirNameIndex = null;
+function allStopsName(id) {
+    if (!allStopsCache) return "";
+    if (!dirNameIndex)
+        dirNameIndex = new Map(allStopsCache.map(s => [String(s.StopID), s.Name || ""]));
+    return dirNameIndex.get(String(id)) || "";
+}
+
 // Arrival predictions:  GET /NextBusService.svc/json/jPredictions?StopID
-// Returns { name, predictions: [{ min, route, dir, vehicle }] }.
+// Returns { name, predictions: [{ min, route, dir, dirNum, heads, vehicle, trip }] }.
 // `name` (StopName) also labels stops given via ?busstop=, since there is
-// no single-stop lookup in the nearby-search endpoint. `vehicle`
-// (VehicleID) may be null — it identifies the physical bus, which is how
-// "all buses on the picked route" is derived (there is no vehicle feed).
+// no single-stop lookup in the nearby-search endpoint. `route`, `vehicle`
+// (VehicleID) and `trip` (TripID) are normalized to strings — trip is the
+// authoritative key for joining live positions; `dir` is the feed's
+// DirectionText ("North to Van Ness" — the live destination, per the plan)
+// with `heads` preferring a TripHeadsign when one is ever supplied. `min`
+// is a number; 0 ("Due") is legitimate; missing or malformed minutes drop
+// the row. Rows are deduped per stop+trip, falling back to
+// vehicle+route+direction when the trip is missing; rows with neither ID
+// are kept (the ETA list stays whole).
 async function fetchPredictions(stopId) {
     const { data, error } = await apiGet("/NextBusService.svc/json/jPredictions", { StopID: stopId });
     if (error) throw error;
-    return {
-        name: (data && data.StopName) || null,
-        predictions: ((data && data.Predictions) || []).map(p => ({
-            min: p.Minutes, route: p.RouteID, dir: p.DirectionText,
-            vehicle: p.VehicleID || null,
-        })),
-    };
+    if (!data || !Array.isArray(data.Predictions)) throw new Error("malformed prediction response");
+    const name = data.StopName || null;
+    const preds = [];
+    const seen = new Set();
+    for (const p of data.Predictions) {
+        const min = Number(p.Minutes);
+        if (!Number.isFinite(min) || min < 0) continue;    // malformed / off-service artifact
+        const route = String(p.RouteID || "").toUpperCase();
+        if (!route) continue;
+        const dirNum = p.DirectionNum != null ? String(p.DirectionNum) : "";
+        const vehicle = p.VehicleID != null ? String(p.VehicleID) : "";
+        const trip = p.TripID != null ? String(p.TripID) : "";
+        const dir = String(p.DirectionText || "");
+        const key = trip ? route + "|" + trip
+                  : vehicle ? route + "|" + vehicle + "|" + dirNum
+                  : null;
+        if (key !== null) {
+            if (seen.has(key)) continue;
+            seen.add(key);
+        }
+        preds.push({ min, route, dir, dirNum, heads: String(p.TripHeadsign || "") || dir,
+                     vehicle: vehicle || null, trip: trip || null });
+    }
+    preds.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
+    return { name, predictions: preds };
+}
+
+// Route details:  GET /Bus.svc/json/jRouteDetails?RouteID   (verified 2026-11:
+// 200 from /Bus.svc, 404 from /NextBusService.svc; CORS *; jPredictions-style
+// api_key auth). Returns { RouteID, Name, Direction0, Direction1 } where each
+// DirectionN is a single object { TripHeadsign, DirectionText, DirectionNum,
+// Shape: [{Lat, Lon, SeqNum}], Stops: [{StopID, Name, Lon, Lat, Routes[]}] }
+// (arrays are accepted defensively). Each direction normalizes to a PATTERN —
+// the ordered path the board draws — { route, dirNum, heads, dirText,
+// stops: [{id, name, lat, lon}], shape: [{lat, lon}], byId }.
+// Cached per route for the page load; concurrent callers share one in-flight
+// fetch. Failures return null (never throw) so the board can fall back to a
+// compact "Route details unavailable" row, and they retry on the next call.
+const routeDetailsCache = {};      // routeId -> normalized route or null
+const routeDetailsInflight = {};   // routeId -> in-flight promise
+
+function normalizeRouteDetails(routeId, raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const route = String(raw.RouteID || routeId || "").toUpperCase();
+    const dirs = [];
+    [raw.Direction0, raw.Direction1].forEach((d, i) => {
+        (Array.isArray(d) ? d : (d && typeof d === "object" ? [d] : [])).forEach((dd) => {
+            if (!dd || typeof dd !== "object") return;
+            const stops = [];
+            const seenS = new Set();
+            (Array.isArray(dd.Stops) ? dd.Stops : []).forEach((s) => {
+                if (!s || !s.StopID) return;
+                const k = String(s.StopID);
+                if (seenS.has(k)) return;          // keep the FIRST occurrence (pattern order)
+                seenS.add(k);
+                stops.push({ id: k, name: String(s.Name || "") || allStopsName(k),
+                             lat: Number(s.Lat), lon: Number(s.Lon) });
+            });
+            if (!stops.length) return;
+            const shape = (Array.isArray(dd.Shape) ? dd.Shape : [])
+                .filter(s => s && Number.isFinite(Number(s.Lat)) && Number.isFinite(Number(s.Lon)))
+                .sort((a, b) => (Number(a.SeqNum) || 0) - (Number(b.SeqNum) || 0));
+            const pts = [], seenP = new Set();
+            shape.forEach(pt => {
+                const k = pt.Lat + "|" + pt.Lon;
+                if (seenP.has(k)) return;
+                seenP.add(k);
+                pts.push({ lat: Number(pt.Lat), lon: Number(pt.Lon) });
+            });
+            dirs.push({ route,
+                         dirNum: dd.DirectionNum != null ? String(dd.DirectionNum) : String(i),
+                         heads: String(dd.TripHeadsign || "").trim(),
+                         dirText: String(dd.DirectionText || "").trim(),
+                         stops, shape: pts,
+                         byId: Object.fromEntries(stops.map(s => [s.id, s])) });
+        });
+    });
+    const seenD = new Set();
+    const out = [];
+    dirs.forEach(d => {
+        if (!d.dirNum || seenD.has(d.dirNum)) return;
+        seenD.add(d.dirNum);
+        out.push(d);
+    });
+    if (!out.length) return null;
+    return { route, name: String(raw.Name || "").trim(), directions: out };
+}
+
+async function fetchRouteDetails(routeId) {
+    routeId = String(routeId || "").toUpperCase();
+    if (!routeId) return null;
+    if (routeDetailsCache[routeId] !== undefined) return routeDetailsCache[routeId];
+    if (routeDetailsInflight[routeId]) return routeDetailsInflight[routeId];
+    routeDetailsInflight[routeId] = (async () => {
+        try {
+            const { data, error } = await apiGet("/Bus.svc/json/jRouteDetails", { RouteID: routeId });
+            if (error) return null;
+            const out = normalizeRouteDetails(routeId, data);
+            if (out) routeDetailsCache[routeId] = out;
+            return out;
+        } finally {
+            delete routeDetailsInflight[routeId];
+        }
+    })();
+    return routeDetailsInflight[routeId];
+}
+
+// Live bus positions:  GET /Bus.svc/json/jBusPositions   (verified 2026-11:
+// 200 from /Bus.svc; a RouteID filter only honors its FIRST value, so one
+// unfiltered request is the shared feed — ~350 rows / ~110 KB system-wide).
+// Returns { rows: [{ vehicle, lat, lon, trip, route, dirNum, heads, dirText,
+// at }], fetchedAt, newestAt } with sample times as epoch ms (the feed is
+// timezone-less ET); newestAt is the newest sample. On failure the last good
+// feed is returned as-is — the board's 120-minute freshness gate decides
+// whether the dots may move, so a dead feed freezes them rather than blanking.
+// parseFeedTime: the feed's DateTime is timezone-less ET and comes in two
+// shapes — with seconds (the current feed: 2026-11-10T22:26:14) and, in older
+// captures, without (2026-11-10T22:26). Try the raw string first; normalize
+// the no-seconds form as a fallback so a feed change can't silently drop
+// every row. Interpreted as viewer-local time (the 120-min gate below is
+// tolerant of the ET offset in practice).
+function parseFeedTime(s) {
+    if (typeof s !== "string" || !s) return NaN;
+    const t = Date.parse(s);
+    if (Number.isFinite(t)) return t;
+    return Date.parse(s.replace(/:([0-9]{2})$/, ":$1:00"));
+}
+
+let posFeed = null;
+let posInflight = null;
+const POS_GAP_MS = 15000;
+
+async function fetchBusPositions() {
+    const now = Date.now();
+    if (posFeed && now - posFeed.fetchedAt < POS_GAP_MS) return posFeed;
+    if (posInflight) return posInflight;
+    posInflight = (async () => {
+        try {
+            const { data, error } = await apiGet("/Bus.svc/json/jBusPositions", {});
+            if (error || !data || !Array.isArray(data.BusPositions)) return posFeed;
+            const rows = [];
+            let newestAt = 0;
+            for (const b of data.BusPositions) {
+                const at = parseFeedTime(b.DateTime);
+                if (!Number.isFinite(at) || !Number.isFinite(Number(b.Lat))) continue;
+                rows.push({ vehicle: b.VehicleID != null ? String(b.VehicleID) : "",
+                             lat: Number(b.Lat), lon: Number(b.Lon),
+                             trip: b.TripID != null ? String(b.TripID) : "",
+                             route: String(b.RouteID || "").toUpperCase(),
+                             dirNum: b.DirectionNum != null ? String(b.DirectionNum) : "",
+                             heads: String(b.TripHeadsign || ""), dirText: String(b.DirectionText || ""),
+                             at });
+                if (at > newestAt) newestAt = at;
+            }
+            posFeed = { rows, fetchedAt: now, newestAt };
+            return posFeed;
+        } finally {
+            posInflight = null;
+        }
+    })();
+    return posInflight;
+}
+
+// Prediction → pattern matching (plan §1).
+// The prediction's DirectionText ("North to Van Ness") matches NEITHER the
+// route-details DirectionText (NORTH/SOUTH) NOR the TripHeadsign (MT
+// PLEASANT / LAFAYETTE SQ), so the match keys, in order, are:
+//   1. the prediction's own DirectionNum (string "0"/"1");
+//   2. the authoritative fallback — a live position row observed on the same
+//      trip (or the same vehicle+route when the prediction has no trip)
+//      supplies a DirectionNum;
+//   3. a UNIQUE normalized headsign match (case and punctuation folded).
+// The result is one PATTERN (one direction of a route); the caller then
+// requires the pattern to CONTAIN the boarding anchor — a prediction whose
+// route details don't serve the selected stop becomes a compact "Route
+// details unavailable" row (plan §1), and an unresolved variant keeps its
+// own ETA row rather than borrowing another pattern's geometry.
+function normHeads(s) {
+    return String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function posDirFor(pred, posRows) {
+    if (!Array.isArray(posRows)) return "";
+    for (const r of posRows) {
+        if (!r || r.route !== pred.route) continue;
+        const tripHit = pred.trip && r.trip && r.trip === pred.trip;
+        const vehHit = !pred.trip && pred.vehicle && r.vehicle && r.vehicle === pred.vehicle;
+        if (tripHit || vehHit) return r.dirNum;
+    }
+    return "";
+}
+
+function matchPattern(routeDetails, pred, posRows) {
+    if (!routeDetails || !Array.isArray(routeDetails.directions) || !pred || !pred.route) return null;
+    const dirs = routeDetails.directions;
+    if (pred.dirNum) {
+        const hit = dirs.find(d => d.dirNum === pred.dirNum);   // dirNum is unique per normalized route
+        if (hit) return hit;
+    }
+    const dirNum = posDirFor(pred, posRows);
+    if (dirNum) {
+        const hit = dirs.find(d => d.dirNum === dirNum);
+        if (hit) return hit;
+    }
+    const h = normHeads(pred.heads || pred.dir);
+    if (h) {
+        const hits = dirs.filter(d => normHeads(d.heads) === h);
+        if (hits.length === 1) return hits[0];
+    }
+    return null;
+}
+
+// Board model (plan §2): turn the anchor stop's predictions into rows.
+// One row per route + direction + destination (headsign) variant boarding
+// at the anchor stop. A row becomes a "track" only when its matched pattern
+// CONTAINS the anchor stop; otherwise it stays a compact "Route details
+// unavailable" row (the pattern matched but doesn't board here, or no route
+// details exist). Directions whose pattern contains the anchor but has no
+// current prediction get a service row (route + direction + destination, no
+// ETAs, no dots). Pure; the renderer decides how each kind is drawn.
+function containsStopId(pattern, stopId) {
+    if (!pattern || !stopId) return false;
+    const sid = String(stopId);
+    if (pattern.byId && pattern.byId[sid]) return true;
+    return (pattern.stops || []).some(s => s.id === sid);
+}
+
+function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
+    const anchor = String(anchorId || "");
+    const rows = [];
+    const variants = new Map();
+    for (const p of predictions || []) {
+        if (!p) continue;
+        const dirNum = p.dirNum == null || p.dirNum === "" ? null : String(p.dirNum);
+        const key = p.route + "|" + (dirNum == null ? "?" : dirNum) + "|" + (p.heads || "");
+        let v = variants.get(key);
+        if (!v) {
+            v = { route: p.route, dirNum, heads: p.heads || "", mins: [], vehicles: [],
+                  rep: { route: p.route, dirNum, heads: p.heads || "",
+                         trip: p.trip || "", vehicle: p.vehicle || "" } };
+            variants.set(key, v);
+            rows.push(v);
+        }
+        v.mins.push(p.min);
+        if (p.vehicle) v.vehicles.push(p.vehicle);
+    }
+    const covered = new Set(), ambiguous = new Set();
+    for (const p of predictions || []) {
+        if (!p) continue;
+        const dn = p.dirNum == null || p.dirNum === "" ? "?" : String(p.dirNum);
+        covered.add(p.route + "|" + dn);
+        if (dn === "?") ambiguous.add(p.route);
+    }
+    for (const v of rows) {
+        v.mins.sort((a, b) => a - b);
+        v.first = v.mins.length ? v.mins[0] : 0;
+        v.vehicles = [...new Set(v.vehicles)];
+        v.pattern = matchPattern((routeDetails || {})[v.route] || null, v.rep, posRows);
+        if (v.dirNum == null && v.pattern && v.pattern.dirNum) v.dirNum = v.pattern.dirNum;
+        if (v.pattern && containsStopId(v.pattern, anchor)) {
+            v.kind = "track";
+            v.anchorIdx = v.pattern.stops.findIndex(s => s.id === anchor);
+            v.anchorPatStop = v.pattern.stops[v.anchorIdx] || null;
+            v.dest = v.heads || v.pattern.heads || "";   // live label wins over the plan
+        } else if (v.pattern) {
+            v.kind = "compact";
+            v.note = "route details unavailable";   // matched a pattern, but it doesn't board here
+            v.dest = v.heads || v.pattern.heads || "";
+        } else {
+            v.kind = "compact";
+            v.note = "route details unavailable";
+            v.dest = v.heads || v.dir || "";
+        }
+    }
+    for (const route of Object.keys(routeDetails || {}).sort()) {
+        const entry = routeDetails[route];
+        if (!entry || ambiguous.has(route)) continue;
+        for (const d of entry.directions) {
+            if (covered.has(route + "|" + d.dirNum)) continue;
+            if (!containsStopId(d, anchor)) continue;
+            const idx = d.stops.findIndex(s => s.id === anchor);
+            rows.push({ kind: "service", route, dirNum: d.dirNum,
+                        heads: d.heads, dest: d.heads || d.dirText || "",
+                        mins: [], vehicles: [], pattern: d,
+                        anchorIdx: idx, anchorPatStop: d.stops[idx] || null });
+        }
+    }
+    const rank = { track: 0, compact: 1, service: 2 };
+    rows.sort((a, b) => rank[a.kind] - rank[b.kind]
+        || a.first - b.first
+        || a.route.localeCompare(b.route)
+        || String(a.dirNum).localeCompare(String(b.dirNum)));
+    return rows;
 }
 
 // ════════════════════════════════════════════════════════════════════
