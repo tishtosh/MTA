@@ -151,7 +151,8 @@ const board = () => els.linesScroll.innerHTML;
     // substring check (not a regex): node's engine rejects some quantified
     // character-class patterns; the sub must name the counterpart within ~60 chars
     const acrossIdx = b.indexOf("Across the street");
-    check("across: counterpart named in label", acrossIdx > -1 && b.slice(acrossIdx, acrossIdx + 60).includes("#1002135"));
+    check("across: counterpart named in label", acrossIdx > -1 && b.slice(acrossIdx, acrossIdx + 80).includes("#1002135"));
+    check("across: heading bar carries an ETA summary", acrossIdx > -1 && /and \d+ min/.test(b.slice(acrossIdx, acrossIdx + 400)));
     check("across: primary labeled 'At the selected stop'", b.includes("At the selected stop"));
     check("across: both C87 patterns as track rows", (b.match(/bt-line/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
@@ -168,10 +169,12 @@ const board = () => els.linesScroll.innerHTML;
     check("135: D72 row compact", b.includes("route details unavailable"));
     // The nearby section (within 500 ft) carries the C87 stop on the other
     // side of Park Rd, so "no service rows" now means: none in the PRIMARY
-    // section — its board ends where the Nearby stops heading begins.
+    // section — its board ends where that stop's own nearby bar begins.
     const nearIdx = b.indexOf('data-nearby="1"');
     const mainOnly = nearIdx > -1 ? b.slice(0, nearIdx) : b;
     check("135: no service rows in the primary section", !mainOnly.includes("TENLEYTOWN"));
+    check("135: nearby stop gets its own light heading bar",
+      nearIdx > -1 && b.slice(nearIdx, nearIdx + 400).includes("#1002130"));
     check("135: three ETAs on the compact row (2 · 17 · 39)", h.includes("2 min") && b.includes("then 17 · 39 min"));
   }
 
