@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" href="favicon.ico">
+    <title>Like a bus · Metrobus arrivals</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="./css/all.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@800" rel="stylesheet" type="text/css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <style>
+        .fa-xl-mta {
+            font-size: 3em;
+            line-height: 0.02167em;
+            margin-bottom: 5px;
+            margin-top: 5px;
+            width: 70px;
+            text-align: center;
+            vertical-align: -0.125em;
+        }
+
+        .fa-mta {
+            font-size: 3em;
+            line-height: 0.02167em;
+            text-align: center;
+            vertical-align: -0.125em;
+        }
+
+        .vert {
+            vertical-align: middle;
+        }
+
+        /* icon buttons: look like the old <li> icons, but keyboard accessible */
+        .navicon {
+            background: none;
+            border: 0;
+            padding: 0;
+            cursor: pointer;
+        }
+
+        /* stop-name entry with autocomplete (drives the one view) */
+        .ac-wrap {
+            position: relative;
+            max-width: 460px;
+            margin: 10px 0 14px;
+        }
+
+        .ac-clear {
+            position: absolute;
+            top: 50%;
+            right: 8px;
+            transform: translateY(-50%);
+            color: #6c757d;
+        }
+
+        .ac-clear i { font-size: 14px; }
+
+        .ac-clear:hover { color: #212529; }
+
+        .ac-list {
+            position: absolute;
+            top: calc(100% + 2px);
+            left: 0;
+            right: 0;
+            z-index: 1050;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 0 0 .375rem .375rem;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, .12);
+            max-height: 280px;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+
+        .ac-item {
+            padding: 3px 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .ac-item:hover,
+        .ac-item.active { background: #e9ecef; }
+
+        .ac-item .code { color: #6c757d; font-size: .85em; margin-left: 8px; }
+
+        .ac-none { padding: 4px 12px; color: #6c757d; cursor: default; }
+
+        body { background: #eef2f6; color: #152439; }
+        .arrival-page { margin: 90px auto 2rem; max-width: 1050px; }
+        #statusmessage { color: #465970; font-size: .85rem; }
+        #stopEntry { padding-right: 2.5rem; }
+        .board {
+            background: #fff;
+            border: 1px solid #d1dae4;
+            border-radius: 1rem;
+            box-shadow: 0 12px 32px #15243912;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+        }
+        .board-lead { background: #14263c; color: white; padding: 1.1rem 1.25rem; }
+        .board-lead h1 { font-size: clamp(1.1rem, 3vw, 1.55rem); margin: .2rem 0 .45rem; }
+        .board-lead p { margin: 0; }
+        .stop-id { font-size: .78rem; opacity: .85; white-space: nowrap; }
+        .next-label { font-size: .8rem; font-weight: 700; color: #bed4ec; }
+        .next-eta { color: #a8f3cc; font-size: 1.65rem; font-weight: 750; margin-right: .35rem; }
+        .next-eta, .row-eta { font-variant-numeric: tabular-nums; }
+        .board-scroll:focus-visible, .board summary:focus-visible, .nearby-stop:focus-visible {
+            outline: 3px solid #246bb0;
+            outline-offset: -3px;
+        }
+        .curb + .curb { border-top: 4px solid #b6c8db; }
+        .curb-title, .route-head, .route-detail, .route-stops, .time-axis { padding-inline: 1rem; }
+        .curb-title { padding-block: .8rem; background: #eef4fa; }
+        .curb-title h2 { font-size: .95rem; margin: 0; }
+        .curb-status { color: #40546a; font-size: .82rem; }
+        .route-row { border-top: 1px solid #e2e9ef; padding-bottom: .45rem; }
+        .route-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .6rem; padding-top: .65rem; }
+        .route-head h3 { display: flex; align-items: baseline; gap: .45rem; margin: 0; font-size: .95rem; }
+        .route-chip { color: white; background: var(--route-color); padding: .15rem .42rem; border-radius: .35rem; }
+        .row-eta { font-size: 1.12rem; font-weight: 750; }
+        .later-etas, .route-detail, .route-stops, .time-axis { font-size: .83rem; color: #40546a; }
+        .route-detail { margin: 0; padding-block: .1rem; }
+        .route-stops { padding-block: .15rem; }
+        .route-stops summary { width: fit-content; cursor: pointer; }
+        .route-stops li { padding: .14rem 0; }
+        .time-axis[hidden] { display: none; }
+        .time-axis { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); margin-inline: 1.25rem; padding: .45rem 0; }
+        .time-axis strong { position: absolute; right: 0; top: .45rem; }
+        .time-track {
+            position: relative;
+            height: 1.9rem;
+            margin-inline: 1.25rem;
+            background: linear-gradient(#d4dfea, #d4dfea) center / 100% 2px no-repeat,
+                repeating-linear-gradient(90deg, #d4dfea 0 1px, transparent 1px calc(100% / 3));
+            border-right: 2px solid #40546a;
+        }
+        .bus-marker {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            transition: left .55s ease;
+            display: grid;
+            place-items: center;
+            width: 1.45rem;
+            height: 1.3rem;
+            border-radius: .32rem;
+            background: var(--route-color);
+            color: white;
+            font-size: .8rem;
+        }
+        .board-legend { color: #40546a; border-top: 1px solid #dce5ed; margin: 0; padding: .7rem 1rem; font-size: .8rem; }
+        .nearby { margin-bottom: 1.25rem; }
+        .nearby h2 { font-size: 1rem; margin: 0 0 .45rem; }
+        .nearby p { font-size: .85rem; color: #40546a; }
+        .nearby ul { list-style: none; margin: 0; padding: 0; background: white; border: 1px solid #d1dae4; border-radius: .65rem; overflow: hidden; }
+        .nearby li + li { border-top: 1px solid #e2e9ef; }
+        .nearby-stop {
+            display: flex; justify-content: space-between; align-items: baseline; gap: .65rem;
+            width: 100%; border: 0; background: white; color: #152439; text-align: left;
+            padding: .62rem .8rem; cursor: pointer;
+        }
+        .nearby-stop:hover { background: #eef4fa; }
+        .nearby-stop small { color: #40546a; }
+        .nearby-distance { white-space: nowrap; font-variant-numeric: tabular-nums; }
+        @media (prefers-reduced-motion: reduce) { .bus-marker { transition: none; } }
+        @media (max-width: 480px) {
+            .fa-xl-mta { font-size: 2rem; width: 40px; }
+            .arrival-page { margin-top: 74px; }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <nav class="navbar fixed-top navbar-light bg-light">
+        <div class="container d-flex align-items-center">
+            <div class="d-flex align-items-center">
+                <button id="btnBus" class="navicon" title="Reload" aria-label="Reload page">
+                    <i class="fa-solid fa-bus fa-xl-mta"></i>
+                </button>
+                <span class="navbar-text" id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></span>
+            </div>
+            <div class="d-flex align-items-center" style="gap: 12px">
+                <button id="btnHome" class="navicon" title="Stops near the home location (URL lat/lon)" aria-label="Show stops near home location">
+                    <i class="fa-solid fa-house fa-xl-mta"></i>
+                </button>
+                <button id="btnLocate" class="navicon" title="Stops near my current location" aria-label="Show stops near my current location">
+                    <i class="fa-solid fa-location-dot fa-xl-mta"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+</div>
+
+<main class="container arrival-page">
+
+    <div class="ac-wrap">
+        <input id="stopEntry" class="form-control form-control-lg" type="text"
+               placeholder="Find a bus stop" autocomplete="off" spellcheck="false"
+               role="combobox" aria-expanded="false" aria-controls="stopEntryList" aria-label="Bus stop name">
+        <button id="stopEntryClear" class="navicon ac-clear" type="button" title="Clear — back to nearby stops"
+                aria-label="Clear stop selection" hidden><i class="fa-solid fa-xmark"></i></button>
+        <div id="stopEntryList" class="ac-list" role="listbox" aria-label="Matching stops" hidden></div>
+    </div>
+
+    <section class="board" aria-labelledby="boardingTitle">
+        <header class="board-lead">
+            <div class="next-label">Selected boarding stop</div>
+            <h1 id="boardingTitle">Finding your stop…</h1>
+            <p id="nextBus" aria-live="polite"></p>
+        </header>
+        <div id="boardScroll" class="board-scroll" tabindex="0" role="region" aria-label="Bus arrivals by time remaining"></div>
+        <p id="boardLegend" class="board-legend" hidden>Markers show minutes until boarding. Arrivals beyond 15 minutes sit at the left edge.</p>
+    </section>
+    <section id="nearbySection" class="nearby" aria-labelledby="nearbyTitle" hidden>
+        <h2 id="nearbyTitle">Stops within 500 ft</h2>
+        <div id="nearbyStops" aria-live="polite"></div>
+    </section>
+    <div id="tINSERTHERE"></div>
+    <p id="statusmessage" aria-live="polite"></p>
+</main>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// Configuration
+// ════════════════════════════════════════════════════════════════════
+
+// ⚠  This key ships inside a public static page — anyone who loads the
+//    page (or the repo) can read it. See README.md → "API key handling".
+//    This is the ONLY place the key appears in the file.
+const API_KEY = "REDACTED_WMATA_KEY";
+
+
+// WMATA public API — WMATA operates the DC (Metrobus) bus system.
+// Portal / docs / key registration: https://developer.wmata.com
+const WMATA_API = "https://api.wmata.com";
+
+// The 20010 corner (Cleveland Park), for building ?busstop= links:
+//   1002135 / 1002130  Park Rd NW + 19 St NW        (C87, D72)
+//   1002118            Adams Mill Rd NW + Klingle Rd NW (C61)
+//   1002127 / 1002120  Park Rd NW + Mt Pleasant St NW (C87, D72)
+// The 2025 "Better Bus" redesign renumbered stops — the old defaults
+// 1002141/1002148 no longer exist (verified 2026-11). The no-param view
+// does a live nearby search instead of using fixed IDs, so it self-heals
+// if the IDs change again; see README → "Maintenance".
+
+// Park Rd NW, Cleveland Park (20010) — the "home" corner
+const HOME = { lat: 38.93468, lon: -77.04512 };
+const DC_CENTER = { lat: 38.89790, lon: -77.03661 };
+
+// ── URL parameters ───────────────────────────────────────────────────
+//   ?busstop=1002135,1002130   explicit stops (lat/lon/radius ignored)
+//   ?lat=38.934&lon=-77.045    search for stops near this point
+//   ?radius=300                search radius in meters
+//   ?refresh=30                prediction refresh interval, seconds (15..600)
+// No params: live nearby search at the 20010 corner (HOME) above.
+// Defaults: radius 300 m, refresh 30 s.
+const params = new URLSearchParams(location.search);
+
+function num(value, fallback) {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+const stopListFromURL =
+    params.get("busstop") ? params.get("busstop").split(",").map(s => s.trim()).filter(Boolean) : null;
+
+// lat/lon: use the URL point only when BOTH are given, otherwise HOME
+const hasLatLon = params.has("lat") && params.has("lon");
+const urlPoint = hasLatLon
+    ? { lat: num(params.get("lat"), HOME.lat), lon: num(params.get("lon"), HOME.lon) }
+    : HOME;
+
+const gRadius = num(params.get("radius"), 300);
+const REFRESH_MS = Math.min(Math.max(num(params.get("refresh"), 30), 15), 600) * 1000;
+
+// ════════════════════════════════════════════════════════════════════
+// State
+// ════════════════════════════════════════════════════════════════════
+let stops = [];               // [{ StopID, Name, Lat, Lon, Distance, Routes, Arrivals, Error }]
+let searchPoint = urlPoint;   // where to look for stops (updated by geolocation)
+let pickedStop = null;        // the stop chosen in the entry field (null = nearby search)
+let pickedStopObj = null;     // the stop object actually shown (may be a directory stop outside the list)
+let forceNearby = false;      // the user dismissed a ?busstop= prefill (✕) → search nearby even with the param
+let refreshTimer = null;
+// stop directory
+// The full jStops dump (812 KB, ~7.5k stops) is fetched once per page load
+// and feeds the shared entry field's autocomplete plus the route picture.
+let allStopsCache = null;     // the full stop dump, cached per page load
+let stopDirLoad = null;       // in-flight loadStopDirectory() promise (dedupes the fetch)
+
+const gBoard = document.getElementById("boardScroll");
+const gBoardTitle = document.getElementById("boardingTitle");
+const gNextBus = document.getElementById("nextBus");
+const gNearbySection = document.getElementById("nearbySection");
+const gNearbyStops = document.getElementById("nearbyStops");
+const gLegend = document.getElementById("boardLegend");
+const gStatus = document.getElementById("statusmessage");
+const gClock = document.getElementById("clock");
+const gTableHost = document.getElementById("tINSERTHERE");
+const gStopEntry = document.getElementById("stopEntry");
+const gStopEntryClear = document.getElementById("stopEntryClear");
+const gStopEntryList = document.getElementById("stopEntryList");
+
+// ════════════════════════════════════════════════════════════════════
+// WMATA API
+// ════════════════════════════════════════════════════════════════════
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// One GET against the WMATA API. One retry after backoff on 429/timeout.
+// Never throws: returns { data, error } so callers decide how to surface it.
+async function apiGet(path, query, timeoutMs = 10000) {
+    const qs = new URLSearchParams(Object.assign({ api_key: API_KEY }, query));
+    for (let attempt = 0; ; attempt++) {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), timeoutMs);
+        try {
+            const res = await fetch(`${WMATA_API}${path}?${qs}`, { signal: ctl.signal });
+            const data = await res.json().catch(() => null);
+            if (res.status === 429 && attempt === 0) {   // back off, retry once
+                await sleep(1500);
+                continue;
+            }
+            const error = res.ok ? null : Object.assign(
+                new Error(data?.Message || `HTTP ${res.status}`),
+                { status: res.status, rateLimited: res.status === 429 });
+            return { data, error };
+        } catch (e) {                                     // network error / timeout
+            if (attempt === 0) {
+                await sleep(1500);
+                continue;
+            }
+            return { data: null, error: e };
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+}
+
+// Nearby stops:  GET /Bus.svc/json/jStops?Lat&Lon&Radius
+// Returns [{ StopID, Name, Lat, Lon, Routes }] (or [] if none in range)
+async function fetchStopsNear(lat, lon, radius) {
+    const { data, error } = await apiGet("/Bus.svc/json/jStops", { Lat: lat, Lon: lon, Radius: radius });
+    if (error) throw error;
+    return (data && data.Stops) || [];
+}
+
+// All stops: GET /Bus.svc/json/jStops (no params)
+// The API silently IGNORES a StopID-only query and returns every stop in the
+// system (~7.5k, ~800 KB). Each entry is { StopID, Name, Lon, Lat, Routes[] }
+// — that dump is the only source of stop names, coordinates and routes.
+// Fetched once per page load via loadStopDirectory(); it powers the
+// shared entry field's autocomplete and the route picture.
+async function fetchAllStops() {
+    const { data, error } = await apiGet("/Bus.svc/json/jStops", {}, 30000);
+    if (error) throw error;
+    return (data && data.Stops) || [];
+}
+
+// The stop directory, deduped: concurrent callers (the entry field, the
+// picture) share one in-flight fetch, and failures are not retried.
+function loadStopDirectory() {
+    if (!stopDirLoad) {
+        stopDirLoad = fetchAllStops()
+            .then(stops => { allStopsCache = stops; return stops; })
+            .catch(err => { stopDirLoad = null; throw err; });   // allow a later retry
+    }
+    return stopDirLoad;
+}
+
+function id(value) {
+    return value == null ? "" : String(value).trim();
+}
+
+function etaText(minutes) {
+    return minutes === 0 ? "Due" : `${minutes} min`;
+}
+
+async function fetchPredictions(stopId) {
+    const { data, error } = await apiGet("/NextBusService.svc/json/jPredictions", { StopID: stopId });
+    if (error) throw error;
+    if (!Array.isArray(data?.Predictions)) throw new Error("Invalid predictions response");
+    const known = new Map();
+    const anonymous = [];
+    for (const p of data.Predictions) {
+        const min = id(p.Minutes) ? Number(p.Minutes) : NaN;
+        const route = id(p.RouteID);
+        if (!route || !Number.isFinite(min) || min < 0) continue;
+        const prediction = {
+            min, route, dir: id(p.DirectionText), direction: id(p.DirectionNum),
+            trip: id(p.TripID), vehicle: id(p.VehicleID),
+        };
+        const key = prediction.trip ? JSON.stringify(["trip", prediction.trip])
+            : prediction.vehicle ? JSON.stringify(["vehicle", prediction.vehicle, route, prediction.dir]) : null;
+        if (!key) anonymous.push(prediction);
+        else if (!known.has(key) || min < known.get(key).min) known.set(key, prediction);
+    }
+    return { name: data.StopName, predictions: [...known.values(), ...anonymous].sort((a, b) => a.min - b.min) };
+}
+
+function makeStop(stopId, name, lat, lon) {
+    return {
+        StopID: id(stopId), Name: name, Lat: lat, Lon: lon, Distance: null,
+        Routes: [], Arrivals: [], Error: null, updatedAt: null,
+    };
+}
+
+let context = null;
+let locationRequest = 0;
+let directoryRetryAt = 0;
+const predictionRequests = new Map();
+const routeCache = new Map();
+const nearbyCache = new Map();
+const NEARBY_FEET = 500;
+const NEARBY_METERS = Math.ceil(NEARBY_FEET * 0.3048);
+const RUNWAY_MINUTES = 15;
+let positionRequest = null;
+let backoffUntil = 0;
+
+function newContext() {
+    clearTimeout(refreshTimer);
+    context = {
+        anchor: null, opposite: null, candidates: [], nearby: null, nearbyError: false,
+        positions: [], layout: null, running: false, lastRefresh: 0,
+    };
+    return context;
+}
+
+function anchorStop() {
+    return shownStops()[0] || null;
+}
+
+function startBoard(state = newContext()) {
+    state.anchor = anchorStop();
+    renderBoard(state);
+    refreshPredictions(state);
+}
+
+async function runFlow() {
+    const state = newContext();
+    resetPick();
+    stops = [];
+    render();
+    keepMarkup(gBoardTitle, "Finding your stop…");
+    keepMarkup(gNextBus, "");
+    gBoard.replaceChildren();
+    gLegend.hidden = true;
+    gNearbySection.hidden = true;
+    gStatus.textContent = "";
+    try {
+        if (stopListFromURL && !forceNearby) {
+            stops = stopListFromURL.map(stopId => makeStop(stopId, null, null, null));
+            if (stops.length === 1) {
+                pickedStop = stops[0].StopID;
+                gStopEntry.value = `#${pickedStop}`;
+                acStop.setPicked(true);
+            }
+        } else {
+            const d = distance(DC_CENTER.lat, DC_CENTER.lon, searchPoint.lat, searchPoint.lon, "m");
+            const at = d > 50 ? DC_CENTER : searchPoint;
+            const nearby = await fetchStopsNear(at.lat, at.lon, gRadius);
+            if (state !== context) return;
+            stops = nearby.map(raw => {
+                const stop = materializeDirStop(raw);
+                stop.Distance = distance(at.lat, at.lon, stop.Lat, stop.Lon, "f");
+                return stop;
+            }).sort((a, b) => a.Distance - b.Distance);
+        }
+    } catch (error) {
+        if (state !== context) return;
+        noteBackoff(error);
+        gStatus.textContent = "Could not load nearby stops.";
+    }
+    startBoard(state);
+}
+
+function noteBackoff(error) {
+    if (error?.rateLimited) backoffUntil = Math.max(backoffUntil, Date.now() + REFRESH_MS * 5);
+}
+
+function sharedRequest(cache, key, load) {
+    if (!cache.has(key)) {
+        cache.set(key, load().catch(error => {
+            cache.delete(key);
+            noteBackoff(error);
+            throw error;
+        }));
+    }
+    return cache.get(key);
+}
+
+function scheduleRefresh(state) {
+    if (state !== context || !state.anchor) return;
+    clearTimeout(refreshTimer);
+    const delay = Math.max(REFRESH_MS, backoffUntil - Date.now());
+    refreshTimer = setTimeout(() => refreshPredictions(state), delay);
+}
+
+async function refreshStop(stop, state) {
+    if (state.requested.has(stop.StopID)) return;
+    state.requested.add(stop.StopID);
+    const stopId = stop.StopID;
+    if (!predictionRequests.has(stopId)) {
+        predictionRequests.set(stopId, fetchPredictions(stopId).finally(() => predictionRequests.delete(stopId)));
+    }
+    try {
+        const result = await predictionRequests.get(stopId);
+        if (state !== context) return;
+        stop.Name ||= result.name;
+        stop.Arrivals = result.predictions;
+        stop.updatedAt = Date.now();
+        stop.Error = null;
+        if (pickedStop === stopId && gStopEntry.value === `#${stopId}` && stop.Name) gStopEntry.value = stop.Name;
+    } catch (error) {
+        noteBackoff(error);
+        if (state === context) stop.Error = error;
+    }
+    if (state === context) {
+        renderBoard(state);
+        render();
+    }
+}
+
+async function enrichBoard(state) {
+    const anchor = state.anchor;
+    if (!hasCoords(anchor) && Date.now() >= directoryRetryAt && Date.now() >= backoffUntil) {
+        try {
+            const directory = await loadStopDirectory();
+            if (state !== context) return;
+            const entry = directory.find(stop => id(stop.StopID) === anchor.StopID);
+            if (entry) {
+                anchor.Name = entry.Name;
+                anchor.Lat = entry.Lat;
+                anchor.Lon = entry.Lon;
+                anchor.Routes = entry.Routes || [];
+                if (pickedStop === anchor.StopID && gStopEntry.value === `#${anchor.StopID}`) gStopEntry.value = anchor.Name;
+            }
+            state.nearbyError = !hasCoords(anchor);
+        } catch (error) {
+            noteBackoff(error);
+            directoryRetryAt = Date.now() + REFRESH_MS;
+            if (state !== context) return;
+            state.nearbyError = true;
+        }
+        renderBoard(state);
+    }
+    if (state !== context || Date.now() < backoffUntil) return;
+
+    if (state.nearby === null && hasCoords(anchor)) {
+        try {
+            const nearby = await sharedRequest(nearbyCache, anchor.StopID,
+                () => fetchStopsNear(anchor.Lat, anchor.Lon, NEARBY_METERS));
+            if (state !== context) return;
+            const byId = new Map();
+            for (const raw of nearby) {
+                const stopId = id(raw.StopID);
+                if (!stopId || stopId === anchor.StopID || !hasCoords(raw)) continue;
+                const feet = distFt(anchor, raw);
+                if (feet > NEARBY_FEET) continue;
+                const stop = stops.find(item => item.StopID === stopId && hasCoords(item)) || materializeDirStop(raw);
+                if (!byId.has(stopId) || byId.get(stopId).feet > feet) byId.set(stopId, { stop, feet });
+            }
+            state.nearby = [...byId.values()].sort((a, b) => a.feet - b.feet || a.stop.StopID.localeCompare(b.stop.StopID));
+            state.nearbyError = false;
+        } catch (error) {
+            noteBackoff(error);
+            if (state !== context) return;
+            state.nearbyError = true;
+        }
+        renderBoard(state);
+    }
+
+    if (state !== context || Date.now() < backoffUntil) return;
+    await loadRoutes(state, routesFor(anchor));
+    if (state !== context || Date.now() < backoffUntil) return;
+    const intersection = intersectionKey(anchor.Name);
+    const routes = routesFor(anchor);
+    state.candidates = (state.nearby || []).filter(({ stop, feet }) =>
+        feet <= 330 && intersection && intersectionKey(stop.Name) === intersection
+        && stop.Routes.some(route => routes.includes(id(route)))).map(({ stop }) => stop);
+    const previousOpposite = state.opposite;
+    const opposite = state.candidates.filter(candidate => isOpposite(state, candidate));
+    const soleCandidate = state.candidates.length === 1 ? state.candidates[0] : null;
+    if (!opposite.length && soleCandidate && Date.now() >= backoffUntil) {
+        if (!soleCandidate.updatedAt) await refreshStop(soleCandidate, state);
+        if (state !== context) return;
+        if (previousOpposite === soleCandidate || opposingPredictionDirections(state, soleCandidate)) opposite.push(soleCandidate);
+    }
+    state.opposite = opposite.length === 1 ? opposite[0] : null;
+    renderBoard(state);
+    if (state.opposite) {
+        if (state.opposite !== previousOpposite) await refreshStop(state.opposite, state);
+        if (state === context && Date.now() >= backoffUntil) await loadRoutes(state, routesFor(state.opposite));
+    }
+    if (state === context) renderBoard(state);
+}
+
+async function refreshPositions(state) {
+    if (!positionRequest) {
+        // The operation accepts one optional RouteID. One shared system-wide request
+        // covers both curbs without a request for each route.
+        positionRequest = apiGet("/Bus.svc/json/jBusPositions", {}).finally(() => { positionRequest = null; });
+    }
+    const { data, error } = await positionRequest;
+    noteBackoff(error);
+    if (state !== context) return;
+    const routes = new Set([state.anchor, state.opposite].filter(Boolean).flatMap(routesFor));
+    state.positions = (Array.isArray(data?.BusPositions) ? data.BusPositions : [])
+        .filter(bus => routes.has(id(bus.RouteID)));
+    renderBoard(state);
+}
+
+async function refreshPredictions(state = context) {
+    if (!state?.anchor || state !== context || state.running) return;
+    if (Date.now() < backoffUntil) {
+        gStatus.textContent = "WMATA rate limit reached. Refresh will resume after a pause.";
+        scheduleRefresh(state);
+        return;
+    }
+    state.running = true;
+    state.requested = new Set();
+    const toFetch = new Map([...shownStops(), state.opposite].filter(Boolean).map(stop => [stop.StopID, stop]));
+    try {
+        await Promise.all([...toFetch.values()].map(stop => refreshStop(stop, state)));
+        if (state !== context) return;
+        await enrichBoard(state);
+        if (state !== context) return;
+        if (Date.now() >= backoffUntil && [state.anchor, state.opposite].some(stop => stop?.Arrivals.some(bus => bus.vehicle))) {
+            await refreshPositions(state);
+        }
+    } finally {
+        state.running = false;
+        if (state === context) {
+            state.lastRefresh = Date.now();
+            gStatus.textContent = backoffUntil > Date.now()
+                ? "WMATA rate limit reached. Refresh will resume after a pause."
+                : `Last checked ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+            scheduleRefresh(state);
+        }
+    }
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && context?.lastRefresh
+        && Date.now() - context.lastRefresh > REFRESH_MS / 2) refreshPredictions();
+});
+
+function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+    ));
+}
+
+function fmtDistance(ft) {
+    if (ft == null) return "—";
+    return ft < 5280 ? `${ft} ft` : `${(ft / 5280).toFixed(1)} mi`;
+}
+
+// The stops the arrivals table tracks. No pick: the nearby / ?busstop= list.
+// With a pick: just that stop — resolved from the list when it's there, or
+// materialized from the stop directory when the user picked a stop that is
+// not in the list (it is then live-tracked like any other).
+function shownStops() {
+    if (!pickedStop) return stops;
+    if (pickedStopObj) return [pickedStopObj];
+    const inList = stops.find(s => String(s.StopID) === pickedStop);
+    return inList ? [inList] : stops;
+}
+
+function render() {
+    const shown = shownStops();
+    let rows = "";
+    for (const s of shown) {
+        rows += "<tr class='table-primary vert'>"
+            + "<td class='text-center'><i class='fa-solid fa-person-walking'></i></td>"
+            + `<td>${fmtDistance(s.Distance)}</td>`
+            + `<td colspan="2">${esc(s.Name || s.StopID)} <small class="text-muted">(#${esc(s.StopID)})</small></td>`
+            + "</tr>";
+
+        if (s.Error) {
+            const msg = predictionStatus(s);
+            rows += "<tr><td class='text-center'><i class='fa-solid fa-triangle-exclamation text-warning'></i></td>"
+                + `<td colspan="3" class="text-muted">${esc(msg)}</td></tr>`;
+        } else if (!s.Arrivals.length) {
+            rows += "<tr><td class='text-center'><i class='fa-solid fa-clock'></i></td>"
+                + "<td colspan='3' class='text-muted'>No upcoming predictions</td></tr>";
+        } else {
+            for (const a of s.Arrivals) {
+                rows += "<tr><td class='text-center'><i class='fa-solid fa-clock'></i></td>"
+                    + `<td>${esc(etaText(a.min))}</td>`
+                    + `<td><b>${esc(a.route)}</b></td>`
+                    + `<td>${esc(a.dir)}</td></tr>`;
+            }
+        }
+    }
+    gTableHost.innerHTML = shown.length
+        ? `<div class="container">
+             <table class="table table-sm table-hover">
+                 <thead><tr><th style="width:8%"></th><th style="width:18%"></th><th style="width:20%"></th><th>destination</th></tr></thead>
+                 <tbody>${rows}</tbody>
+             </table>
+           </div>`
+        : "";
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Navigation icons
+// ════════════════════════════════════════════════════════════════════
+
+document.getElementById("btnBus").addEventListener("click", () => location.reload());
+
+document.getElementById("btnHome").addEventListener("click", () => {
+    forceNearby = true;
+    searchPoint = urlPoint;              // home = URL lat/lon, or the 20010 corner
+    runFlow();
+});
+
+document.getElementById("btnLocate").addEventListener("click", () => {
+    if (!navigator.geolocation) {
+        gStatus.textContent = "Geolocation not supported by this browser";
+        return;
+    }
+    gStatus.textContent = "Locating …";
+    const request = ++locationRequest;
+    const selectedContext = context;
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            if (request !== locationRequest || context !== selectedContext) return;
+            forceNearby = true;
+            searchPoint = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+            runFlow();
+        },
+        () => {
+            if (request === locationRequest && context === selectedContext) gStatus.textContent = "Turn on location sharing.";
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Stop-name autocomplete (the single shared entry field above the view)
+// ════════════════════════════════════════════════════════════════════
+// The entry field is a combobox over the stop directory (the one jStops
+// full dump, deduped by loadStopDirectory()). The factory owns the entry UI
+// (suggestion list, ✕, keyboard); what the page does with a picked stop is
+// up to its callbacks:
+//   onPick(dirStop)  — a stop was chosen (Enter on the highlighted match,
+//                      or a row click)
+//   onClear()        — the ✕ was pressed
+//   onPickLost()     — the user started typing while a pick was active
+function makeAutocomplete(input, listEl, clearBtn, onPick, onClear, onPickLost) {
+    let matches = [];
+    let active = -1;
+    let picked = false;
+
+    function closeList() {
+        listEl.hidden = true;
+        listEl.innerHTML = "";
+        input.setAttribute("aria-expanded", "false");
+        active = -1;
+    }
+
+    function setPicked(v) {
+        picked = v;
+        clearBtn.hidden = !v;
+        if (!v) closeList();
+    }
+
+    function openList(html) {
+        listEl.innerHTML = html;
+        listEl.hidden = false;
+        input.setAttribute("aria-expanded", "true");
+    }
+
+    // Case-insensitive name search plus StopID prefix; at most 8 rows.
+    // null = the directory isn't loaded yet.
+    function matchesFor(q) {
+        if (!allStopsCache) return null;
+        const s = q.trim().toLowerCase();
+        if (!s) return [];
+        const out = [];
+        for (const st of allStopsCache) {
+            if (st.Name && st.Name.toLowerCase().includes(s)) out.push(st);
+            else if (String(st.StopID).toLowerCase().startsWith(s)) out.push(st);
+            if (out.length >= 8) break;
+        }
+        out.sort((a, b) => a.Name.localeCompare(b.Name) ||
+            a.StopID.localeCompare(b.StopID, undefined, { numeric: true }));
+        return out;
+    }
+
+    function renderMatches(items) {
+        matches = items;
+        active = items.length ? 0 : -1;
+        openList(items.length
+            ? items.map((s, i) =>
+                `<div class="ac-item${i === active ? " active" : ""}" data-i="${i}" role="option" aria-selected="${i === active}">` +
+                `${esc(s.Name || "#" + s.StopID)}<span class="code">#${esc(s.StopID)}</span></div>`).join("")
+            : `<div class="ac-none">no matching stops</div>`);
+    }
+
+    function pick(st) {
+        input.value = st.Name || `#${st.StopID}`;
+        setPicked(true);
+        if (onPick) onPick(st);
+    }
+
+    input.addEventListener("input", () => {
+        if (picked) { setPicked(false); if (onPickLost) onPickLost(); }
+        const q = input.value.trim();
+        if (!q) { closeList(); return; }
+        const items = matchesFor(q);
+        if (items === null) {                       // directory not loaded yet
+            matches = [];
+            openList(`<div class="ac-none">loading stops…</div>`);
+            loadStopDirectory().then(() => {
+                if (input.value.trim() === q) renderMatches(matchesFor(q) || []);
+            }).catch(() => {
+                if (input.value.trim() === q) openList(`<div class="ac-none">could not load the stop list</div>`);
+            });
+        } else {
+            renderMatches(items);
+        }
+    });
+
+    input.addEventListener("keydown", e => {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            if (listEl.hidden || !matches.length) return;
+            e.preventDefault();
+            if (active === -1) active = e.key === "ArrowDown" ? 0 : matches.length - 1;
+            else active = (active + (e.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length;
+            [...listEl.children].forEach((el, i) => el.classList.toggle("active", i === active));
+            if (listEl.children[active]) listEl.children[active].scrollIntoView({ block: "nearest" });
+        } else if (e.key === "Enter" && !listEl.hidden && active >= 0 && matches[active]) {
+            e.preventDefault();
+            pick(matches[active]);
+        } else if (e.key === "Escape" && !listEl.hidden) {
+            closeList();
+        }
+    });
+
+    // mousedown, not click: preventDefault keeps the input focused, so the
+    // blur handler can't close the list before the row gets picked.
+    listEl.addEventListener("mousedown", e => {
+        const item = e.target.closest(".ac-item");
+        if (!item) return;
+        e.preventDefault();
+        pick(matches[+item.dataset.i]);
+    });
+
+    input.addEventListener("blur", closeList);
+    clearBtn.addEventListener("click", () => {
+        setPicked(false);
+        input.value = "";
+        if (onClear) onClear();
+    });
+
+    return {
+        setPicked,
+        reset() { setPicked(false); input.value = ""; },
+    };
+}
+
+// A directory stop (from the full dump) becomes a tracked stop. It may be
+// outside the nearby list — it is then materialized with a null distance.
+function materializeDirStop(st) {
+    const s = makeStop(st.StopID, st.Name, st.Lat, st.Lon);
+    s.Routes = st.Routes || [];
+    return s;
+}
+
+// Undo the entry-field pick: state + field only. The caller decides what
+// happens next — ✕ re-runs runFlow() (the nearby search); typing just
+// re-renders the list that is already on screen.
+function resetPick() {
+    if (pickedStop === null && pickedStopObj === null) return;
+    pickedStop = null;
+    pickedStopObj = null;
+    acStop.reset();
+}
+
+function selectStop(stop) {
+    pickedStop = id(stop.StopID);
+    pickedStopObj = stops.find(item => item.StopID === pickedStop && hasCoords(item)) || stop;
+    gStopEntry.value = pickedStopObj.Name || `#${pickedStop}`;
+    acStop.setPicked(true);
+    startBoard();
+}
+
+gNearbyStops.addEventListener("click", event => {
+    const button = event.target.closest("[data-nearby-stop]");
+    const match = context?.nearby?.find(({ stop }) => stop.StopID === button?.dataset.nearbyStop);
+    if (match) {
+        selectStop(match.stop);
+        gStopEntry.focus();
+    }
+});
+
+const acStop = makeAutocomplete(
+    gStopEntry, gStopEntryList, gStopEntryClear,
+    st => selectStop(materializeDirStop(st)),
+    () => {
+        resetPick();
+        forceNearby = true;
+        runFlow();
+    },
+    () => { resetPick(); startBoard(); },
+);
+
+// ════════════════════════════════════════════════════════════════════
+const ROUTE_COLORS = ["#a12d37", "#185594", "#28623e", "#9a411a", "#644693", "#006774", "#8a345c"];
+const EARTH_FT_PER_DEGREE = 364000;
+const POSITION_MAX_AGE = 120000;
+
+function routeColor(route) {
+    let hash = 0;
+    for (const letter of route) hash = (hash * 31 + letter.charCodeAt(0)) >>> 0;
+    return ROUTE_COLORS[hash % ROUTE_COLORS.length];
+}
+
+function hasCoords(point) {
+    return point && Number.isFinite(point.Lat) && Number.isFinite(point.Lon);
+}
+
+function distFt(a, b) {
+    const radians = Math.PI / 180;
+    const lat = Math.sin((b.Lat - a.Lat) * radians / 2);
+    const lon = Math.sin((b.Lon - a.Lon) * radians / 2);
+    const haversine = lat * lat + Math.cos(a.Lat * radians) * Math.cos(b.Lat * radians) * lon * lon;
+    return 2 * 6371008.8 / 0.3048 * Math.asin(Math.sqrt(Math.min(1, haversine)));
+}
+
+function localVector(a, b) {
+    return [
+        (b.Lon - a.Lon) * Math.cos(a.Lat * Math.PI / 180) * EARTH_FT_PER_DEGREE,
+        (b.Lat - a.Lat) * EARTH_FT_PER_DEGREE,
+    ];
+}
+
+function headingKey(value) {
+    return id(value).toLowerCase().replace(/^(?:(?:north|south|east|west)(?:bound)?\s+)?to\s+/, "")
+        .replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function intersectionKey(value) {
+    return id(value).toLowerCase().split(/\s*(?:\+|&|@)\s*/)
+        .map(part => part.replace(/[^a-z0-9]+/g, " ").trim()).sort().join("+");
+}
+
+function routesFor(stop) {
+    return [...new Set([...(stop.Routes || []).map(id), ...stop.Arrivals.map(bus => bus.route)])].filter(Boolean).sort();
+}
+
+function distances(points) {
+    let total = 0;
+    return points.map((point, index) => {
+        if (index) total += distFt(points[index - 1], point);
+        return total;
+    });
+}
+
+function projections(point, points, offsets, maxGap) {
+    const hits = [];
+    for (let i = 1; i < points.length; i++) {
+        const [dx, dy] = localVector(points[i - 1], points[i]);
+        const [px, py] = localVector(points[i - 1], point);
+        const squared = dx * dx + dy * dy;
+        if (!squared) continue;
+        const t = Math.max(0, Math.min(1, (px * dx + py * dy) / squared));
+        const gap = Math.hypot(px - dx * t, py - dy * t);
+        if (gap <= maxGap) {
+            hits.push({ gap, at: offsets[i - 1] + t * (offsets[i] - offsets[i - 1]), segment: i });
+        }
+    }
+    return hits.sort((a, b) => a.gap - b.gap);
+}
+
+function normalizePattern(route, field, raw) {
+    if (!Array.isArray(raw.Stops) || !raw.Stops.length || !raw.Stops.every(stop => id(stop.StopID) && hasCoords(stop))) return null;
+    const stops = raw.Stops.map(stop => ({ ...stop, StopID: id(stop.StopID) }));
+    const shape = Array.isArray(raw.Shape) && raw.Shape.every(hasCoords)
+        ? [...raw.Shape].sort((a, b) => a.SeqNum - b.SeqNum) : [];
+    const shapeOffsets = distances(shape);
+    const stopOffsets = [];
+    for (const stop of stops) {
+        const previous = stopOffsets.at(-1) ?? -1;
+        const match = projections(stop, shape, shapeOffsets, 150).find(hit => hit.at >= previous);
+        if (!match) break;
+        stopOffsets.push(match.at);
+    }
+    const useShape = stopOffsets.length === stops.length
+        && stopOffsets.every((at, i) => i === 0 || distFt(stops[i - 1], stops[i]) < 20 || at > stopOffsets[i - 1]);
+    const offsets = useShape ? stopOffsets : distances(stops);
+    return {
+        key: JSON.stringify([route, field]), route, stops, offsets,
+        direction: id(raw.DirectionNum), heading: id(raw.TripHeadsign),
+        terminal: stops.at(-1).Name || `#${stops.at(-1).StopID}`,
+        points: useShape ? shape : stops, pointOffsets: useShape ? shapeOffsets : offsets,
+    };
+}
+
+async function loadRoutes(state, routes) {
+    state.patterns ??= new Map();
+    await Promise.all(routes.filter(route => !state.patterns.has(route)).map(async route => {
+        try {
+            const patterns = await sharedRequest(routeCache, route, async () => {
+                const { data, error } = await apiGet("/Bus.svc/json/jRouteDetails", { RouteID: route });
+                if (error) throw error;
+                if (!data || id(data.RouteID) !== route) throw new Error("Invalid route response");
+                return Object.entries(data)
+                    .filter(([field, path]) => /^Direction\d+$/.test(field) && path)
+                    .map(([field, path]) => normalizePattern(route, field, path)).filter(Boolean);
+            });
+            if (state === context) state.patterns.set(route, patterns);
+        } catch (error) {
+            // Unsupported routes can still show their arrival predictions.
+            if (state === context && [400, 404].includes(error.status)) state.patterns.set(route, []);
+        }
+    }));
+}
+
+function boardingPatterns(state, stop, route) {
+    return (state.patterns?.get(route) || []).flatMap(pattern => pattern.stops.flatMap((item, index) =>
+        item.StopID === stop.StopID ? [{ pattern, index }] : []));
+}
+
+function stopBearing(pattern, index) {
+    const start = pattern.stops[Math.max(0, index - 1)];
+    const end = pattern.stops[Math.min(pattern.stops.length - 1, index + 1)];
+    const [x, y] = localVector(start, end);
+    const length = Math.hypot(x, y);
+    return length ? [x / length, y / length] : null;
+}
+
+function isOpposite(state, candidate) {
+    return routesFor(state.anchor).some(route => boardingPatterns(state, state.anchor, route).some(primary =>
+        boardingPatterns(state, candidate, route).some(other => {
+            if (primary.pattern === other.pattern
+                || !primary.pattern.direction || primary.pattern.direction === other.pattern.direction) return false;
+            const a = stopBearing(primary.pattern, primary.index);
+            const b = stopBearing(other.pattern, other.index);
+            return a && b && a[0] * b[0] + a[1] * b[1] < -0.5;
+        })));
+}
+
+function opposingPredictionDirections(state, candidate) {
+    const anchor = state.anchor;
+    // When a route-details response omits both curbs, the exact stop feeds
+    // can corroborate an otherwise unique same-intersection candidate.
+    if (anchor.Error || candidate.Error || !anchor.updatedAt || !candidate.updatedAt) return false;
+    const opposite = { north: "south", south: "north", east: "west", west: "east" };
+    const cardinal = bus => bus.dir.toLowerCase().match(/^(north|south|east|west)(?:bound)?\s+to\b/)?.[1];
+    return anchor.Arrivals.some(a => a.direction && cardinal(a)
+        && !boardingPatterns(state, anchor, a.route).length
+        && !boardingPatterns(state, candidate, a.route).length
+        && candidate.Arrivals.some(b =>
+        a.route === b.route && b.direction && a.direction !== b.direction && opposite[cardinal(a)] === cardinal(b)));
+}
+
+function wmataTimestamp(value) {
+    const stamp = id(value);
+    if (/(?:z|[+-]\d\d:\d\d)$/i.test(stamp)) return Date.parse(stamp);
+    // The positions API sends unzoned Eastern wall-clock timestamps. Convert
+    // using the offsets around the current instant so the repeated DST hour
+    // can be resolved against the freshness window.
+    const utc = Date.parse(stamp + "Z");
+    if (!Number.isFinite(utc)) return NaN;
+    const now = Date.now();
+    const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York", timeZoneName: "shortOffset",
+    });
+    return [now, now - 3600000, now + 3600000].map(near => {
+        const offset = formatter.formatToParts(near).find(part => part.type === "timeZoneName")?.value;
+        return utc - Number(offset?.replace("GMT", "")) * 3600000;
+    }).filter(time => now - time >= -30000 && now - time <= POSITION_MAX_AGE)
+        .sort((a, b) => Math.abs(now - a) - Math.abs(now - b))[0] ?? NaN;
+}
+
+function matchingPosition(state, bus) {
+    if (!bus.vehicle) return null;
+    const matches = state.positions.filter(p => {
+        if (id(p.VehicleID) !== bus.vehicle || id(p.RouteID) !== bus.route
+            || (bus.trip && id(p.TripID) && bus.trip !== id(p.TripID))
+            || (bus.direction && id(p.DirectionNum) && bus.direction !== id(p.DirectionNum))
+            || !hasCoords(p)) return false;
+        const age = Date.now() - wmataTimestamp(p.DateTime);
+        return age >= -30000 && age <= POSITION_MAX_AGE;
+    });
+    return matches.length === 1 ? matches[0] : null;
+}
+
+function matchPattern(choices, bus, position) {
+    const sameTrip = bus.trip && bus.trip === id(position?.TripID);
+    const key = headingKey(bus.dir) || (sameTrip ? headingKey(position.TripHeadsign) : "");
+    const direction = bus.direction || id(position?.DirectionNum);
+    const candidates = choices.filter(({ pattern }) => {
+        if (direction && pattern.direction && pattern.direction !== direction) return false;
+        return key && [pattern.heading, pattern.terminal].some(label => headingKey(label) === key);
+    });
+    return candidates.length === 1 ? candidates[0] : null;
+}
+
+function rowsFor(state, stop) {
+    const rows = new Map();
+    const add = (route, boarding, destination, bus = null, direction = "") => {
+        const key = JSON.stringify([route, boarding?.pattern.key, boarding?.index,
+            boarding ? "" : direction, boarding ? "" : headingKey(destination)]);
+        if (!rows.has(key)) rows.set(key, { key, route, boarding, destination, buses: [] });
+        if (bus) rows.get(key).buses.push(bus);
+    };
+    for (const route of routesFor(stop)) {
+        const choices = boardingPatterns(state, stop, route);
+        const covered = new Set();
+        for (const bus of stop.Arrivals.filter(bus => bus.route === route)) {
+            const position = matchingPosition(state, bus);
+            const boarding = matchPattern(choices, bus, position);
+            if (boarding) covered.add(JSON.stringify([boarding.pattern.key, boarding.index]));
+            add(route, boarding, bus.dir || boarding?.pattern.heading || boarding?.pattern.terminal || "Destination unavailable",
+                { ...bus, position }, bus.direction);
+        }
+        for (const boarding of choices) {
+            if (!covered.has(JSON.stringify([boarding.pattern.key, boarding.index]))) {
+                add(route, boarding, boarding.pattern.heading || boarding.pattern.terminal);
+            }
+        }
+        if (!choices.length && ![...rows.values()].some(row => row.route === route)) add(route, null, "Destination unavailable");
+    }
+    return [...rows.values()].sort((a, b) => a.route.localeCompare(b.route) || a.key.localeCompare(b.key));
+}
+
+function predictionStatus(stop) {
+    if (stop.Error && stop.Arrivals.length) {
+        const updated = new Date(stop.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        return `Last known predictions · updated ${updated}`;
+    }
+    if (stop.Error) return "Predictions unavailable";
+    if (!stop.updatedAt) return "Loading predictions…";
+    return stop.Arrivals.length ? "" : "No upcoming predictions";
+}
+
+function routeMarkup(row) {
+    const boarding = row.boarding;
+    const stopList = boarding ? boarding.pattern.stops.map((stop, i) => {
+        const labels = [i === boarding.index ? "Board here" : "", i === boarding.pattern.stops.length - 1 ? "Terminal" : ""].filter(Boolean);
+        return `<li>${esc(stop.Name || "#" + stop.StopID)} <span class="stop-id">#${esc(stop.StopID)}</span>
+            ${labels.length ? `<strong>· ${labels.join(" · ")}</strong>` : ""}</li>`;
+    }).join("") : "";
+    return `<article class="route-row" style="--route-color:${routeColor(row.route)}">
+        <div class="route-head">
+            <h3><span class="route-chip">${esc(row.route)}</span> <span class="destination"></span></h3>
+            <span class="row-eta"></span><span class="later-etas"></span>
+        </div>
+        <div class="time-track" aria-hidden="true" hidden></div>
+        <p class="route-detail" hidden></p>
+        ${boarding ? `<details class="route-stops"><summary>View all ${boarding.pattern.stops.length} stops</summary><ol>${stopList}</ol></details>` : ""}
+    </article>`;
+}
+
+function routePosition(row, stop, previous) {
+    if (stop.Error || !row.boarding || !row.buses.length) return null;
+    const bus = row.buses[0];
+    const { pattern, index } = row.boarding;
+    const center = pattern.offsets[index];
+    const key = bus.trip ? `trip:${bus.trip}:${bus.vehicle}` : bus.vehicle ? `vehicle:${bus.vehicle}` : "";
+    if (bus.position) {
+        const hits = projections(bus.position, pattern.points, pattern.pointOffsets, 250);
+        if (hits.length) {
+            const nearby = hits.filter(hit => hit.gap <= hits[0].gap + 45);
+            const ambiguous = nearby.some(hit => Math.abs(hit.at - hits[0].at) > 400);
+            const best = ambiguous && key && previous?.key === key && bus.trip && previous.segment
+                ? nearby.find(hit => Math.abs(hit.segment - previous.segment) <= 3) : ambiguous ? null : hits[0];
+            if (best) {
+                if (best.at > center + 100) return null;
+                return { at: Math.max(pattern.offsets[0], Math.min(center, best.at)), key, live: true, segment: best.segment };
+            }
+        }
+    }
+    if (!index && bus.min !== 0) return null;
+    const estimate = center - bus.min * 8 * 5280 / 60;
+    if (estimate < pattern.offsets[0]) return null;
+    return { at: estimate, key, live: false };
+}
+
+function updateRunway(article, row, stop) {
+    const track = article.querySelector(".time-track");
+    const status = article.querySelector(".route-detail");
+    const bus = stop.Error ? null : row.buses[0];
+    const previous = track.position;
+    const position = routePosition(row, stop, previous);
+    track.position = position;
+    track.hidden = !bus;
+    status.hidden = !bus && Boolean(row.boarding);
+    if (!bus) {
+        track.replaceChildren();
+        setText(status, row.boarding ? "" : "Route details unavailable");
+        return;
+    }
+    const key = bus.trip || bus.vehicle;
+    let marker = track.firstElementChild;
+    if (!marker || !key || marker.dataset.key !== key) {
+        track.innerHTML = '<span class="bus-marker"><i class="fa-solid fa-bus" aria-hidden="true"></i></span>';
+        marker = track.firstElementChild;
+        marker.dataset.key = key;
+    }
+    marker.style.left = `${100 * (1 - Math.min(RUNWAY_MINUTES, bus.min) / RUNWAY_MINUTES)}%`;
+
+    if (!position) {
+        setText(status, row.boarding ? "Position unavailable" : "Position and route details unavailable");
+        return;
+    }
+    const { pattern, index } = row.boarding;
+    const nearest = pattern.offsets.slice(0, index + 1).reduce((best, offset, i) =>
+        Math.abs(offset - position.at) < Math.abs(pattern.offsets[best] - position.at) ? i : best, 0);
+    const landmark = pattern.stops[nearest];
+    setText(status, `${position.live ? "Reported" : "Estimated"} near ${landmark.Name || "#" + landmark.StopID}`);
+}
+
+function setText(element, value) {
+    if (element.textContent !== value) element.textContent = value;
+}
+
+function updateRoute(article, row, stop) {
+    setText(article.querySelector(".destination"), row.destination);
+    const first = row.buses[0];
+    setText(article.querySelector(".row-eta"), first ? etaText(first.min) : "");
+    setText(article.querySelector(".later-etas"), first
+        ? [stop.Error ? "last known" : "", row.buses.length > 1 ? `then ${row.buses.slice(1).map(bus => etaText(bus.min)).join(", ")}` : ""].filter(Boolean).join(" · ")
+        : predictionStatus(stop) || "No upcoming predictions");
+    updateRunway(article, row, stop);
+}
+
+function keepMarkup(element, markup) {
+    if (element.lastMarkup !== markup) {
+        element.innerHTML = markup;
+        element.lastMarkup = markup;
+    }
+}
+
+function renderNearby(state) {
+    gNearbySection.hidden = !state.anchor;
+    if (!state.anchor) return;
+    const nearby = state.nearby;
+    if (!nearby?.length) {
+        const message = nearby ? "No other stops within 500 ft."
+            : state.nearbyError
+                ? "Nearby stops unavailable." : "Finding nearby stops…";
+        keepMarkup(gNearbyStops, `<p>${message}</p>`);
+        return;
+    }
+    keepMarkup(gNearbyStops, `<ul>${nearby.map(({ stop, feet }) => `<li>
+        <button class="nearby-stop" type="button" data-nearby-stop="${esc(stop.StopID)}">
+            <span>${esc(stop.Name || "Stop")} <small>#${esc(stop.StopID)}${stop === state.opposite ? " · Across the street" : ""}</small>
+                ${stop.Routes.length ? `<small class="d-block">${esc(stop.Routes.join(", "))}</small>` : ""}</span>
+            <span class="nearby-distance">${Math.round(feet)} ft</span>
+        </button></li>`).join("")}</ul>`);
+}
+
+function renderBoard(state) {
+    if (state !== context) return;
+    renderNearby(state);
+    const anchor = state.anchor;
+    if (!anchor) {
+        keepMarkup(gBoardTitle, "No stops found");
+        keepMarkup(gNextBus, "Search for a stop or use Locate.");
+        gBoard.replaceChildren();
+        gLegend.hidden = true;
+        return;
+    }
+    const title = stop => `${esc(stop.Name || "Stop")} <span class="stop-id">#${esc(stop.StopID)}</span>`;
+    keepMarkup(gBoardTitle, title(anchor));
+    const next = anchor.Error ? null : anchor.Arrivals[0];
+    keepMarkup(gNextBus, next
+        ? `<span class="next-label">Next bus</span> <strong class="next-eta">${etaText(next.min)}</strong>
+           <strong>${esc(next.route)}</strong> · ${esc(next.dir || "Destination unavailable")}`
+        : esc(predictionStatus(anchor)));
+    const sections = [anchor, state.opposite].filter(Boolean).map(stop => ({ stop, rows: rowsFor(state, stop) }));
+    const structure = JSON.stringify(sections.map(({ stop, rows }) => [stop.StopID, rows.map(row => row.key)]));
+    if (structure !== state.layout) {
+        const active = document.activeElement;
+        const open = new Set();
+        let focus = null;
+        state.sections?.forEach(section => section.articles.forEach((article, key) => {
+            const fullKey = JSON.stringify([section.id, key]);
+            if (article.querySelector("details")?.open) open.add(fullKey);
+            if (article.contains(active)) focus = [section.id, key];
+        }));
+        state.sections = sections.map(({ stop, rows }, index) => {
+            const root = document.createElement("section");
+            root.className = "curb";
+            root.innerHTML = '<div class="curb-title"><h2></h2><span class="curb-status"></span></div>';
+            root.querySelector("h2").textContent = index ? "Across the street" : "At the selected stop";
+            root.insertAdjacentHTML("beforeend", '<div class="time-axis" aria-label="Minutes until boarding"><span>15+ min</span><span>10</span><span>5</span><strong>Due</strong></div>');
+            const articles = new Map();
+            for (const row of rows) {
+                const template = document.createElement("template");
+                template.innerHTML = routeMarkup(row);
+                const article = template.content.firstElementChild;
+                const fullKey = JSON.stringify([stop.StopID, row.key]);
+                if (open.has(fullKey) && article.querySelector("details")) article.querySelector("details").open = true;
+                articles.set(row.key, article);
+                root.append(article);
+            }
+            return { root, articles, id: stop.StopID };
+        });
+        gBoard.replaceChildren(...state.sections.map(section => section.root));
+        state.layout = structure;
+        if (focus) {
+            const [stopId, key] = focus;
+            const article = state.sections.find(section => section.id === stopId)?.articles.get(key);
+            const control = article?.querySelector("summary");
+            (control || gBoard).focus({ preventScroll: true });
+        }
+    }
+    sections.forEach(({ stop, rows }, index) => {
+        const { root, articles } = state.sections[index];
+        const status = predictionStatus(stop);
+        keepMarkup(root.querySelector(".curb-status"), index ? title(stop) + (status ? ` · ${esc(status)}` : "")
+            : esc(status || (!rows.length ? "Loading routes…" : "")));
+        root.querySelector(".time-axis").hidden = stop.Error || !rows.some(row => row.buses.length);
+        for (const row of rows) updateRoute(articles.get(row.key), row, stop);
+    });
+    gLegend.hidden = !sections.some(({ stop }) => !stop.Error && stop.Arrivals.length);
+}
+
+// Distance between two GPS points (spherical law of cosines — plenty
+// accurate at these scales). Units: "m" miles, "f" feet, "K" km, "N" nautical
+// ════════════════════════════════════════════════════════════════════
+function distance(lat1, lon1, lat2, lon2, unit) {
+    if (lat1 === lat2 && lon1 === lon2) return 0;
+    const radlat1 = Math.PI * lat1 / 180;
+    const radlat2 = Math.PI * lat2 / 180;
+    const radtheta = Math.PI * (lon1 - lon2) / 180;
+    let d = Math.sin(radlat1) * Math.sin(radlat2) +
+        Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
+    d = Math.acos(Math.max(-1, Math.min(1, d))) * 180 / Math.PI * 60 * 1.1515;   // US statute miles
+    if (unit === "K") return Math.trunc(d * 1.609344 * 10) / 10;
+    if (unit === "N") return Math.trunc(d * 0.8684 * 10) / 10;
+    if (unit === "f") return Math.trunc(d * 5280);
+    return Math.trunc(d * 10) / 10;        // "m" = miles
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Clock
+// ════════════════════════════════════════════════════════════════════
+function tickClock() {
+    const s = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    gClock.textContent = s.replace(/\s?[AP]M$/, "");       // no AM/PM
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Go
+// ════════════════════════════════════════════════════════════════════
+tickClock();
+setInterval(tickClock, 1000);
+runFlow();
+</script>
+
+</body>
+</html>
