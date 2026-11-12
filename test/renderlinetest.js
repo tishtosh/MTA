@@ -40,12 +40,16 @@ sandbox.allStopsCache = null;
 sandbox.DEFAULT_STOP_ID = "1002135";
 vm.createContext(sandbox);
 vm.runInContext(
-  [extractConst("ROUTE_COLORS"), "const stopScheduleCache = {};",
+  [extractConst("ROUTE_COLORS"), "const stopScheduleCache = {};", "let shortcuts = {};",
+   'const SHORTCUT_SLOTS = ["home", "work", "fav"];',
+   extractFn("shortcutLabel"), extractFn("shortcutButtonsHtml"),
    extractFn("routeColor"), extractFn("esc"),
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),
-   extractFn("boardHeaderHtml")].join("\n") + "\nglobalThis.__stopScheduleCache = stopScheduleCache;",
+   extractFn("boardHeaderHtml")].join("\n")
+   + "\nglobalThis.__stopScheduleCache = stopScheduleCache;"
+   + "\nglobalThis.__shortcuts = shortcuts;",
   sandbox);
 
 let pass = 0, fail = 0;
@@ -92,6 +96,14 @@ const h1 = sandbox.boardHeaderHtml(
 check("header: name", h1.includes("Park Rd &amp; 19th St NW"));
 check("header: stop ID shown after the name", /#1002130/.test(h1));
 check("header: 'Selected boarding stop' removed", !h1.includes("Selected boarding stop"));
+check("header: home/work/favorite shortcuts",
+  h1.includes('data-shortcut="home"') && h1.includes('data-shortcut="work"') && h1.includes('data-shortcut="fav"'));
+sandbox.__shortcuts.home = { id: "1002130", name: "Park Rd & 19th St NW" };
+const hActive = sandbox.boardHeaderHtml(
+  { StopID: "1002130", Name: "Park Rd & 19th St NW", Arrivals: [], Error: null }, []);
+delete sandbox.__shortcuts.home;
+check("header: saved shortcut shows checked",
+  /data-shortcut="home"[^>]*aria-pressed="true"/.test(hActive));
 check("header: next bus route + headsign", /Next bus .*D72<\/span> North to Van Ness/.test(h1));
 check("header: ETA 14 min", h1.includes(">14 min<"));
 check("header: first ETA uses bt-next-eta", h1.includes("bt-next-eta"));

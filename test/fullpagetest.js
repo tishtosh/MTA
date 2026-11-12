@@ -80,6 +80,7 @@ function makeEl(id) {
   };
 }
 const document = {
+  cookie: "",
   getElementById: (id) => (els[id] = els[id] || makeEl(id)),
   addEventListener() {},
   createElement: (tag) => makeEl(tag),
@@ -140,6 +141,8 @@ const board = () => els.linesScroll.innerHTML;
   check("header: canonical directory name", h.includes("Park Rd NW+19 St NW"));
   check("header: Next bus line", h.includes("Next bus"));
   check("header: 'Selected boarding stop' removed", !h.includes("Selected boarding stop"));
+  check("header: home/work/favorite shortcut icons",
+    h.includes('data-shortcut="home"') && h.includes('data-shortcut="work"') && h.includes('data-shortcut="fav"'));
   check("header: no stop-count line", !/^\d+ stops?/.test(els.statusmessage.textContent));
 
   check("board painted into linesScroll", b !== "");
@@ -211,6 +214,17 @@ const board = () => els.linesScroll.innerHTML;
   (els.stopEntry._l.input || []).forEach(f => f());
   check("entry: typing repopulates matching stops",
     !els.stopEntryList.hidden && /Park/i.test(els.stopEntryList.innerHTML));
+
+  // The header shortcut checkboxes persist to a cookie.
+  {
+    const btn = { dataset: { shortcut: "work" }, classList: { toggle() {} },
+                  setAttribute() {}, title: "" };
+    const ev = { target: { closest: sel => sel === ".board-shortcut" ? btn : null } };
+    (els.boardHeader._l.click || []).forEach(f => f(ev));
+    check("shortcuts: header icon saves work stop to cookie",
+      /mta_shortcuts=/.test(document.cookie) &&
+      decodeURIComponent(document.cookie.split("=")[1]).includes('"work"'));
+  }
 
   if (process.env.DEBUG) { console.log("HEADER>>> " + h); console.log("BOARD>>> " + b.slice(0, 3000)); }
 

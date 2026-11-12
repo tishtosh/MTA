@@ -94,7 +94,8 @@ t("A3b no prediction + schedule → time + not predicted", (() => {
     html.includes('class="board-eta-first">4 min'));
   t("D3 destination is the final headsign", html.includes("TerB") && html.includes("TerC"));
   t("D3b service row with no prediction shows schedule + not predicted",
-    html.includes("not predicted") && /\d{1,2}:\d{2}/.test(html));
+    html.includes("not predicted") && /\d{1,2}:\d{2}/.test(html) &&
+    html.includes('class="board-row is-scheduled"'));
   t("D4 compact row keeps its note", html.includes("route details unavailable"));
   t("D5 stop lists are unnumbered and each stop is selectable",
     html.includes('<ul class="bt-stoplist" hidden>') && !html.includes("<ol") &&
