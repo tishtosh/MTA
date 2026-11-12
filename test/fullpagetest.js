@@ -211,9 +211,13 @@ const board = () => els.linesScroll.innerHTML;
     !b.includes('data-nearby="1"') || /\d+ ft away|Across the street/.test(b));
 
   // The entry field re-filters its dropdown on every keystroke.
-  check("bus dropdown prepopulated with all stops",
-    (els.busSelect.innerHTML.match(/<option/g) || []).length > 50 &&
-    /Park/i.test(els.busSelect.innerHTML));
+  check("bus route dropdown populated",
+    (els.busRouteSelect.innerHTML.match(/<option/g) || []).length > 5 &&
+    /D72|C87/.test(els.busRouteSelect.innerHTML));
+  els.busRouteSelect.value = "D72";
+  (els.busRouteSelect._l.change || []).forEach(f => f());
+  check("bus route selection populates its stops",
+    els.busStopSelect.hidden === false && /1002130|1002135/.test(els.busStopSelect.innerHTML));
 
   // The header shortcut checkboxes persist to a cookie.
   {
