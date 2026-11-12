@@ -136,10 +136,11 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   const html = ctx.boardHtml(ctx.boardGeometry(rows), rows);
   t("E1 departed row: hollow badge, departed icon, Departed label",
     html.includes('row-badge hollow') && html.includes("bus-status departed") &&
-    html.includes('class="bus-status-slot"><i class="fa-solid fa-arrow-right-from-bracket') &&
+    html.indexOf("board-dest") < html.indexOf("bus-status departed") &&
     html.includes(">Departed<") && html.includes("min ago"));
-  t("E2 arriving row (0 min): arriving icon", html.includes("bus-status arriving") &&
-    html.includes('class="bus-status-slot"><i class="fa-solid fa-bus'));
+  t("E2 arriving row (0 min): arriving icon after the destination",
+    html.includes("bus-status arriving") &&
+    html.indexOf("board-dest") < html.indexOf("bus-status arriving"));
   t("E3 departed row sorts/keys separately", html.includes("is-departed") &&
     html.includes(encodeURIComponent("M5\u0000\u0000Departed End\u0000departed")));
 }

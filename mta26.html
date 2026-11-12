@@ -234,7 +234,7 @@
         }
         .row-badge.hollow.bt-allstops:hover { background: transparent; }
         .row-badge-wrap { display: inline-flex; align-items: center; gap: 5px; flex: none; }
-        .bus-status-slot { width: 18px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+        .row-mainline .bus-status { margin-left: 2px; vertical-align: middle; }
         .bus-status { font-size: 12px; }
         .bus-status.arriving { font-size: 17px; }
         .bus-status.departed { color: #adb5bd; }
@@ -1589,9 +1589,10 @@ function boardRowHead(row, color, g, k, scheduled) {
         ? `<${badgeTag}${badgeAttrs} style="color:${color};border-color:${color}">${badgeInner}</${badgeTag}>`
         : `<${badgeTag}${badgeAttrs} style="background:${color}">${badgeInner}</${badgeTag}>`;
     return `<div class="board-head">`
-        + `<span class="row-badge-wrap"><span class="bus-status-slot">${statusIcon}</span>${badge}</span>`
+        + `<span class="row-badge-wrap">${badge}</span>`
         + `<div class="row-mainline">`
         + (dest ? `<span class="board-dest">${dest}</span>` : `<span class="board-dest">Destination unavailable</span>`)
+        + statusIcon
         + `</div>`
         + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled || departed
             ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled, row.departedAt)}</span>` : "")
