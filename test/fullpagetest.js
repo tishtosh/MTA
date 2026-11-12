@@ -192,6 +192,19 @@ const board = () => els.linesScroll.innerHTML;
   check("ticker retired (no #tickerHost in DOM)", els.tickerHost === undefined);
   check("arrival table rendered", els.tINSERTHERE.innerHTML.includes("table") || els.tINSERTHERE.innerHTML !== "");
 
+  // Clock block: current time, last updated time, and the refresh countdown.
+  check("clock: current time + updated + countdown",
+    !!els.clock.textContent &&
+    /updated \d{1,2}:\d{2}:\d{2}/.test(els.clockMeta.textContent) &&
+    /refresh in \d+s/.test(els.clockMeta.textContent));
+  check("nearby: distance in feet", !b.includes('data-nearby="1"') || /\d+ ft away/.test(b));
+
+  // The entry field re-filters its dropdown on every keystroke.
+  els.stopEntry.value = "park";
+  (els.stopEntry._l.input || []).forEach(f => f());
+  check("entry: typing repopulates matching stops",
+    !els.stopEntryList.hidden && /Park/i.test(els.stopEntryList.innerHTML));
+
   if (process.env.DEBUG) { console.log("HEADER>>> " + h); console.log("BOARD>>> " + b.slice(0, 3000)); }
 
   console.log(`\nfetches: ${fetchCount}`);
