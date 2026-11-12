@@ -416,6 +416,7 @@ let lastRefreshAt = 0;
 // and feeds the shared entry field's autocomplete plus the route picture.
 let allStopsCache = null;     // the full stop dump, cached per page load
 let stopDirLoad = null;       // in-flight loadStopDirectory() promise (dedupes the fetch)
+const nearbyStopObjs = new Map();   // StopID → shared stop object for nearby sections
 
 // ── Shortcut locations (home / work / favorite) ───────────────────────
 // Saved in a cookie as { home:{id,name}, work:{id,name}, fav:{id,name} }.
@@ -1437,6 +1438,22 @@ function makeStop(id, name, lat, lon) {
     return { StopID: id, Name: name, Lat: lat, Lon: lon, Distance: null, Routes: [], Arrivals: [], Departed: [], ArrivalsAt: 0, Error: null };
 }
 
+// One shared object per nearby stop, so predictions fetched for a secondary
+// section survive re-renders and match what that stop shows when selected.
+function nearbyStopObj(n) {
+    const id = String(n.id);
+    let s = stops.find(x => String(x.StopID) === id) || nearbyStopObjs.get(id);
+    if (!s) {
+        s = makeStop(id, n.name || null, n.lat, n.lon);
+        nearbyStopObjs.set(id, s);
+    }
+    if (!s.Name && n.name) s.Name = n.name;
+    if (s.Lat == null && n.lat != null) s.Lat = n.lat;
+    if (s.Lon == null && n.lon != null) s.Lon = n.lon;
+    if (n.routes) s.Routes = n.routes;
+    return s;
+}
+
 // Full (re)load: resolve the stop list, then fetch predictions for it.
 async function runFlow() {
     if (busy) return;                    // don't stack flows when buttons are clicked
@@ -1518,8 +1535,17 @@ async function refreshPredictions() {
     const v = selectionVersion;      // captured up front for the stale-result guard
     try {
         const toFetch = new Map();              // StopID → stop object
-        for (const s of shownStops()) toFetch.set(s.StopID, s);
-        if (acrossStop) toFetch.set(acrossStop.StopID, acrossStop);
+        for (const s of shownStops()) toFetch.set(String(s.StopID), s);
+        if (acrossStop) toFetch.set(String(acrossStop.StopID), acrossStop);
+        // Nearby sections need their own live predictions too; otherwise the
+        // same stop looks different as the anchor vs a secondary section.
+        const anchor = anchorStop();
+        if (anchor) {
+            for (const n of nearbyStops(anchor)) {
+                const stp = nearbyStopObj(n);
+                toFetch.set(String(stp.StopID), stp);
+            }
+        }
         if (!toFetch.size) return;
         let saw429 = false;
         await Promise.all([
@@ -2121,7 +2147,7 @@ function selectStop(id) {
     if (!id) return false;
     if (String(pickedStop) === id) { refreshPredictions(); return true; }  // already the anchor
     pickedStop = id;
-    const inList = stops.find(s => String(s.StopID) === id);
+    const inList = stops.find(s => String(s.StopID) === id) || nearbyStopObjs.get(id);
     pickedStopObj = inList || (allStopsCache || []).find(s => String(s.StopID) === id)
         || makeStop(id, null, null, null);
     noteSelectionChange();     // void the old counterpart before its refresh
@@ -2344,17 +2370,15 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         routes: across.Routes || [], distFt: null
     });
     const nearbyRecs = nearbyBase.map(n => {
-        const rec = stops.find(s => String(s.StopID) === n.id)
-            || makeStop(n.id, n.name, n.lat, n.lon);
-        return Object.assign(rec, { Routes: n.routes || [], distFt: n.distFt });
+        const rec = nearbyStopObj(n);
+        rec.distFt = n.distFt;
+        return rec;
     });
     const nearbyRows = [];
     for (const stp of nearbyRecs) {
         const arrOf = acrossId && String(stp.StopID) === acrossId
             ? (across.Arrivals || [])
-            : (pickedStopObj && String(pickedStopObj.StopID) === String(stp.StopID))
-                ? (pickedStopObj.Arrivals || [])
-                : ((shownStops().find(s => String(s.StopID) === String(stp.StopID)) || { Arrivals: [] }).Arrivals || []);
+            : (stp.Arrivals || []);
         nearbyRows.push(...buildBoardRows(String(stp.StopID), arrOf, routeDetails, posRows));
     }
     // Board geometry supplies each row's ordered stop list for the
@@ -2444,14 +2468,28 @@ function renderLines() {
     // whatever we have right now either way.
     if (!allStopsCache)
         loadStopDirectory()
-            .then(() => { if (token === boardToken) renderLines(); })
+            .then(() => {
+                if (token !== boardToken) return;
+                renderLines();
+                // The directory just gave the anchor coordinates, so nearby
+                // stops may be visible for the first time. Fetch their live
+                // arrivals now rather than showing scheduled fallbacks until
+                // the next 30-second tick.
+                const a = anchorStop();
+                if (a && nearbyStops(a).some(n => !nearbyStopObj(n).ArrivalsAt))
+                    refreshPredictions();
+            })
             .catch(() => {});
-    // Every route the board should know: what is currently predicted, plus
-    // what the directory says boards here (service rows for directions with
-    // no current prediction).
+    // Every route the board should know: the anchor's directory routes, live
+    // predictions, and routes that serve any nearby stop. Keeping the nearby
+    // routes in the same fetch set makes a stop look the same whether it is
+    // the anchor or a secondary section.
+    const nearby = nearbyStops(st);
     const routes = [...new Set([
         ...(st.Routes || []),
-        ...arr.map(p => p.route)
+        ...arr.map(p => p.route),
+        ...(acrossStop ? (acrossStop.Routes || []) : []),
+        ...nearby.flatMap(n => n.routes || [])
     ].map(r => String(r || "").toUpperCase()).filter(Boolean))];
     const have = {};
     const missing = [];
@@ -2463,7 +2501,7 @@ function renderLines() {
         if (token !== boardToken) return;    // the selection moved on mid-flight
         // Bus positions are no longer fetched: the vehicle markers are gone,
         // so the board matches directions from the predictions themselves.
-        renderBoardNow(anchorId, arr, have, [], acrossStop, nearbyStops(st),
+        renderBoardNow(anchorId, arr, have, [], acrossStop, nearby,
             tracked ? (tracked.Departed || []) : []);
         // Plan §2.2: confirm the opposite-side counterpart once the patterns
         // are resolved (it needs them). Sticky — a re-confirmation is a no-op,
