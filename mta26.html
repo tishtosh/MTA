@@ -168,7 +168,6 @@
            "stop name … Across the street · #id — and xx min / yy min". */
         .curb-head-stop { display: flex; align-items: center; gap: 16px; }
         .curb-main { flex: 1 1 auto; min-width: 0; }
-        .curb-etas { flex: none; white-space: nowrap; font-size: 12px; color: #cfd8e3; }
         .curb-title {
             font: 600 15px/1.3 system-ui, -apple-system, sans-serif; color: #fff;
         }
@@ -2287,10 +2286,6 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         // buildBoardRows appends each stop's rows in rec order, so a running
         // offset tracks this stop's slice of nearbyRows without re-deriving it.
         const sliceLen = nearbyRows.length - off;
-        const etaBits = [];
-        for (const r of nearbyRows.slice(off, off + sliceLen))
-            if (r.dest && r.mins && r.mins.length)
-                etaBits.push(r.mins[0] === 0 ? "Due" : Math.round(r.mins[0]) + " min");
         const name = rec.Name || allStopsName(id);
         const where = id === acrossId
             ? "Across the street"
@@ -2301,7 +2296,6 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
             + `<div class="curb-title">${esc(name || "Nearby stop")}</div>`
             + `<div class="curb-sub">${esc(subBits.join(" · "))}</div>`
             + `</div>`
-            + (etaBits.length ? `<span class="curb-etas">and ${etaBits.join(" / ")}</span>` : "")
             + `</div></div>`);
         off += sliceLen;
     }

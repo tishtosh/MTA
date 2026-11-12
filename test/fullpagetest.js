@@ -161,7 +161,7 @@ const board = () => els.linesScroll.innerHTML;
     // character-class patterns; the sub must name the counterpart within ~60 chars
     const acrossIdx = b.indexOf("Across the street");
     check("across: counterpart named in label", acrossIdx > -1 && b.slice(acrossIdx, acrossIdx + 80).includes("#1002135"));
-    check("across: heading bar carries an ETA summary", acrossIdx > -1 && /and \d+ min/.test(b.slice(acrossIdx, acrossIdx + 400)));
+    check("across: heading bar has no ETA summary", !b.includes("curb-etas"));
     check("across: no redundant selected-stop section heading", !b.includes("At the selected stop"));
     check("across: both C87 patterns listed", (b.match(/>C87<\/span>/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
