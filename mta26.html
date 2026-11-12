@@ -121,14 +121,14 @@
 
         .board { margin: 4px 2px 8px; }
 
-        /* The main stop's rows sit inside one bordered group whose top edge
-           meets the dark boarding-stop box (square bottom corners above). */
-        .main-board {
+        /* The rows for the main stop and each nearby stop sit inside a
+           bordered group whose top edge meets the dark heading above. */
+        .main-board, .nearby-board {
             margin: 0 2px 8px; padding: 0;
             border: 1px solid #dee2e6; border-top: 0;
             border-radius: 0 0 10px 10px; background: #fff;
         }
-        .main-board .board { margin: 0; }
+        .main-board .board, .nearby-board .board { margin: 0; }
         /* A row with no live prediction: its scheduled fallback sits on a
            quieter surface so it reads as timetable information. */
         .board-row.is-scheduled { background: #f8f9fa; }
@@ -141,25 +141,27 @@
             background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
             padding: 8px 12px; margin: 6px 0;
         }
-        /* Inside the main-stop group every route is the same stacked row:
-           square edges, no side borders, single separators. The group itself
+        /* Inside a stop group every route is the same stacked row: square
+           edges, no side borders, single separators. The group itself
            supplies the rounded bottom. */
-        .main-board .board-row {
+        .main-board .board-row, .nearby-board .board-row {
             margin: 0; border-radius: 0;
             border-left: 0; border-right: 0; border-bottom: 0;
         }
-        .main-board .board-row + .board-row {
+        .main-board .board-row + .board-row,
+        .nearby-board .board-row + .board-row {
             border-top: 1px solid #dee2e6;
         }
 
-        /* Section headings (nearby): dark cards, a slate that stays distinct
-           from the boarding-stop hero above. Clickable: selecting that stop
-           slides its section to the top of the board. */
+        /* Section headings (nearby): slightly lighter than the boarding-stop
+           hero, with square bottom corners so each stop's arrivals group sits
+           flush underneath. Clickable: selecting that stop slides its section
+           to the top of the board. */
         .curb-head {
-            margin: 14px 2px 4px; padding: 10px 16px; border-radius: 10px;
-            background: #3d4b5c; border: 1px solid #344152; cursor: pointer;
+            margin: 14px 2px 0; padding: 10px 16px; border-radius: 10px 10px 0 0;
+            background: #4a5766; border: 1px solid #414d5c; cursor: pointer;
         }
-        .curb-head:hover { background: #46566a; }
+        .curb-head:hover { background: #556374; }
         .curb-head:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         /* Each stop's own heading is a single line: a left-aligned title/sub
            block and a right-aligned ETA summary, so the bar reads
@@ -2354,9 +2356,11 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     for (let i = 0; i < nearbyRecs.length; i++) {
         const sliceLen = nearbyRows.length - off;
         if (nearbyParts[i]) nearbyHtml += nearbyParts[i];
-        if (sliceLen)
-            nearbyHtml += boardHtml({ ...geo, rows: geo.rows.slice(mainRows.length + off) },
+        if (sliceLen) {
+            const body = boardHtml({ ...geo, rows: geo.rows.slice(mainRows.length + off) },
                 nearbyRows.slice(off, off + sliceLen));
+            nearbyHtml += `<div class="nearby-board">${body}</div>`;
+        }
         off += sliceLen;
     }
     const mainHtml = mainRows.length
