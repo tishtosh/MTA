@@ -62,7 +62,7 @@ t("A3 empty list", ctx.boardEtasHtml([]).includes("no upcoming predictions"));
 {
   const h = ctx.boardEtasHtml([3, 14, 40]);
   t("A4 first emphasized, rest ascending",
-    h.includes('class="board-eta-first">3 min') && h.includes("then 14 · 40 min"), h.slice(0, 90));
+    h.includes('class="board-eta-first">3 min') && h.includes("then 14 min, 40 min"), h.slice(0, 90));
 }
 
 // ── boardHtml: header layout + compact rows + stop list ──────────────
@@ -86,8 +86,9 @@ t("A3 empty list", ctx.boardEtasHtml([]).includes("no upcoming predictions"));
     html.includes('<ul class="bt-stoplist" hidden>') && !html.includes("<ol") &&
     html.includes('class="bt-stop-item" role="button" tabindex="0" data-stop="a"') &&
     !/\d+\.\s/.test(html));
-  t("D6 'View all stops' button + boarding/terminal marked",
-    html.includes('class="bt-allstops" aria-expanded="false">View all stops</button>') &&
+  t("D6 'View all stops' button with chevron + boarding/terminal marked",
+    html.includes('class="bt-allstops" aria-expanded="false">View all stops') &&
+    html.includes('class="fa-solid fa-chevron-down bt-chevron"') &&
     html.includes('<b class="bt-mark">your stop</b>') && html.includes('<b class="bt-mark">terminal</b>'));
   {
     const k1 = ctx.__rowKey({ route: "M1", dest: "TerB" });   // dirNum absent, like these rows

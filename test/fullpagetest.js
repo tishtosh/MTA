@@ -176,7 +176,7 @@ const board = () => els.linesScroll.innerHTML;
     check("135: no service rows in the primary section", !mainOnly.includes("TENLEYTOWN"));
     check("135: nearby stop gets its own heading bar",
       nearIdx > -1 && b.slice(nearIdx, nearIdx + 400).includes("#1002130"));
-    check("135: three ETAs on the compact row (2 · 17 · 39)", h.includes("2 min") && b.includes("then 17 · 39 min"));
+    check("135: three ETAs on the compact row (2 · 17 · 39)", h.includes("2 min") && b.includes("then 17 min, 39 min"));
   }
 
   if (MULTI) {
