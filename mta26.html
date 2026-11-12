@@ -132,6 +132,7 @@
         /* A row with no live prediction: its scheduled fallback sits on a
            quieter surface so it reads as timetable information. */
         .board-row.is-scheduled { background: #f8f9fa; }
+        .board-row.is-departed { background: #f8f9fa; }
 
         /* One row = one quiet card: white surface, hairline border, rounded.
            The header + sub-line sit in a flex column so a wrapping line and
@@ -187,6 +188,14 @@
             flex: none; padding: 2px 9px; border-radius: 5px;
             color: #fff; font-weight: 700; font-size: 13px; line-height: 1.4;
         }
+        .row-badge.hollow {
+            background: transparent; border: 2px solid currentColor;
+            padding: 0 7px;
+        }
+        .row-badge-wrap { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+        .bus-status { font-size: 12px; }
+        .bus-status.arriving { color: #2e7d32; }
+        .bus-status.departed { color: #adb5bd; }
         /* Final destination: bold and set on a quiet grey highlight, sitting
            immediately after the badge. */
         .board-dest {
@@ -571,6 +580,42 @@ async function fetchPredictions(stopId) {
     return { name, predictions: preds };
 }
 
+// Recently departed buses: WMATA drops a prediction once the bus leaves the
+// stop, so keep the last sighting for two minutes. A bus that had an ETA of
+// 0–2 minutes and disappeared is assumed to have departed at lastSeen + ETA.
+// Only stable identities (trip, else vehicle+route+direction) qualify.
+const DEPARTED_WINDOW_MS = 2 * 60000;
+
+function predKey(p) {
+    if (p.trip) return "t:" + p.route + "|" + p.trip;
+    if (p.vehicle) return "v:" + p.route + "|" + p.vehicle + "|" + (p.dirNum || "");
+    return null;
+}
+
+function updateDeparted(stop, nextPreds, at) {
+    const prev = stop.Arrivals || [];
+    const prevAt = stop.ArrivalsAt || at;
+    const nextKeys = new Set(nextPreds.map(predKey).filter(Boolean));
+    const keep = [];
+    for (const d of stop.Departed || []) {
+        const key = predKey(d);
+        if (key && nextKeys.has(key)) continue;               // live again
+        if (at - d.departedAt > DEPARTED_WINDOW_MS) continue; // too old
+        keep.push(d);
+    }
+    for (const p of prev) {
+        const key = predKey(p);
+        if (!key || nextKeys.has(key)) continue;
+        if (p.min > 2) continue;                              // not an imminent departure
+        if (keep.some(d => predKey(d) === key)) continue;
+        const departedAt = prevAt + Math.max(0, p.min) * 60000;
+        if (at - departedAt > DEPARTED_WINDOW_MS) continue;
+        keep.push(Object.assign({}, p, { departed: true, departedAt }));
+    }
+    stop.Departed = keep;
+    stop.ArrivalsAt = at;
+}
+
 // Stop schedule:  GET /Bus.svc/json/jStopSchedule?StopID   (verified 2026-11)
 // Returns { Stop: {...}, ScheduleArrivals: [{ ScheduleTime, RouteID,
 // DirectionNum, TripHeadsign, TripDirectionText, TripID, ... }] } for the
@@ -861,10 +906,19 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
         }
     }
     const rank = { track: 0, compact: 1, service: 2 };
-    rows.sort((a, b) => rank[a.kind] - rank[b.kind]
-        || a.first - b.first
-        || a.route.localeCompare(b.route)
-        || String(a.dirNum).localeCompare(String(b.dirNum)));
+    // Buses with live ETAs sort by departure time (soonest first); rows with
+    // no prediction (service/scheduled fallback) follow them.
+    rows.sort((a, b) => {
+        const am = a.mins && a.mins.length, bm = b.mins && b.mins.length;
+        if (am && !bm) return -1;
+        if (!am && bm) return 1;
+        if (am && bm) return a.first - b.first
+            || a.route.localeCompare(b.route)
+            || String(a.dirNum).localeCompare(String(b.dirNum));
+        return rank[a.kind] - rank[b.kind]
+            || a.route.localeCompare(b.route)
+            || String(a.dirNum).localeCompare(String(b.dirNum));
+    });
     return rows;
 }
 
@@ -1284,7 +1338,12 @@ function fmtEta(min) {
 // The first ETA emphasized, the later ones muted after it
 // ("6 min then 14 min, 29 min"). With no prediction but a scheduled arrival,
 // show that clock time with a "not seen" suffix instead.
-function boardEtasHtml(mins, scheduled) {
+function boardEtasHtml(mins, scheduled, departedAt) {
+    if (departedAt) {
+        const ago = Math.max(0, Math.round((Date.now() - departedAt) / 60000));
+        return `<span class="board-eta-first">Departed</span>`
+            + (ago ? ` <span class="board-eta-rest">${ago} min ago</span>` : "");
+    }
     const list = (mins || []).slice(0, 8);
     if (!list.length) {
         if (scheduled)
@@ -1301,7 +1360,7 @@ function boardEtasHtml(mins, scheduled) {
 // Piece 11: which rows the user expanded in the "View all stops" disclosure.
 // The board re-renders every 30 s, so the open rows are remembered by key.
 const expandedStops = new Set();
-const rowKey = (r) => `${r.route}\u0000${String(r.dirNum ?? "")}\u0000${r.dest || ""}`;
+const rowKey = (r) => `${r.route}\u0000${String(r.dirNum ?? "")}\u0000${r.dest || ""}${r.departed ? "\u0000departed" : ""}`;
 
 // One row's header: a route badge (white on the route color), the final
 // destination below it, then the ETA list, all left-aligned from the badge.
@@ -1310,17 +1369,27 @@ function boardRowHead(row, color, g, k, scheduled) {
     const dest = (row.kind === "track" || row.kind === "service")
         ? (row.dest ? esc(row.dest) : "")
         : esc(row.dest || row.dir || "");
+    const departed = !!row.departed;
+    const arriving = !departed && row.mins && row.mins.length && row.mins[0] <= 1;
+    const statusIcon = departed
+        ? `<i class="fa-solid fa-arrow-right-from-bracket bus-status departed" title="Departed" aria-label="Departed"></i>`
+        : arriving
+            ? `<i class="fa-solid fa-bus bus-status arriving" title="Arriving" aria-label="Arriving"></i>`
+            : "";
+    const badge = departed
+        ? `<span class="row-badge hollow" style="color:${color};border-color:${color}">${esc(row.route)}</span>`
+        : `<span class="row-badge" style="background:${color}">${esc(row.route)}</span>`;
     const subParts = [];
     if (g && g.hasTrack && (g.stops || []).length >= 2)
         subParts.push(`<button type="button" class="bt-allstops" aria-expanded="${expandedStops.has(k)}">View all stops`
             + ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`);
     return `<div class="board-head">`
-        + `<span class="row-badge" style="background:${color}">${esc(row.route)}</span>`
+        + `<span class="row-badge-wrap">${badge}${statusIcon}</span>`
         + `<div class="row-mainline">`
         + (dest ? `<span class="board-dest">${dest}</span>` : `<span class="board-dest">Destination unavailable</span>`)
         + `</div>`
-        + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled
-            ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled)}</span>` : "")
+        + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled || departed
+            ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled, row.departedAt)}</span>` : "")
         + (subParts.length ? `<div class="row-subline">${subParts.join(" ")}</div>` : "")
         + `</div>`;
 }
@@ -1337,8 +1406,9 @@ function boardHtml(geom, rows) {
         const k = rowKey(row);
         const open = expandedStops.has(k);
         // No live prediction for this row? Fall back to the stop's next
-        // scheduled arrival, matched by route (+ direction).
-        const scheduled = (!row.mins || !row.mins.length)
+        // scheduled arrival, matched by route (+ direction). Departed rows
+        // keep their own status instead.
+        const scheduled = (!row.departed && (!row.mins || !row.mins.length))
             ? nextScheduledFor(row.anchorId, row.route, row.dirNum, row.dest)
             : null;
         // Piece 11: the ordered stop list behind the "View all stops" button.
@@ -1352,7 +1422,8 @@ function boardHtml(geom, rows) {
                       + `${esc(s.name || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</li>`;
                 }).join("") + `</ul>`
             : "";
-        out += `<div class="board-row${scheduled ? " is-scheduled" : ""}" data-rowkey="${encodeURIComponent(k)}">`
+        const rowClass = row.departed ? " is-departed" : (scheduled ? " is-scheduled" : "");
+        out += `<div class="board-row${rowClass}" data-rowkey="${encodeURIComponent(k)}">`
             + `${boardRowHead(row, color, g, k, scheduled)}${list}</div>`;
     }
     return `<div class="board">${out}</div>`;
@@ -1363,7 +1434,7 @@ function boardHtml(geom, rows) {
 // ════════════════════════════════════════════════════════════════════
 
 function makeStop(id, name, lat, lon) {
-    return { StopID: id, Name: name, Lat: lat, Lon: lon, Distance: null, Routes: [], Arrivals: [], Error: null };
+    return { StopID: id, Name: name, Lat: lat, Lon: lon, Distance: null, Routes: [], Arrivals: [], Departed: [], ArrivalsAt: 0, Error: null };
 }
 
 // Full (re)load: resolve the stop list, then fetch predictions for it.
@@ -1379,10 +1450,13 @@ async function runFlow() {
             // and the stop directory (the jStops dump) is the coord source.
             stops = stopListFromURL.map(id => makeStop(id, null, null, null));
         } else if (!searchPoint) {
-            // No lat/lon in the URL: default to the first corner of the
-            // 20010 intersection (plan §2). Coordinates come from the
-            // directory once it has loaded.
-            stops = [defaultStopRec()];
+            // First load (or a cleared view): the saved home shortcut if one
+            // exists, otherwise the default 20010 stop. Coordinates come from
+            // the directory once it has loaded.
+            const home = shortcuts.home;
+            stops = home && home.id
+                ? [makeStop(String(home.id), home.name || null, null, null)]
+                : [defaultStopRec()];
         } else {
             // ?lat&lon URL point: find stops near the search point
             const d = distance(DC_CENTER.lat, DC_CENTER.lon, searchPoint.lat, searchPoint.lon, "m");
@@ -1453,7 +1527,10 @@ async function refreshPredictions() {
                 try {
                     const { name, predictions } = await fetchPredictions(stop.StopID);
                     if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
+                    const at = Date.now();
+                    updateDeparted(stop, predictions, at);
                     stop.Arrivals = predictions;
+                    stop.ArrivalsAt = at;
                     stop.Error = null;
                 } catch (e) {
                     stop.Arrivals = [];
@@ -2244,8 +2321,20 @@ function buildBusMarkers(row, g, scale, posRows, now) {
 // it), then each nearby stop within 500 ft under its own dark separator bar.
 // The confirmed opposite-side stop is the FIRST nearby stop and its bar reads
 // "Across the street" instead of a distance.
-function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, anchorNearby) {
-    const mainRows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
+function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, anchorNearby, departedArrivals) {
+    // Recently departed buses go above live rows, oldest departure first.
+    const nowMs = Date.now();
+    const departedPreds = (departedArrivals || []).filter(d => d && d.departed &&
+        nowMs >= d.departedAt && nowMs - d.departedAt <= DEPARTED_WINDOW_MS);
+    const departedRows = buildBoardRows(anchorId, departedPreds, routeDetails, posRows)
+        .filter(r => r.mins && r.mins.length)
+        .map(r => {
+            r.departed = true;
+            r.departedAt = Math.min(...r.preds.map(p => p.departedAt));
+            return r;
+        })
+        .sort((a, b) => a.departedAt - b.departedAt);
+    const mainRows = [...departedRows, ...buildBoardRows(anchorId, arrivals, routeDetails, posRows)];
     // Merge the across-the-street counterpart into the nearby list (first)
     // so it is never shown twice.
     const acrossId = across ? String(across.StopID) : "";
@@ -2274,8 +2363,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     // Section headings. The selected stop is already named in the boarding
     // stop card above the board, so its rows need no heading of their own.
     // Every nearby STOP gets its own dark bar: title = the stop's name, sub =
-    // "Across the street · #id" for the counterpart or "N ft away · #id", and
-    // to the right an ETA summary of the stop's rows, "and xx min / yy min".
+    // "Across the street · #id" for the counterpart or "N ft away · #id".
     // Clicking a bar selects that stop — which slides its section (now first)
     // to the top of the board.
     let nearbyParts = [];
@@ -2375,7 +2463,8 @@ function renderLines() {
         if (token !== boardToken) return;    // the selection moved on mid-flight
         // Bus positions are no longer fetched: the vehicle markers are gone,
         // so the board matches directions from the predictions themselves.
-        renderBoardNow(anchorId, arr, have, [], acrossStop, nearbyStops(st));
+        renderBoardNow(anchorId, arr, have, [], acrossStop, nearbyStops(st),
+            tracked ? (tracked.Departed || []) : []);
         // Plan §2.2: confirm the opposite-side counterpart once the patterns
         // are resolved (it needs them). Sticky — a re-confirmation is a no-op,
         // and a fresh confirmation prompts the counterpart's first fetch.

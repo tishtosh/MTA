@@ -122,5 +122,24 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   t("D8 changing stops collapses every stop list", ctx.__expandedStops.size === 0);
 }
 
+// ── departed / arriving bus treatment ─────────────────────────────────
+{
+  const d = 1000 * dlon(1);
+  const pat = { stops: [S("a","A",40,-77), S("b","B",40,-77+d)], shape: [] };
+  const rows = [
+    { kind: "track", route: "M5", dest: "Departed End", mins: [0], departed: true,
+      departedAt: Date.now() - 60000, pattern: pat, anchorIdx: 0, anchorPatStop: pat.stops[0] },
+    { kind: "track", route: "M6", dest: "Arriving End", mins: [0],
+      pattern: pat, anchorIdx: 0, anchorPatStop: pat.stops[0] },
+  ];
+  const html = ctx.boardHtml(ctx.boardGeometry(rows), rows);
+  t("E1 departed row: hollow badge, departed icon, Departed label",
+    html.includes('class="row-badge hollow"') && html.includes("bus-status departed") &&
+    html.includes(">Departed<") && html.includes("min ago"));
+  t("E2 arriving row (0 min): arriving icon", html.includes("bus-status arriving"));
+  t("E3 departed row sorts/keys separately", html.includes("is-departed") &&
+    html.includes(encodeURIComponent("M5\u0000\u0000Departed End\u0000departed")));
+}
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

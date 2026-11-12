@@ -19,11 +19,13 @@ function extractFn(src, name) {
 
 const src = require("./lib/extract").pageScript();
 const names = ["parseFeedTime", "normalizeRouteDetails", "normHeads", "posDirFor",
-               "matchPattern", "containsStopId", "buildBoardRows"];
+               "matchPattern", "containsStopId", "buildBoardRows",
+               "predKey", "updateDeparted"];
 const sandbox = { allStopsName: () => "", console, JSON, Date, Number, String,
                   Math, Object, Array, Set, Map };
 vm.createContext(sandbox);
-vm.runInContext(names.map(n => extractFn(src, n)).join("\n"), sandbox);
+vm.runInContext("const DEPARTED_WINDOW_MS = 2 * 60000;\n"
+  + names.map(n => extractFn(src, n)).join("\n"), sandbox);
 
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -169,6 +171,28 @@ const rH = sandbox.buildBoardRows("9999", [
   rdX, []);
 check("syn H: same vehicle + heads = one row, both mins, one vehicle",
   rH.length === 1 && JSON.stringify(rH[0].mins) === "[4,9]" && rH[0].vehicles.length === 1);
+
+// ---- I: recently departed buses ----
+const stopI = {
+  Arrivals: [
+    { min: 1, route: "X01", dirNum: "0", heads: "To X", vehicle: "10", trip: "90" },
+    { min: 20, route: "X02", dirNum: "0", heads: "To Y", vehicle: "11", trip: "91" },
+  ],
+  ArrivalsAt: 1000000, Departed: [],
+};
+sandbox.updateDeparted(stopI, [], 1060000);
+check("syn I: a 1-min bus that vanishes becomes departed",
+  stopI.Departed.length === 1 && stopI.Departed[0].route === "X01" &&
+  stopI.Departed[0].departedAt === 1060000);
+sandbox.updateDeparted(stopI, [], 1300000);
+check("syn I: departed entry expires after 2 minutes", stopI.Departed.length === 0);
+const stopJ = {
+  Arrivals: [{ min: 20, route: "X02", dirNum: "0", heads: "To Y", vehicle: "11", trip: "91" }],
+  ArrivalsAt: 1000000, Departed: [],
+};
+sandbox.updateDeparted(stopJ, [], 1030000);
+check("syn I: a far-future vanished prediction is not marked departed",
+  stopJ.Departed.length === 0);
 
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
