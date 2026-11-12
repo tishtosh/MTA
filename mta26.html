@@ -147,10 +147,10 @@
         .curb-sub { margin: 1px 0 0; font-size: 12px; color: #cfd8e3; }
 
         .board-head {
-            display: flex; align-items: flex-start; gap: 10px;
+            display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
             font: 14px/1.4 system-ui, -apple-system, sans-serif;
         }
-        .row-mainline { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+        .row-mainline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
         .row-subline { margin-top: 2px; font-size: 12px; color: #8a959e; }
         .board-routecode { flex: none; min-width: 36px; font-weight: 700; font-size: 14px; }
         /* Route badge: white code on the route's saturated color (the palette
@@ -161,20 +161,16 @@
         }
         .board-dest { opacity: .85; }
         .board-note { font-size: 11px; opacity: .6; }
+        /* The ETA line starts at the same left edge as the badge (and the
+           destination above it). */
         .board-etas {
-            flex: none; margin-left: auto; white-space: nowrap;
+            white-space: nowrap;
             display: inline-flex; align-items: baseline; gap: 6px;
             font-variant-numeric: tabular-nums;
         }
         .board-eta-first { font-weight: 700; font-size: 15px; }
         .board-eta-rest { opacity: .65; }
 
-        .board-track { height: 34px; }      /* = B_TRACK_H in the script */
-        .board-tracksvg { display: block; }
-        .bt-guide { stroke: #495057; stroke-width: 1; opacity: .4; }
-        .bt-line { stroke-width: 2; }
-        .bt-dot { cursor: help; }
-        .bt-busmin { font: 700 10px/1 system-ui, -apple-system, sans-serif; fill: #343a40; }
         .bt-allstops {
             flex: none; margin-left: 8px; padding: 0 7px;
             font: 500 11px/1.6 system-ui, -apple-system, sans-serif;
@@ -183,14 +179,17 @@
         }
         .bt-allstops:hover { background: #f1f3f5; }
         .bt-allstops:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
-        /* Stroke-based ring: `outline` does not paint on SVG shapes in
-           Blink. opacity 1 lifts the muted dot so the ring reads clearly. */
-        .bt-stop:focus { stroke: #0056b3; stroke-width: 3; opacity: 1; }
         .bt-stoplist {
-            margin: 6px 0 2px; padding-left: 20px;
+            margin: 6px 0 2px; padding-left: 0; list-style: none;
             font: 12px/1.55 system-ui, -apple-system, sans-serif;
             color: #343a40; font-variant-numeric: tabular-nums;
         }
+        .bt-stoplist .bt-stop-item {
+            padding: 2px 6px; margin: 1px 0; border-radius: 4px;
+            cursor: pointer;
+        }
+        .bt-stoplist .bt-stop-item:hover { background: #f1f3f5; }
+        .bt-stoplist .bt-stop-item:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .bt-stoplist .bt-mark { font-weight: 700; color: #0056b3; }
 
         /* the stop header: a dark hero card — name, next bus. */
@@ -1158,16 +1157,9 @@ function pointOnTrack(pattern, anchorIdx, mode, lat, lon) {
 }
 
 // ── Board drawing (plan §3) ──────────────────────────────────────────
-// One HTML row per pattern: a header with the route code, "toward
-// <destination>" and the ETAs (the first emphasized, the rest ascending),
-// then an SVG track band. Every track band shares ONE x origin (the
-// boarding guide) and ONE px-per-foot scale (boardGeometry), and all rows
-// of both curb sections sit in one horizontal scroll area, so the guide
-// lines up and the whole board scrolls together.
-const B_PAD_L = 16;          // track-svg padding on the approach side
-const B_PAD_R = 30;          // …and past the terminal (the direction arrow)
-const B_TRACK_H = 34;        // track band height
-const B_RH = 64;             // full row height (header + track + breathing room)
+// One HTML row per pattern: a route badge, the final destination below it,
+// then the ETAs (the first emphasized, the rest ascending), all left-aligned.
+// The "View all stops" disclosure reveals the ordered stop list.
 
 // "3 min" / "Due" — a zero-minute prediction reads "Due" (plan §2).
 function fmtEta(min) {
@@ -1186,101 +1178,37 @@ function boardEtasHtml(mins) {
     return h;
 }
 
-// One row's track band as an SVG string. `g` is a boardGeometry row
-// ({stops, negPx, posPx, termX, row, …}), `originX` the shared boarding x
-// in this svg's coordinates, `W` the row's full width (equal for every row,
-// so the guides align), `color` the route accent, `busMarkers` piece 8's
-// [{x, min, live}] in the same signed px space.
-function trackRowSvg(g, originX, W, color, busMarkers) {
-    const cy = B_TRACK_H / 2;
-    const px = (v) => originX + v;
-    const X = (v) => px(v).toFixed(1);
-    let s = `<svg class="board-tracksvg" width="${W}" height="${B_TRACK_H}" viewBox="0 0 ${W} ${B_TRACK_H}">`;
-    // The boarding guide: one vertical line through every row.
-    s += `<line class="bt-guide" x1="${originX}" y1="3" x2="${originX}" y2="${B_TRACK_H - 3}"/>`;
-    // The baseline, from the far approach through the guide to the terminal end.
-    s += `<line class="bt-line" x1="${X(-g.negPx)}" y1="${cy}" x2="${X(g.posPx)}" y2="${cy}" stroke="${color}"/>`;
-    // Direction of travel: an arrowhead at the right end, pointing right.
-    s += `<path class="bt-arrow" d="M ${px(g.posPx) - 9} ${cy - 4.5} L ${px(g.posPx) + 1} ${cy} L ${px(g.posPx) - 9} ${cy + 4.5} Z" fill="${color}"/>`;
-    // Muted stop dots: every ordered occurrence except the anchor and the
-    // terminal (both drawn as diamonds). Each marker is a data point the
-    // reader can select — tabindex + role + aria-label keep it reachable by
-    // keyboard even when dots overlap; the <title> is the native fallback
-    // (the hover card is wired in piece 11's delegated handlers).
-    for (const st of g.stops) {
-        if (st.anchor || st.terminal) continue;
-        s += `<circle class="bt-dot bt-stop" data-stop="${esc(st.id)}" cx="${X(st.x)}" cy="${cy}" r="3.5" fill="${color}" opacity=".45" `
-           + `tabindex="0" role="img" aria-label="Stop: ${esc(st.name || "#" + st.id)} (${esc(st.id)})">`
-           + `<title>${esc(st.name || st.id)} (#${esc(st.id)})</title></circle>`;
-    }
-    // The terminal diamond. When the terminal IS the boarding stop (a short
-    // or terminal-only route), nudge it right so the two markers stay
-    // distinct (plan §3: keep both legible).
-    let tx = g.termX;
-    if (Math.abs(tx) < 10) tx += 12;
-    const tName = (g.stops[g.stops.length - 1] || {}).name;
-    s += `<rect class="bt-term bt-stop" data-stop="${esc(g.termId || "")}" x="${(originX + tx - 4.5).toFixed(1)}" y="${cy - 4.5}" width="9" height="9" rx="1.5" `
-       + `transform="rotate(45 ${originX + tx} ${cy})" fill="${color}" tabindex="0" role="img" `
-       + `aria-label="Terminal: ${esc(tName || g.row.dest || g.row.route)}${g.termId ? " (#" + esc(g.termId) + ")" : ""}">`
-       + `<title>${esc(g.row.dest || g.row.route)} — terminal</title></rect>`;
-    // Approaching buses (piece 8 supplies these): a marker on the track,
-    // the ETA above it; live samples filled, estimates hollow.
-    for (const b of busMarkers || []) {
-        const fill = b.live ? `fill="${color}"` : `fill="none" stroke="${color}" stroke-width="1.5"`;
-        s += `<g class="bt-bus${b.live ? " bt-bus-live" : ""}" transform="translate(${X(b.x)},${cy})" aria-hidden="true">`
-           + `<circle r="6" ${fill}/>`
-           + `<text class="bt-busmin" y="-10" text-anchor="middle">${esc(b.min === 0 ? "Due" : String(b.min))}</text>`
-           + `<title>${esc(g.row.route)} — ${b.min === 0 ? "Due" : b.min + " min"}${b.live ? "" : " (estimated)"}</title></g>`;
-    }
-    // The anchor diamond on the guide, over a soft halo so it reads at a glance.
-    const aName = (g.row.anchorPatStop || {}).name || g.row.anchorId || "";
-    const aId = (g.row.anchorPatStop || {}).id || g.row.anchorId || "";
-    s += `<circle class="bt-anchor-halo" cx="${originX}" cy="${cy}" r="9" fill="${color}" opacity=".18"/>`
-       + `<rect class="bt-anchor bt-stop" data-stop="${esc(aId)}" x="${originX - 5.5}" y="${cy - 5.5}" width="11" height="11" rx="2" `
-       + `transform="rotate(45 ${originX} ${cy})" fill="${color}" stroke="#fff" stroke-width="1.5" tabindex="0" role="img" `
-       + `aria-label="Your stop: ${esc(aName || "boarding")} (${esc(aId)})">`
-       + `<title>${esc(aName || "your stop")} (#${esc(aId)}) — boarding</title></rect>`;
-    return s + `</svg>`;
-}
-
 // Piece 11: which rows the user expanded in the "View all stops" disclosure.
 // The board re-renders every 30 s, so the open rows are remembered by key.
 const expandedStops = new Set();
 const rowKey = (r) => `${r.route}\u0000${String(r.dirNum ?? "")}\u0000${r.dest || ""}`;
 
-// One row's header: a route badge (white on the route color), the destination
-// or "Destination unavailable", the board-note, and the ETA list. Track rows
-// also carry the "View all stops" disclosure button (piece 11) in the sub-line.
+// One row's header: a route badge (white on the route color), the final
+// destination below it, then the ETA list, all left-aligned from the badge.
+// Track rows also carry the "View all stops" disclosure button (piece 11).
 function boardRowHead(row, color, g, k) {
     const dest = (row.kind === "track" || row.kind === "service")
         ? (row.dest ? esc(row.dest) : "")
         : esc(row.dest || row.dir || "");
-    const main = `<span class="row-mainline">`
-        + `<span class="row-badge" style="background:${color}">${esc(row.route)}</span>`
-        + (dest ? `<span>${dest}</span>` : `<span>Destination unavailable</span>`)
-        + (row.note ? `<span class="board-note">${esc(row.note)}</span>` : "")
-        + `</span>`;
     const subParts = [];
     if (g && g.hasTrack && (g.stops || []).length >= 2)
         subParts.push(`<button type="button" class="bt-allstops" aria-expanded="${expandedStops.has(k)}">View all stops</button>`);
     return `<div class="board-head">`
-        + main
+        + `<span class="row-badge" style="background:${color}">${esc(row.route)}</span>`
+        + `<div class="row-mainline">`
+        + (dest ? `<span class="board-dest">${dest}</span>` : `<span class="board-dest">Destination unavailable</span>`)
+        + (row.note ? `<span class="board-note">${esc(row.note)}</span>` : "")
+        + `</div>`
         + ((row.mins && row.mins.length) || (g && g.hasTrack)
             ? `<span class="board-etas">${boardEtasHtml(row.mins)}</span>` : "")
         + (subParts.length ? `<div class="row-subline">${subParts.join(" ")}</div>` : "")
         + `</div>`;
 }
 
-// The whole board as HTML: one row block per pattern (header + track band).
-// Compact rows (no usable track) get the header only. The caller wraps the
-// result in the shared scroll container; both curb sections pass through
-// the same boardGeometry, so they share the scale and the guide.
+// The whole board as HTML: one row block per pattern (badge, destination,
+// ETAs, and the optional stop list). The caller wraps the result in the
+// shared scroll container.
 function boardHtml(geom, rows) {
-    const trackRows = (geom.rows || []).filter(g => g && g.hasTrack);
-    const maxNeg = trackRows.reduce((m, g) => Math.max(m, g.negPx), 0);
-    const maxPos = trackRows.reduce((m, g) => Math.max(m, g.posPx), 0);
-    const originX = B_PAD_L + maxNeg;
-    const W = Math.ceil(originX + maxPos + B_PAD_R);
     let out = "";
     for (let i = 0; i < (rows || []).length; i++) {
         const row = rows[i], g = geom.rows[i];
@@ -1288,25 +1216,21 @@ function boardHtml(geom, rows) {
         row.anchorId = (row.anchorPatStop || {}).id || row.anchorId;
         const k = rowKey(row);
         const open = expandedStops.has(k);
-        const track = g && g.hasTrack
-            ? `<div class="board-track">${trackRowSvg(g, originX, W, color, row.busMarkers)}</div>`
-            : "";
-        // Piece 11: the ordered stop list behind the "View all stops" button —
-        // the reveal that works even when the dots overlap. The row uses
-        // min-height so opening the list grows it without disturbing the
-        // shared guide.
+        // Piece 11: the ordered stop list behind the "View all stops" button.
+        // No numeric index; each stop is a button that re-anchors the board.
         const list = g && g.hasTrack && (g.stops || []).length >= 2
-            ? `<ol class="bt-stoplist"${open ? "" : " hidden"}>`
+            ? `<ul class="bt-stoplist"${open ? "" : " hidden"}>`
               + g.stops.map(s => {
                   const mark = s.anchor ? ` <b class="bt-mark">your stop</b>`
                      : s.terminal ? ` <b class="bt-mark">terminal</b>` : "";
-                  return `<li>${esc(s.name || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</li>`;
-                }).join("") + `</ol>`
+                  return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(s.id)}">`
+                      + `${esc(s.name || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</li>`;
+                }).join("") + `</ul>`
             : "";
-        out += `<div class="board-row" data-rowkey="${encodeURIComponent(k)}" style="min-height:${B_RH}px">`
-            + `${boardRowHead(row, color, g, k)}${track}${list}</div>`;
+        out += `<div class="board-row" data-rowkey="${encodeURIComponent(k)}">`
+            + `${boardRowHead(row, color, g, k)}${list}</div>`;
     }
-    return `<div class="board" style="width:${W}px">${out}</div>`;
+    return `<div class="board">${out}</div>`;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1916,15 +1840,12 @@ function slideSectionToTop(headEl) {
     } catch (e) { /* non-scrollable container: the repaint already moved it */ }
 }
 
-// Delegated across every paint: a .curb-head click selects the named stop
-// (which re-anchors the board — its section lands first, then slides up).
-gLinesScroll.addEventListener("click", e => {
-    const head = e.target.closest ? e.target.closest(".curb-head") : null;
-    if (!head || !head.dataset) return;
-    // Each nearby bar names its stop; the across counterpart is simply the
-    // first bar, with "Across the street" as its location description.
-    const id = head.dataset.stop;
-    if (!id || String(pickedStop) === id) return;   // already the anchor
+// Re-anchor the board on `id`: update the pick, repaint, and refresh its
+// predictions. Shared by the nearby bars and the "View all stops" list.
+function selectStop(id) {
+    id = String(id || "");
+    if (!id) return false;
+    if (String(pickedStop) === id) { refreshPredictions(); return true; }  // already the anchor
     pickedStop = id;
     const inList = stops.find(s => String(s.StopID) === id);
     pickedStopObj = inList || (allStopsCache || []).find(s => String(s.StopID) === id)
@@ -1932,14 +1853,30 @@ gLinesScroll.addEventListener("click", e => {
     noteSelectionChange();     // void the old counterpart before its refresh
     renderLines();             // re-anchors the board: this section lands first…
     refreshPredictions();      // …and its predictions arrive on the next paint
-    slideSectionToTop(head);   // …while the view glides up to meet it
+    return true;
+}
+
+// Delegated across every paint: a nearby bar selects the named stop (the
+// redraw puts it first, then the view glides up). A stop in the expanded
+// "View all stops" list re-anchors the board on that stop and refreshes it.
+gLinesScroll.addEventListener("click", e => {
+    const item = e.target.closest ? e.target.closest(".bt-stop-item") : null;
+    if (item && item.dataset && item.dataset.stop) {
+        selectStop(item.dataset.stop);
+        return;
+    }
+    const head = e.target.closest ? e.target.closest(".curb-head") : null;
+    if (!head || !head.dataset) return;
+    // Each nearby bar names its stop; the across counterpart is simply the
+    // first bar, with "Across the street" as its location description.
+    if (selectStop(head.dataset.stop)) slideSectionToTop(head);
 });
 gLinesScroll.addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
-    const head = e.target.closest ? e.target.closest(".curb-head") : null;
-    if (!head || !head.dataset || !(head.dataset.stop || head.dataset.nearby)) return;
+    const el = e.target.closest ? e.target.closest(".curb-head, .bt-stop-item") : null;
+    if (!el || !el.dataset || !el.dataset.stop) return;
     e.preventDefault();
-    head.click();
+    el.click();
 });
 
 // A smooth animation crosses the gap gradually, so position alone cannot tell
@@ -2080,10 +2017,7 @@ function buildBusMarkers(row, g, scale, posRows, now) {
 // the selected stop's rows (no heading — the boarding stop card above names
 // it), then each nearby stop within 500 ft under its own dark separator bar.
 // The confirmed opposite-side stop is the FIRST nearby stop and its bar reads
-// "Across the street" instead of a distance. Every section shares ONE
-// px-per-foot scale and ONE boarding x — board geometry runs over ALL row
-// sets, so every board lines up on the same guide inside the one horizontal
-// scroll area.
+// "Across the street" instead of a distance.
 function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, anchorNearby) {
     const mainRows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
     // Merge the across-the-street counterpart into the nearby list (first)
@@ -2108,17 +2042,9 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
                 : ((shownStops().find(s => String(s.StopID) === String(stp.StopID)) || { Arrivals: [] }).Arrivals || []);
         nearbyRows.push(...buildBoardRows(String(stp.StopID), arrOf, routeDetails, posRows));
     }
-    // ONE geometry over every curb section: the shared scale and guide.
-    let geo = boardGeometry([...mainRows, ...nearbyRows]);
-    const now = Date.now();
-    // The 120-minute freshness gate (plan §3): when the feed's newest sample
-    // is older than that (including a feed that failed to refresh), no live
-    // markers — every vehicle estimates from its ETA instead. Dots change
-    // position but never vanish.
-    const liveRows = posFeed && now - posFeed.newestAt <= BUS_SAMPLE_MAX_AGE_MS
-        ? (posRows || []) : [];
-    mainRows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[i], geo.scale, liveRows, now); });
-    nearbyRows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[mainRows.length + i], geo.scale, liveRows, now); });
+    // Board geometry supplies each row's ordered stop list for the
+    // "View all stops" disclosure.
+    const geo = boardGeometry([...mainRows, ...nearbyRows]);
     // Section headings. The selected stop is already named in the boarding
     // stop card above the board, so its rows need no heading of their own.
     // Every nearby STOP gets its own dark bar: title = the stop's name, sub =

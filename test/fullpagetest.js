@@ -140,15 +140,14 @@ const board = () => els.linesScroll.innerHTML;
   check("header: no stop-count line", !/^\d+ stops?/.test(els.statusmessage.textContent));
 
   check("board painted into linesScroll", b !== "");
-  check("board: every row on one shared width", new Set((b.match(/width="\d+\.\d+"/g) || [])).size <= 2);
-
-  const hasTrack = b.includes("board-tracksvg");
-  const guides = (b.match(/bt-guide/g) || []).length;
-  check("board: a boarding guide per track row", hasTrack ? guides >= 1 : true);
-  check("board: anchor diamond present", hasTrack ? b.includes("bt-anchor") : true);
+  check("board: no SVG track graphic", !b.includes("board-tracksvg"));
+  check("board: route badge, destination, then ETAs",
+    /row-badge[^]*?board-dest[^]*?board-etas/.test(b));
+  check("board: anchor stop list is selectable",
+    !b.includes("bt-stop-item") || /class="bt-stop-item"[^>]*data-stop="/.test(b));
 
   if (ACROSS) {
-    // the across section: counterpart label, both curb labels, two track rows
+    // the across section: counterpart label, both curb labels, both routes
     check("across: section rendered", b.includes("Across the street"));
     // substring check (not a regex): node's engine rejects some quantified
     // character-class patterns; the sub must name the counterpart within ~60 chars
@@ -156,7 +155,7 @@ const board = () => els.linesScroll.innerHTML;
     check("across: counterpart named in label", acrossIdx > -1 && b.slice(acrossIdx, acrossIdx + 80).includes("#1002135"));
     check("across: heading bar carries an ETA summary", acrossIdx > -1 && /and \d+ min/.test(b.slice(acrossIdx, acrossIdx + 400)));
     check("across: no redundant selected-stop section heading", !b.includes("At the selected stop"));
-    check("across: both C87 patterns as track rows", (b.match(/bt-line/g) || []).length === 2);
+    check("across: both C87 patterns listed", (b.match(/>C87<\/span>/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
     check("across: prompt refresh re-fetches in-scope stops (7 fetches)", fetchCount === 7);
   } else if (ANCHOR === "1002130") {
@@ -165,7 +164,7 @@ const board = () => els.linesScroll.innerHTML;
     check("130: D72 compact keeps its live headsign", b.includes("North to Van Ness"));
     check("130: C87 service row toward TENLEYTOWN", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
     check("130: compact row before service row", b.indexOf("route details unavailable") < b.indexOf("TENLEYTOWN"));
-    check("130: no track on the compact row", (b.match(/bt-line/g) || []).length === 1); // only C87 has a pattern
+    check("130: no track graphic on the compact row", !b.includes("board-tracksvg"));
   } else {
     check("135: next bus D72 @2 min", h.includes("Next bus") && h.includes("D72") && h.includes("2 min"));
     check("135: D72 row compact", b.includes("route details unavailable"));
