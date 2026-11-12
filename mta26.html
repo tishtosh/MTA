@@ -224,7 +224,7 @@
         .row-badge-wrap { display: inline-flex; align-items: center; gap: 5px; flex: none; }
         .bus-status-slot { width: 18px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
         .bus-status { font-size: 12px; }
-        .bus-status.arriving { color: #8ce99a; font-size: 17px; }
+        .bus-status.arriving { font-size: 17px; }
         .bus-status.departed { color: #adb5bd; }
         /* Final destination: bold and set on a quiet grey highlight, sitting
            immediately after the badge. */
@@ -362,12 +362,7 @@
     <h3><small id="statusmessage" aria-live="polite"></small></h3>
 
     <div id="acWrap" class="ac-wrap">
-        <input id="stopEntry" class="form-control form-control-lg" type="text"
-               placeholder="Look up a bus stop by name (drives the view)…" autocomplete="off" spellcheck="false"
-               role="combobox" aria-expanded="false" aria-controls="stopEntryList" aria-label="Bus stop name">
-        <button id="stopEntryClear" class="navicon ac-clear" type="button" title="Clear — back to nearby stops"
-                aria-label="Clear stop selection" hidden><i class="fa-solid fa-xmark"></i></button>
-        <div id="stopEntryList" class="ac-list" role="listbox" aria-label="Matching stops" hidden></div>
+        <select id="busSelect" class="form-select form-select-lg" aria-label="Bus stop"><option value="">Loading bus stops…</option></select>
     </div>
     <div id="metroWrap" class="ac-wrap" hidden>
         <select id="metroSelect" class="form-select form-select-lg" aria-label="Metro station"></select>
@@ -590,9 +585,7 @@ const gStatus = document.getElementById("statusmessage");
 const gClock = document.getElementById("clock");
 const gClockMeta = document.getElementById("clockMeta");
 const gRefreshToggle = document.getElementById("btnRefreshToggle");
-const gStopEntry = document.getElementById("stopEntry");
-const gStopEntryClear = document.getElementById("stopEntryClear");
-const gStopEntryList = document.getElementById("stopEntryList");
+const gBusSelect = document.getElementById("busSelect");
 const gLinesNote = document.getElementById("linesNote");
 const gBoardHeader = document.getElementById("boardHeader");
 const gLinesScroll = document.getElementById("linesScroll");
@@ -668,7 +661,7 @@ async function fetchAllStops() {
 function loadStopDirectory() {
     if (!stopDirLoad) {
         stopDirLoad = fetchAllStops()
-            .then(stops => { allStopsCache = stops; return stops; })
+            .then(stops => { allStopsCache = stops; populateBusSelect(stops); return stops; })
             .catch(err => { stopDirLoad = null; throw err; });   // allow a later retry
     }
     return stopDirLoad;
@@ -1547,7 +1540,7 @@ function boardRowHead(row, color, g, k, scheduled) {
     const departed = !!row.departed;
     const arriving = !departed && row.mins && row.mins.length && row.mins[0] <= 1;
     const arrivingIcon = row.metro ? "fa-train-subway" : "fa-bus";
-    const arrivingStyle = row.metro ? ` style="color:${color}"` : "";
+    const arrivingStyle = ` style="color:${color}"`;
     const statusIcon = departed
         ? `<i class="fa-solid fa-arrow-right-from-bracket bus-status departed" title="Departed" aria-label="Departed"></i>`
         : arriving
@@ -1683,7 +1676,7 @@ async function runFlow() {
         if (stopListFromURL && stopListFromURL.length && !forceNearby && !pickedStop && stops[0]) {
             const s = stops[0];
             pickedStop = s.StopID;
-            gStopEntry.value = stopName(s.Name) || `#${s.StopID}`;
+            if (gBusSelect) gBusSelect.value = String(s.StopID);
             acStop.setPicked(true);
         }
         // Paint the stop names immediately; arrivals are fetched in the
@@ -1766,8 +1759,10 @@ function setMode(next) {
     gBoardHeader.innerHTML = "";
     gLinesScroll.innerHTML = "";
     gLinesNote.textContent = "";
-    if (mode === "bus") runFlow();
-    else { metroAnchorCode = null; runMetro(); }
+    if (mode === "bus") {
+        if (allStopsCache) populateBusSelect(allStopsCache);
+        runFlow();
+    } else { metroAnchorCode = null; runMetro(); }
 }
 
 async function runMetro() {
@@ -2429,162 +2424,8 @@ if (gMetroSelect) gMetroSelect.addEventListener("change", () => {
 //                      or a row click)
 //   onClear()        — the ✕ was pressed
 //   onPickLost()     — the user started typing while a pick was active
-function makeAutocomplete(input, listEl, clearBtn, onPick, onClear, onPickLost) {
-    let matches = [];
-    let active = -1;
-    let picked = false;
-
-    function closeList() {
-        listEl.hidden = true;
-        listEl.innerHTML = "";
-        input.setAttribute("aria-expanded", "false");
-        active = -1;
-    }
-
-    function setPicked(v) {
-        picked = v;
-        clearBtn.hidden = !v;
-        if (!v) closeList();
-    }
-
-    function openList(html) {
-        listEl.innerHTML = html;
-        listEl.hidden = false;
-        input.setAttribute("aria-expanded", "true");
-    }
-
-    // Case-insensitive, token-based search over name + StopID: every
-    // character typed re-filters and repopulates the list. Prefix matches
-    // rank first, then earlier substring matches, then alphabetical.
-    // null = the directory isn't loaded yet.
-    function matchesFor(q) {
-        if (!allStopsCache) return null;
-        const raw = q.trim().toLowerCase();
-        if (!raw) return [];
-        const tokens = raw.split(/\s+/).filter(Boolean);
-        const scored = [];
-        for (const st of allStopsCache) {
-            const name = String(st.Name || "").toLowerCase();
-            const id = String(st.StopID || "").toLowerCase();
-            let score = 0;
-            let ok = true;
-            for (const tk of tokens) {
-                const ni = name.indexOf(tk);
-                const ii = id.indexOf(tk);
-                if (ni === 0 || ii === 0) score += 3;
-                else if (ni > 0 || ii >= 0) score += 1;
-                else { ok = false; break; }
-            }
-            if (!ok) continue;
-            if (name.startsWith(raw) || id.startsWith(raw)) score += 5;
-            scored.push({ st, score });
-        }
-        scored.sort((a, b) =>
-            b.score - a.score ||
-            String(a.st.Name || "").localeCompare(String(b.st.Name || "")) ||
-            String(a.st.StopID).localeCompare(String(b.st.StopID), undefined, { numeric: true }));
-        return scored.slice(0, 8).map(x => x.st);
-    }
-
-    function renderMatches(items) {
-        matches = items;
-        active = items.length ? 0 : -1;
-        openList(items.length
-            ? items.map((s, i) =>
-                `<div class="ac-item${i === active ? " active" : ""}" data-i="${i}" role="option" aria-selected="${i === active}">` +
-                `${esc(stopName(s.Name) || "#" + s.StopID)}<span class="code">#${esc(s.StopID)}</span></div>`).join("")
-            : `<div class="ac-none">no matching stops</div>`);
-    }
-
-    function pick(st) {
-        input.value = stopName(st.Name) || `#${st.StopID}`;
-        setPicked(true);
-        if (onPick) onPick(st);
-    }
-
-    // Show a pick made outside the list (e.g. the Home button) in the field,
-    // with the clear button visible and any open suggestion list dismissed.
-    function showPick(st) {
-        input.value = stopName(st.Name) || (st.StopID ? `#${st.StopID}` : "");
-        setPicked(true);
-    }
-
-    input.addEventListener("input", () => {
-        if (picked) { setPicked(false); if (onPickLost) onPickLost(); }
-        const q = input.value.trim();
-        if (!q) { closeList(); return; }
-        const items = matchesFor(q);
-        if (items === null) {                       // directory not loaded yet
-            matches = [];
-            openList(`<div class="ac-none">loading stops…</div>`);
-            loadStopDirectory().then(() => {
-                if (input.value.trim() === q) renderMatches(matchesFor(q) || []);
-            }).catch(() => {
-                if (input.value.trim() === q) openList(`<div class="ac-none">could not load the stop list</div>`);
-            });
-        } else {
-            renderMatches(items);
-        }
-    });
-
-    input.addEventListener("focus", () => {
-        const q = input.value.trim();
-        if (picked || !q || !listEl.hidden) return;
-        const items = matchesFor(q);
-        if (items) { if (items.length) renderMatches(items); }
-        else openList(`<div class="ac-none">loading stops…</div>`);
-    });
-
-    input.addEventListener("keydown", e => {
-        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            if (listEl.hidden || !matches.length) return;
-            e.preventDefault();
-            if (active === -1) active = e.key === "ArrowDown" ? 0 : matches.length - 1;
-            else active = (active + (e.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length;
-            [...listEl.children].forEach((el, i) => el.classList.toggle("active", i === active));
-            if (listEl.children[active]) listEl.children[active].scrollIntoView({ block: "nearest" });
-        } else if (e.key === "Enter" && !listEl.hidden && active >= 0 && matches[active]) {
-            e.preventDefault();
-            pick(matches[active]);
-        } else if (e.key === "Escape" && !listEl.hidden) {
-            closeList();
-        }
-    });
-
-    // mousedown, not click: preventDefault keeps the input focused, so the
-    // blur handler can't close the list before the row gets picked.
-    listEl.addEventListener("mousedown", e => {
-        const item = e.target.closest(".ac-item");
-        if (!item) return;
-        e.preventDefault();
-        pick(matches[+item.dataset.i]);
-    });
-
-    input.addEventListener("blur", closeList);
-    clearBtn.addEventListener("click", () => {
-        setPicked(false);
-        input.value = "";
-        if (onClear) onClear();
-    });
-
-    return {
-        setPicked,
-        showPick,
-        reset() { setPicked(false); input.value = ""; },
-    };
-}
-
-// A directory stop (from the full dump) becomes a tracked stop. It may be
-// outside the nearby list — it is then materialized with a null distance.
-function materializeDirStop(st) {
-    const s = makeStop(st.StopID, st.Name, st.Lat, st.Lon);
-    s.Routes = st.Routes || [];
-    return s;
-}
-
-// Undo the entry-field pick. The caller decides what happens next — ✕ re-runs
-// runFlow() (the nearby search); typing keeps the text being entered so the
-// dropdown can re-filter on every keystroke.
+// Undo the dropdown pick. The caller decides what happens next: choosing the
+// "Nearby stops" option re-runs runFlow().
 function resetPick(keepField) {
     if (pickedStop === null && pickedStopObj === null) return;
     pickedStop = null;
@@ -2592,24 +2433,37 @@ function resetPick(keepField) {
     if (!keepField) acStop.reset();
 }
 
-const acStop = makeAutocomplete(
-    gStopEntry, gStopEntryList, gStopEntryClear,
-    st => {                       // pick: track just this stop
-        pickedStop = st.StopID;
-        const inList = stops.find(s => s.StopID === st.StopID);
-        pickedStopObj = inList || materializeDirStop(st);
-        noteSelectionChange();     // void the old counterpart before its refresh
-        renderLines();             // show the chosen stop before its arrivals land
-        refreshPredictions();      // its predictions, then the 30 s cycle tracks it
+const acStop = {
+    setPicked() { /* the select itself shows the pick */ },
+    showPick(st) {
+        if (gBusSelect) gBusSelect.value = String(st.StopID || "");
     },
-    () => {                       // ✕: back to the nearby search
+    reset() {
+        if (gBusSelect) gBusSelect.value = "";
+    },
+};
+
+function populateBusSelect(all) {
+    if (!gBusSelect) return;
+    const list = (all || []).slice().sort((a, b) =>
+        String(a.Name || "").localeCompare(String(b.Name || "")) ||
+        String(a.StopID).localeCompare(String(b.StopID), undefined, { numeric: true }));
+    gBusSelect.innerHTML = `<option value="">Nearby stops</option>`
+        + list.map(s => `<option value="${esc(s.StopID)}">${esc(stopName(s.Name) || "#" + s.StopID)} (${esc(s.StopID)})</option>`).join("");
+    gBusSelect.value = pickedStop ? String(pickedStop) : "";
+}
+
+if (gBusSelect) gBusSelect.addEventListener("change", () => {
+    const id = gBusSelect.value;
+    if (!id) {
         resetPick();
-        forceNearby = true;       // matters when a ?busstop= deep link prefilled the field
+        forceNearby = true;
         runFlow();
-        renderLines();            // the picture falls back to the closest nearby stop
-    },
-    () => { noteSelectionChange(); resetPick(true); renderLines(); },
-);
+        renderLines();
+        return;
+    }
+    selectStop(id);
+});
 
 // ════════════════════════════════════════════════════════════════════
 // The board (v5 — the single view)
@@ -2799,6 +2653,7 @@ function slideSectionToTop(headEl) {
 function selectStop(id) {
     id = String(id || "");
     if (!id) return false;
+    if (gBusSelect) gBusSelect.value = id;
     if (String(pickedStop) === id) { refreshPredictions(); return true; }  // already the anchor
     pickedStop = id;
     const inList = stops.find(s => String(s.StopID) === id) || nearbyStopObjs.get(id);

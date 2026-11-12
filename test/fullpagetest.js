@@ -211,10 +211,9 @@ const board = () => els.linesScroll.innerHTML;
     !b.includes('data-nearby="1"') || /\d+ ft away|Across the street/.test(b));
 
   // The entry field re-filters its dropdown on every keystroke.
-  els.stopEntry.value = "park";
-  (els.stopEntry._l.input || []).forEach(f => f());
-  check("entry: typing repopulates matching stops",
-    !els.stopEntryList.hidden && /Park/i.test(els.stopEntryList.innerHTML));
+  check("bus dropdown prepopulated with all stops",
+    (els.busSelect.innerHTML.match(/<option/g) || []).length > 50 &&
+    /Park/i.test(els.busSelect.innerHTML));
 
   // The header shortcut checkboxes persist to a cookie.
   {
