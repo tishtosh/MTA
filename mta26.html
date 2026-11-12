@@ -215,6 +215,12 @@
             background: transparent; border: 2px solid currentColor;
             padding: 0 7px;
         }
+        /* Metro line names share one rectangle width (fits "Orange"/"Yellow"). */
+        .row-badge.metro-line {
+            width: 72px; box-sizing: border-box;
+            display: inline-flex; align-items: center; justify-content: center;
+            text-align: center;
+        }
         .row-badge-wrap { display: inline-flex; align-items: center; gap: 5px; flex: none; }
         .bus-status-slot { width: 18px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
         .bus-status { font-size: 12px; }
@@ -384,34 +390,42 @@
 // Configuration
 // ════════════════════════════════════════════════════════════════════
 
-// ⚠  Client-side gating is obfuscation, not cryptographic security: the
-//    access check and the encoded key are both visible to anyone reading the
-//    page source. See README.md → "API key handling".
-// The key is XOR-encoded with the access password and decoded on unlock.
-const KEY_B64 = "REDACTED_WMATA_KEY=";
-const GATE_B64 = "YnVz";       // base64 of the access word; not stored literally
+// ⚠  Client-side gating raises the cost of casual inspection but is not a
+//    substitute for server-side secrecy: after unlock the key is in memory.
+//    The key is AES-GCM encrypted with a key derived from the access password
+//    via PBKDF2-SHA-256 (salt and IV are stored with the ciphertext).
+const KEY_BLOB = "5iUncaMBYE7uFbNF/sa4No2ZSSmC3OhN6cevnbrGAfnFyGRzaRvlN14ZCuRDjJxTz0OT+EGRuXJbjkp+m8ACl5Qkq6tF2EnR3MBw0g==";
+const PBKDF2_ITERATIONS = 210000;
 let API_KEY = "";
-
 
 // WMATA public API — WMATA operates the DC (Metrobus) bus system.
 // Portal / docs / key registration: https://developer.wmata.com
 const WMATA_API = "https://api.wmata.com";
 
-// Decode the API key with the access password (XOR + base64).
-function decodeWithPassword(b64, pass) {
-    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    for (let i = 0; i < bytes.length; i++)
-        bytes[i] ^= pass.charCodeAt(i % pass.length);
-    return new TextDecoder().decode(bytes);
+function b64Bytes(b64) {
+    return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
 
-function checkAccess(pass) {
-    try { return btoa(pass) === GATE_B64; } catch (e) { return false; }
+async function decryptKey(pass) {
+    const blob = b64Bytes(KEY_BLOB);
+    const salt = blob.slice(0, 16);
+    const iv = blob.slice(16, 28);
+    const ciphertext = blob.slice(28);
+    const base = await crypto.subtle.importKey(
+        "raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+    const key = await crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+        base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+    return new TextDecoder().decode(plain);
 }
 
-function unlockAccess(pass) {
-    if (!checkAccess(pass)) return false;
-    API_KEY = decodeWithPassword(KEY_B64, pass);
+async function unlockAccess(pass) {
+    try {
+        API_KEY = await decryptKey(pass);
+    } catch (e) {
+        return false;               // wrong password: AES-GCM auth failed
+    }
     const gate = document.getElementById("gate");
     if (gate) gate.hidden = true;
     startApp();
@@ -1540,9 +1554,10 @@ function boardRowHead(row, color, g, k, scheduled) {
             ? `<i class="fa-solid ${arrivingIcon} bus-status arriving"${arrivingStyle} title="Arriving" aria-label="Arriving"></i>`
             : "";
     const badgeText = row.metro ? metroLineName(row.route) : row.route;
+    const badgeClass = `row-badge${row.metro ? " metro-line" : ""}${departed ? " hollow" : ""}`;
     const badge = departed
-        ? `<span class="row-badge hollow" style="color:${color};border-color:${color}">${esc(badgeText)}</span>`
-        : `<span class="row-badge" style="background:${color}">${esc(badgeText)}</span>`;
+        ? `<span class="${badgeClass}" style="color:${color};border-color:${color}">${esc(badgeText)}</span>`
+        : `<span class="${badgeClass}" style="background:${color}">${esc(badgeText)}</span>`;
     const subParts = [];
     if ((g && g.hasTrack && (g.stops || []).length >= 2) ||
         (row.metro && row.toCode)) {
@@ -2898,8 +2913,9 @@ function boardHeaderHtml(st, arrivals) {
             ? (a) => `${a.route}|${a.heads || a.dir || ""}`
             : (a) => `${a.route}|${a.dirNum || a.heads || a.dir || ""}`;
         const mins = list.filter(a => svc(a) === svc(next)).map(a => a.min);
+        const badgeCls = `row-badge${st.Metro ? " metro-line" : ""}`;
         const bits = [
-            `<span class="row-badge" style="background:${badgeColor(next.route)}">${esc(badgeLabel(next.route))}</span>`,
+            `<span class="${badgeCls}" style="background:${badgeColor(next.route)}">${esc(badgeLabel(next.route))}</span>`,
             esc(next.heads || next.dir || "")
         ].filter(Boolean).join(" ");
         nextLine = `${verb} ${bits} <span class="bt-next-eta">${esc(fmtEta(mins[0]))}</span>`;
@@ -2913,7 +2929,7 @@ function boardHeaderHtml(st, arrivals) {
         const sched = st.MetroScheduledNext || nextScheduledFor(id);
         if (sched) {
             const schedBits = [
-                `<span class="row-badge" style="background:${badgeColor(sched.route)}">${esc(badgeLabel(sched.route))}</span>`,
+                `<span class="row-badge${st.Metro ? " metro-line" : ""}" style="background:${badgeColor(sched.route)}">${esc(badgeLabel(sched.route))}</span>`,
                 esc(sched.heads || sched.dirText || "")
             ].filter(Boolean).join(" ");
             nextLine = `${verb} ${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
@@ -3246,11 +3262,12 @@ gRefreshToggle.addEventListener("click", () => setRefreshEnabled(!refreshEnabled
 
 // Access gate: check the password, decode the API key, then start the app.
 const gateForm = document.getElementById("gateForm");
-if (gateForm) gateForm.addEventListener("submit", e => {
+if (gateForm) gateForm.addEventListener("submit", async e => {
     e.preventDefault();
     const input = document.getElementById("gateInput");
     const err = document.getElementById("gateError");
-    if (!unlockAccess(input ? input.value : "")) {
+    const ok = await unlockAccess(input ? input.value : "");
+    if (!ok) {
         if (err) err.textContent = "Incorrect password";
         if (input) { input.value = ""; input.focus(); }
     }

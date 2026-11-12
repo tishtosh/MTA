@@ -99,6 +99,7 @@ const sandbox = {
   URL, URLSearchParams, AbortController,
   setTimeout, clearTimeout, setInterval, clearInterval,
   btoa, atob, TextDecoder, Uint8Array,
+  crypto, TextEncoder,
   fetch,
   document,
   location: { search: "?busstop=" + STOP, href: "http://localhost/?busstop=" + STOP, reload() {} },
@@ -111,8 +112,6 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 vm.runInContext(script, sandbox, { filename: "mta26-script.js" });
-// Unlock the access gate (the app no longer starts until the password check).
-sandbox.unlockAccess("bus");
 
 // ---- wait for the async pipeline, then assert ----
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -125,6 +124,8 @@ const header = () => els.boardHeader.innerHTML;
 const board = () => els.linesScroll.innerHTML;
 
 (async () => {
+  // Unlock the access gate (AES-GCM/PBKDF2) before waiting for the board.
+  await sandbox.unlockAccess("bus");
   // Wait for the settled paint: the board is painted and then stops
   // changing for 400 ms; in across mode the across section must be up
   // (confirmAcross' counterpart prediction fetch re-paints the board).
