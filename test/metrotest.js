@@ -19,11 +19,14 @@ function extractFn(name) {
 const sandbox = { console, Date, Number, String, Math, Object, Array, Set, Map };
 vm.createContext(sandbox);
 vm.runInContext([
-  "var metroLive = {}; var metroSchedule = {};",
+  "var metroLive = {}; var metroSchedule = {}; var metroStationsCache = [];",
+  "var METRO_LINE_NAMES = {RD:'Red',BL:'Blue',OR:'Orange',SV:'Silver',GR:'Green',YL:'Yellow'};",
   "function nextScheduledFor() { return null; }",
   extractFn("normHeads"),
   extractFn("metroMin"),
   extractFn("metroHeadsMatch"),
+  extractFn("metroDestCode"),
+  extractFn("metroLineName"),
   extractFn("sortRowsBySoonest"),
   extractFn("metroRowsFor"),
   extractFn("gtfsCsvFields"),
@@ -41,10 +44,18 @@ t("M2 numeric and unknown minutes", sandbox.metroMin("5") === 5 && sandbox.metro
 t("M3 abbreviated destinations match",
   sandbox.metroHeadsMatch("Shady Grv", "Shady Grove") &&
   !sandbox.metroHeadsMatch("Glenmont", "Shady Grove"));
-t("M4 quoted GTFS CSV", (() => {
+t("M4 full line names", sandbox.metroLineName("RD") === "Red" &&
+  sandbox.metroLineName("GR") === "Green" && sandbox.metroLineName("YL") === "Yellow");
+t("M4b quoted GTFS CSV", (() => {
   const f = sandbox.gtfsCsvFields('RED,50_R,123,"Shady Grove, DC",0');
   return f.length === 5 && f[3] === "Shady Grove, DC";
 })());
+
+sandbox.metroStationsCache = [
+  { Code: "B11", Name: "Glenmont" },
+  { Code: "A15", Name: "Shady Grove" },
+  { Code: "E10", Name: "Greenbelt" }
+];
 
 const now = Date.now();
 sandbox.metroLive = {

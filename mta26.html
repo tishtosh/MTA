@@ -70,7 +70,7 @@
         .nav-shortcut { position: relative; }
         .nav-shortcut .nav-bookmark {
             position: absolute; right: 2px; bottom: -2px;
-            font-size: 10px; width: auto; color: #adb5bd;
+            font-size: 0.5em; width: auto; color: #adb5bd;
             z-index: 0; pointer-events: none;
         }
         .nav-shortcut > i:not(.nav-bookmark) { position: relative; z-index: 1; }
@@ -363,6 +363,9 @@
                 aria-label="Clear stop selection" hidden><i class="fa-solid fa-xmark"></i></button>
         <div id="stopEntryList" class="ac-list" role="listbox" aria-label="Matching stops" hidden></div>
     </div>
+    <div id="metroWrap" class="ac-wrap" hidden>
+        <select id="metroSelect" class="form-select form-select-lg" aria-label="Metro station"></select>
+    </div>
 
     <!-- v5: route picture first — the stop (name + ID) and its next bus
          up top, then the board: one row per route+direction+destination
@@ -499,13 +502,22 @@ let metroLiveError = {};            // station Code → error
 let metroSchedule = {};             // station Code → scheduled departures
 let metroRefreshInFlight = false, metroRefreshQueued = false;
 const METRO_NEARBY_FT = 5280 * 1.5;
+const metroPathCache = {};
+const metroPathInflight = {};
 
 const METRO_COLORS = {
     RD: "#c62828", BL: "#1565c0", OR: "#ef6c00",
     SV: "#6c757d", GR: "#2e7d32", YL: "#9e9d24"
 };
+const METRO_LINE_NAMES = {
+    RD: "Red", BL: "Blue", OR: "Orange",
+    SV: "Silver", GR: "Green", YL: "Yellow"
+};
 function metroLineColor(line) {
     return METRO_COLORS[String(line || "").toUpperCase()] || "#5d4037";
+}
+function metroLineName(line) {
+    return METRO_LINE_NAMES[String(line || "").toUpperCase()] || String(line || "");
 }
 
 // ── Mode (bus / metro) and shortcut locations ─────────────────────────
@@ -572,6 +584,8 @@ const gBoardHeader = document.getElementById("boardHeader");
 const gLinesScroll = document.getElementById("linesScroll");
 const gHoverTip = document.getElementById("hovertip");
 const gAcWrap = document.getElementById("acWrap");
+const gMetroWrap = document.getElementById("metroWrap");
+const gMetroSelect = document.getElementById("metroSelect");
 const gBusBtn = document.getElementById("btnBus");
 const gMetroBtn = document.getElementById("btnMetro");
 const gShortcutBtns = {
@@ -1519,18 +1533,22 @@ function boardRowHead(row, color, g, k, scheduled) {
     const departed = !!row.departed;
     const arriving = !departed && row.mins && row.mins.length && row.mins[0] <= 1;
     const arrivingIcon = row.metro ? "fa-train-subway" : "fa-bus";
+    const arrivingStyle = row.metro ? ` style="color:${color}"` : "";
     const statusIcon = departed
         ? `<i class="fa-solid fa-arrow-right-from-bracket bus-status departed" title="Departed" aria-label="Departed"></i>`
         : arriving
-            ? `<i class="fa-solid ${arrivingIcon} bus-status arriving" title="Arriving" aria-label="Arriving"></i>`
+            ? `<i class="fa-solid ${arrivingIcon} bus-status arriving"${arrivingStyle} title="Arriving" aria-label="Arriving"></i>`
             : "";
+    const badgeText = row.metro ? metroLineName(row.route) : row.route;
     const badge = departed
-        ? `<span class="row-badge hollow" style="color:${color};border-color:${color}">${esc(row.route)}</span>`
-        : `<span class="row-badge" style="background:${color}">${esc(row.route)}</span>`;
+        ? `<span class="row-badge hollow" style="color:${color};border-color:${color}">${esc(badgeText)}</span>`
+        : `<span class="row-badge" style="background:${color}">${esc(badgeText)}</span>`;
     const subParts = [];
-    if (g && g.hasTrack && (g.stops || []).length >= 2)
+    if ((g && g.hasTrack && (g.stops || []).length >= 2) ||
+        (row.metro && row.toCode)) {
         subParts.push(`<button type="button" class="bt-allstops" aria-expanded="${expandedStops.has(k)}">View all stops`
             + ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`);
+    }
     return `<div class="board-head">`
         + `<span class="row-badge-wrap"><span class="bus-status-slot">${statusIcon}</span>${badge}</span>`
         + `<div class="row-mainline">`
@@ -1699,6 +1717,15 @@ function metroRefPoint() {
     return HOME;
 }
 
+function populateMetroSelect(stations) {
+    if (!gMetroSelect) return;
+    gMetroSelect.innerHTML = stations.slice()
+        .sort((a, b) => String(a.Name).localeCompare(String(b.Name)))
+        .map(s => `<option value="${esc(s.Code)}">${esc(stopName(s.Name) || s.Code)}</option>`)
+        .join("");
+    if (metroAnchor) gMetroSelect.value = metroAnchor.Code;
+}
+
 function updateModeIcons() {
     if (gBusBtn) {
         gBusBtn.classList.toggle("active", mode === "bus");
@@ -1719,6 +1746,8 @@ function setMode(next) {
     updateShortcutNav();
     updateModeIcons();
     if (gAcWrap) gAcWrap.hidden = mode !== "bus";
+    if (gMetroWrap) gMetroWrap.hidden = mode !== "metro";
+    expandedStops.clear();
     gBoardHeader.innerHTML = "";
     gLinesScroll.innerHTML = "";
     gLinesNote.textContent = "";
@@ -1731,6 +1760,7 @@ async function runMetro() {
     gLinesNote.textContent = "loading Metro stations…";
     try {
         const all = await loadMetroStations();
+        populateMetroSelect(all);
         const ref = metroRefPoint();
         let anchor = metroAnchorCode ? all.find(s => s.Code === metroAnchorCode) : null;
         if (!anchor) {
@@ -1752,6 +1782,8 @@ function setMetroAnchor(code) {
     if (!anchor) return;
     metroAnchorCode = anchor.Code;
     metroAnchor = Object.assign({}, anchor, { distFt: 0 });
+    if (gMetroSelect) gMetroSelect.value = anchor.Code;
+    expandedStops.clear();
     metroNearby = all.filter(s => s.Code !== anchor.Code)
         .map(s => Object.assign({}, s, {
             distFt: distance(anchor.Lat, anchor.Lon, s.Lat, s.Lon, "f")
@@ -1802,7 +1834,8 @@ function metroRowsFor(station) {
         let r = groups.get(key);
         if (!r) {
             r = { kind: "compact", route: t.route, dirNum: t.dirNum || "",
-                  dest: t.heads, mins: [], first: 0, metro: true };
+                  dest: t.heads, mins: [], first: 0, metro: true,
+                  fromCode: station.Code, toCode: metroDestCode(t.heads) };
             groups.set(key, r);
             rows.push(r);
         }
@@ -1826,12 +1859,53 @@ function metroRowsFor(station) {
             schedGroups.set(key, {
                 kind: "service", route: d.route, dirNum: d.dirNum || "",
                 dest: d.heads, mins: [], first: 0, metro: true,
+                fromCode: station.Code, toCode: metroDestCode(d.heads),
                 scheduled: { at: d.at }
             });
     }
     rows.push(...schedGroups.values());
     sortRowsBySoonest(rows, station.Code, now);
     return rows;
+}
+
+function metroDestCode(name) {
+    const stations = metroStationsCache || [];
+    const hit = stations.find(s => metroHeadsMatch(s.Name, name));
+    return hit ? hit.Code : "";
+}
+
+async function fetchMetroPath(from, to) {
+    const key = from + "|" + to;
+    if (metroPathCache[key]) return metroPathCache[key];
+    if (metroPathInflight[key]) return metroPathInflight[key];
+    const p = apiGet("/Rail.svc/json/jPath", { FromStationCode: from, ToStationCode: to })
+        .then(({ data, error }) => {
+            if (error) throw error;
+            const path = (data && data.Path) || [];
+            metroPathCache[key] = path;
+            return path;
+        })
+        .finally(() => { delete metroPathInflight[key]; });
+    metroPathInflight[key] = p;
+    return p;
+}
+
+async function loadMetroStops(ul) {
+    const from = ul.dataset.metroFrom, to = ul.dataset.metroTo;
+    if (!from || !to) { ul.innerHTML = ""; return; }
+    ul.dataset.loaded = "1";
+    ul.innerHTML = `<li class="bt-stop-item">loading stops…</li>`;
+    try {
+        const path = await fetchMetroPath(from, to);
+        ul.innerHTML = path.map(p => {
+            const mark = p.StationCode === from ? ` <b class="bt-mark">your stop</b>`
+                : p.StationCode === to ? ` <b class="bt-mark">terminal</b>` : "";
+            return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(p.StationCode)}">`
+                + `${esc(stopName(p.StationName))} <small>(${esc(p.StationCode)})</small>${mark}</li>`;
+        }).join("");
+    } catch (e) {
+        ul.innerHTML = `<li class="bt-stop-item">could not load stops</li>`;
+    }
 }
 
 function metroHeadsMatch(a, b) {
@@ -1864,10 +1938,17 @@ function renderMetro() {
     gBoardHeader.innerHTML = boardHeaderHtml(headSt, live);
     const rowsHtml = (rows) => rows.map(r => {
         const key = rowKey(r);
+        const open = expandedStops.has(key);
+        const list = r.metro && r.toCode
+            ? `<ul class="bt-stoplist"${open ? "" : " hidden"}`
+              + ` data-metro-from="${esc(r.fromCode || "")}" data-metro-to="${esc(r.toCode)}">`
+              + (open ? `<li class="bt-stop-item">loading stops…</li>` : "")
+              + `</ul>`
+            : "";
         return `<div class="board-row${r.scheduled ? " is-scheduled" : ""}"`
             + ` data-rowkey="${encodeURIComponent(key)}">`
             + boardRowHead(r, metroLineColor(r.route), null, key, r.scheduled)
-            + `</div>`;
+            + list + `</div>`;
     }).join("");
     const mainRows = metroRowsFor(station);
     const mainHtml = mainRows.length
@@ -1889,6 +1970,11 @@ function renderMetro() {
     }
     gLinesScroll.innerHTML = mainHtml + nearbyHtml;
     gLinesNote.textContent = "";
+    if (gLinesScroll.querySelectorAll) {
+        gLinesScroll.querySelectorAll(".bt-stoplist[data-metro-from]").forEach(ul => {
+            if (!ul.hidden && !ul.dataset.loaded) loadMetroStops(ul);
+        });
+    }
 }
 
 async function refreshMetro() {
@@ -2312,6 +2398,10 @@ gBoardHeader.addEventListener("click", e => {
 updateShortcutNav();
 updateModeIcons();
 if (gAcWrap) gAcWrap.hidden = mode !== "bus";
+if (gMetroWrap) gMetroWrap.hidden = mode !== "metro";
+if (gMetroSelect) gMetroSelect.addEventListener("change", () => {
+    if (mode === "metro") setMetroAnchor(gMetroSelect.value);
+});
 
 // ════════════════════════════════════════════════════════════════════
 // Stop-name autocomplete (the single shared entry field above the view)
@@ -2639,7 +2729,13 @@ gLinesScroll.addEventListener("click", e => {
     if (!ul || !key) return;
     const open = ul.hasAttribute("hidden");
     if (open) expandedStops.add(key); else expandedStops.delete(key);
-    if (open) ul.removeAttribute("hidden"); else ul.setAttribute("hidden", "");
+    if (open) {
+        ul.removeAttribute("hidden");
+        if (ul.dataset && ul.dataset.metroFrom && !ul.dataset.loaded)
+            loadMetroStops(ul);
+    } else {
+        ul.setAttribute("hidden", "");
+    }
     btn.setAttribute("aria-expanded", open ? "true" : "false");
 });
 // A row scrolling out from under the cursor also retires the card.
@@ -2705,7 +2801,8 @@ function selectStop(id) {
 gLinesScroll.addEventListener("click", e => {
     const item = e.target.closest ? e.target.closest(".bt-stop-item") : null;
     if (item && item.dataset && item.dataset.stop) {
-        selectStop(item.dataset.stop);
+        if (mode === "metro") setMetroAnchor(item.dataset.stop);
+        else selectStop(item.dataset.stop);
         return;
     }
     const head = e.target.closest ? e.target.closest(".curb-head") : null;
@@ -2793,6 +2890,7 @@ function boardHeaderHtml(st, arrivals) {
     const next = list[0] || null;
     const verb = st.Metro ? "Next train" : "Next bus";
     const badgeColor = (route) => st.Metro ? metroLineColor(route) : routeColor(route);
+    const badgeLabel = (route) => st.Metro ? metroLineName(route) : route;
     let nextLine;
     if (next) {
         // Same service as the next vehicle: route plus direction.
@@ -2801,7 +2899,7 @@ function boardHeaderHtml(st, arrivals) {
             : (a) => `${a.route}|${a.dirNum || a.heads || a.dir || ""}`;
         const mins = list.filter(a => svc(a) === svc(next)).map(a => a.min);
         const bits = [
-            `<span class="row-badge" style="background:${badgeColor(next.route)}">${esc(next.route)}</span>`,
+            `<span class="row-badge" style="background:${badgeColor(next.route)}">${esc(badgeLabel(next.route))}</span>`,
             esc(next.heads || next.dir || "")
         ].filter(Boolean).join(" ");
         nextLine = `${verb} ${bits} <span class="bt-next-eta">${esc(fmtEta(mins[0]))}</span>`;
@@ -2815,7 +2913,7 @@ function boardHeaderHtml(st, arrivals) {
         const sched = st.MetroScheduledNext || nextScheduledFor(id);
         if (sched) {
             const schedBits = [
-                `<span class="row-badge" style="background:${badgeColor(sched.route)}">${esc(sched.route)}</span>`,
+                `<span class="row-badge" style="background:${badgeColor(sched.route)}">${esc(badgeLabel(sched.route))}</span>`,
                 esc(sched.heads || sched.dirText || "")
             ].filter(Boolean).join(" ");
             nextLine = `${verb} ${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
