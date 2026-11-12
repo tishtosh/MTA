@@ -1418,7 +1418,7 @@ function boardHtml(geom, rows) {
         // scheduled arrival, matched by route (+ direction). Departed rows
         // keep their own status instead.
         const scheduled = (!row.departed && (!row.mins || !row.mins.length))
-            ? nextScheduledFor(row.anchorId, row.route, row.dirNum, row.dest)
+            ? (row.scheduled || nextScheduledFor(row.anchorId, row.route, row.dirNum, row.dest))
             : null;
         // Piece 11: the ordered stop list behind the "View all stops" button.
         // No numeric index; each stop is a button that re-anchors the board.
@@ -1462,7 +1462,8 @@ function nearbyStopObj(n) {
     return s;
 }
 
-// Full (re)load: resolve the stop list, then fetch predictions for it.
+// Full (re)load: resolve the stop list, paint the stop names immediately, then
+// fetch its arrivals in the background and repaint when they land.
 async function runFlow() {
     if (busy) return;                    // don't stack flows when buttons are clicked
     busy = true;
@@ -1503,18 +1504,21 @@ async function runFlow() {
                 stops = [];
             }
         }
-        await refreshPredictions();
         // ?busstop= deep link: prefill the entry field with the FIRST listed
-        // stop and anchor the board on it (plan §2) — even for multi-stop links,
-        // where shownStops() would otherwise sort by distance and anchor on the
-        // closest. ✕ returns to the nearby search (forceNearby, since the URL
-        // would otherwise just pick the same stop).
-        if (stopListFromURL.length && !forceNearby && !pickedStop && stops[0]) {
+        // stop before the first paint, so the initial anchor is correct even
+        // while arrivals are still loading. ✕ returns to the nearby search
+        // (forceNearby, since the URL would otherwise pick the same stop).
+        if (stopListFromURL && stopListFromURL.length && !forceNearby && !pickedStop && stops[0]) {
             const s = stops[0];
             pickedStop = s.StopID;
             gStopEntry.value = s.Name || `#${s.StopID}`;
             acStop.setPicked(true);
         }
+        // Paint the stop list/names immediately; arrivals are fetched in the
+        // background and repaint when they land.
+        render();
+        renderLines();
+        refreshPredictions().catch(() => {});
     } catch (e) {
         // Stops lookup failed (bad key / network): keep whatever is shown —
         // but re-render, since the pick was reset above (the table must match
@@ -1652,6 +1656,10 @@ function fmtDistance(ft) {
 // not in the list (it is then live-tracked like any other).
 function shownStops() {
     if (!pickedStop) return stops;
+    // A ?busstop= deep link keeps every requested ID in the arrivals table
+    // until the user explicitly picks another stop (pickedStopObj is set by
+    // that pick; the URL prefill leaves it null).
+    if (stopListFromURL && !forceNearby && !pickedStopObj) return stops;
     if (pickedStopObj) return [pickedStopObj];
     const inList = stops.find(s => s.StopID === pickedStop);
     return inList ? [inList] : stops;
@@ -1960,6 +1968,8 @@ const acStop = makeAutocomplete(
         const inList = stops.find(s => s.StopID === st.StopID);
         pickedStopObj = inList || materializeDirStop(st);
         noteSelectionChange();     // void the old counterpart before its refresh
+        render();                  // show the chosen stop immediately…
+        renderLines();             // …before its arrivals land
         refreshPredictions();      // its predictions, then the 30 s cycle tracks it
     },
     () => {                       // ✕: back to the nearby search
@@ -2368,7 +2378,21 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
             return r;
         })
         .sort((a, b) => a.departedAt - b.departedAt);
-    const mainRows = [...departedRows, ...buildBoardRows(anchorId, arrivals, routeDetails, posRows)];
+    const liveRows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
+    // Sort live and scheduled-fallback rows together by the soonest time.
+    const effMin = (r) => {
+        if (r.mins && r.mins.length) return r.mins[0];
+        if (r.scheduled) return (r.scheduled.at - nowMs) / 60000;
+        return Infinity;
+    };
+    for (const r of liveRows) {
+        if (!r.mins || !r.mins.length)
+            r.scheduled = nextScheduledFor(anchorId, r.route, r.dirNum, r.dest);
+    }
+    liveRows.sort((a, b) => effMin(a) - effMin(b)
+        || String(a.route).localeCompare(String(b.route))
+        || String(a.dirNum).localeCompare(String(b.dirNum)));
+    const mainRows = [...departedRows, ...liveRows];
     // Merge the across-the-street counterpart into the nearby list (first)
     // so it is never shown twice.
     const acrossId = across ? String(across.StopID) : "";

@@ -37,6 +37,8 @@ sandbox.stops = [];
 sandbox.pickedStop = null;
 sandbox.pickedStopObj = null;
 sandbox.allStopsCache = null;
+sandbox.stopListFromURL = null;
+sandbox.forceNearby = false;
 sandbox.DEFAULT_STOP_ID = "1002135";
 vm.createContext(sandbox);
 vm.runInContext(
