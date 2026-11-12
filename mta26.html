@@ -47,6 +47,17 @@
             outline-offset: 2px;
         }
 
+        /* clock block: current time over "updated … · refresh in Ns", with
+           the auto-refresh toggle beside it. */
+        .clock-meta {
+            font: 500 11px/1.3 system-ui, -apple-system, sans-serif;
+            color: #6c757d;
+            white-space: nowrap;
+        }
+        .clock-refresh { margin-left: 4px; }
+        .clock-refresh i { font-size: 18px; color: #495057; }
+        .clock-refresh[aria-pressed="false"] i { color: #adb5bd; }
+
         /* stop-name entry with autocomplete (drives the one view) */
         .ac-wrap {
             position: relative;
@@ -222,7 +233,14 @@
                 <button id="btnBus" class="navicon" title="Reload" aria-label="Reload page">
                     <i class="fa-solid fa-bus fa-xl-mta"></i>
                 </button>
-                <span class="navbar-text" id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></span>
+                <div class="d-flex flex-column" style="line-height:1.15">
+                    <span class="navbar-text" id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></span>
+                    <span id="clockMeta" class="clock-meta"></span>
+                </div>
+                <button id="btnRefreshToggle" class="navicon clock-refresh" type="button"
+                        title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
             </div>
             <div class="d-flex align-items-center" style="gap: 12px">
                 <button id="btnHome" class="navicon" title="Stops near the home location (URL lat/lon)" aria-label="Show stops near home location">
@@ -253,7 +271,7 @@
          that boards here, the across-the-street stop in its own section,
          all on one shared scale. The arrivals table follows. -->
     <div id="viewArrivals">
-        <small id="linesNote" class="text-muted" aria-live="polite" style="display:block">Pick a stop above to see every line that serves it.</small>
+        <small id="linesNote" class="text-muted" aria-live="polite" style="display:block"></small>
         <div id="boardHeader"></div>
         <div id="linesScroll" class="lines-scroll"></div>
         <div id="tINSERTHERE"></div>
@@ -328,6 +346,8 @@ let pickedStop = null;        // the stop chosen in the entry field (null = near
 let pickedStopObj = null;     // the stop object actually shown (may be a directory stop outside the list)
 let forceNearby = false;      // the user dismissed a ?busstop= prefill (✕) → search nearby even with the param
 let refreshTimer = null;
+let refreshEnabled = true;    // auto-refresh toggle (the clock's refresh button)
+let nextRefreshAt = 0;        // when the armed timer fires (for the countdown)
 let rateLimited = false;      // WMATA returned 429 → slow the refresh down
 let busy = false;             // re-entrancy guard for runFlow()
 let lastRefreshAt = 0;
@@ -339,6 +359,8 @@ let stopDirLoad = null;       // in-flight loadStopDirectory() promise (dedupes 
 
 const gStatus = document.getElementById("statusmessage");
 const gClock = document.getElementById("clock");
+const gClockMeta = document.getElementById("clockMeta");
+const gRefreshToggle = document.getElementById("btnRefreshToggle");
 const gTableHost = document.getElementById("tINSERTHERE");
 const gStopEntry = document.getElementById("stopEntry");
 const gStopEntryClear = document.getElementById("stopEntryClear");
@@ -1406,9 +1428,9 @@ async function refreshPredictions() {
         // tick (single view — no tab to check for).
         renderLines();
         scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
-        const t = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+        tickClock();                   // reflect this update + the new countdown at once
         const shownCount = shownStops().length;
-        gStatus.textContent = `${shownCount} stop${shownCount > 1 ? "s" : ""} · updated ${t}` +
+        gStatus.textContent = `${shownCount} stop${shownCount > 1 ? "s" : ""}` +
             (rateLimited ? " · API rate limit hit, slowing refresh" : "");
     } finally {
         refreshInFlight = false;
@@ -1427,13 +1449,19 @@ async function refreshPredictions() {
 // After a 429 the interval stretches 5× to be polite to the shared key.
 function scheduleRefresh() {
     if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = null;
+    if (!refreshEnabled) { nextRefreshAt = 0; return; }
     const wait = rateLimited ? 5 * REFRESH_MS : REFRESH_MS;
-    refreshTimer = setTimeout(() => refreshPredictions(), wait);
+    nextRefreshAt = Date.now() + wait;
+    refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        refreshPredictions();
+    }, wait);
 }
 
 // Background tabs get throttled timers; refresh promptly when we come back.
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && !busy && stops.length) {
+    if (document.visibilityState === "visible" && refreshEnabled && !busy && stops.length) {
         if (Date.now() - lastRefreshAt > REFRESH_MS / 2) {
             refreshPredictions();
         } else {
@@ -1566,21 +1594,37 @@ function makeAutocomplete(input, listEl, clearBtn, onPick, onClear, onPickLost) 
         input.setAttribute("aria-expanded", "true");
     }
 
-    // Case-insensitive name search plus StopID prefix; at most 8 rows.
+    // Case-insensitive, token-based search over name + StopID: every
+    // character typed re-filters and repopulates the list. Prefix matches
+    // rank first, then earlier substring matches, then alphabetical.
     // null = the directory isn't loaded yet.
     function matchesFor(q) {
         if (!allStopsCache) return null;
-        const s = q.trim().toLowerCase();
-        if (!s) return [];
-        const out = [];
+        const raw = q.trim().toLowerCase();
+        if (!raw) return [];
+        const tokens = raw.split(/\s+/).filter(Boolean);
+        const scored = [];
         for (const st of allStopsCache) {
-            if (st.Name && st.Name.toLowerCase().includes(s)) out.push(st);
-            else if (String(st.StopID).toLowerCase().startsWith(s)) out.push(st);
-            if (out.length >= 8) break;
+            const name = String(st.Name || "").toLowerCase();
+            const id = String(st.StopID || "").toLowerCase();
+            let score = 0;
+            let ok = true;
+            for (const tk of tokens) {
+                const ni = name.indexOf(tk);
+                const ii = id.indexOf(tk);
+                if (ni === 0 || ii === 0) score += 3;
+                else if (ni > 0 || ii >= 0) score += 1;
+                else { ok = false; break; }
+            }
+            if (!ok) continue;
+            if (name.startsWith(raw) || id.startsWith(raw)) score += 5;
+            scored.push({ st, score });
         }
-        out.sort((a, b) => a.Name.localeCompare(b.Name) ||
-            a.StopID.localeCompare(b.StopID, undefined, { numeric: true }));
-        return out;
+        scored.sort((a, b) =>
+            b.score - a.score ||
+            String(a.st.Name || "").localeCompare(String(b.st.Name || "")) ||
+            String(a.st.StopID).localeCompare(String(b.st.StopID), undefined, { numeric: true }));
+        return scored.slice(0, 8).map(x => x.st);
     }
 
     function renderMatches(items) {
@@ -1615,6 +1659,14 @@ function makeAutocomplete(input, listEl, clearBtn, onPick, onClear, onPickLost) 
         } else {
             renderMatches(items);
         }
+    });
+
+    input.addEventListener("focus", () => {
+        const q = input.value.trim();
+        if (picked || !q || !listEl.hidden) return;
+        const items = matchesFor(q);
+        if (items) { if (items.length) renderMatches(items); }
+        else openList(`<div class="ac-none">loading stops…</div>`);
     });
 
     input.addEventListener("keydown", e => {
@@ -1663,14 +1715,14 @@ function materializeDirStop(st) {
     return s;
 }
 
-// Undo the entry-field pick: state + field only. The caller decides what
-// happens next — ✕ re-runs runFlow() (the nearby search); typing just
-// re-renders the list that is already on screen.
-function resetPick() {
+// Undo the entry-field pick. The caller decides what happens next — ✕ re-runs
+// runFlow() (the nearby search); typing keeps the text being entered so the
+// dropdown can re-filter on every keystroke.
+function resetPick(keepField) {
     if (pickedStop === null && pickedStopObj === null) return;
     pickedStop = null;
     pickedStopObj = null;
-    acStop.reset();
+    if (!keepField) acStop.reset();
 }
 
 const acStop = makeAutocomplete(
@@ -1688,7 +1740,7 @@ const acStop = makeAutocomplete(
         runFlow();
         renderLines();            // the picture falls back to the closest nearby stop
     },
-    () => { noteSelectionChange(); resetPick(); render(); renderLines(); },
+    () => { noteSelectionChange(); resetPick(true); render(); renderLines(); },
 );
 
 // ════════════════════════════════════════════════════════════════════
@@ -2037,7 +2089,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     const nearbyRecs = (anchorNearby || []).map(n => {
         const rec = stops.find(s => String(s.StopID) === n.id)
             || makeStop(n.id, n.name, n.lat, n.lon);
-        return Object.assign(rec, { Routes: n.routes || [] });
+        return Object.assign(rec, { Routes: n.routes || [], distFt: n.distFt });
     });
     const nearbyRows = [];
     for (const stp of nearbyRecs) {
@@ -2082,8 +2134,8 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
               + `</div></div>`
         : "";
     // One light separator bar PER nearby stop (not one shared header): the
-    // bar is titled with that stop's own name and sits between this stop's
-    // rows and the next stop's.
+    // bar is titled with that stop's own name and shows its distance from the
+    // anchor, and sits between this stop's rows and the next stop's.
     let nearbyParts = [];
     let off = 0;
     for (let i = 0; i < nearbyRecs.length; i++) {
@@ -2097,10 +2149,12 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
             if (r.dest && r.mins && r.mins.length)
                 etaBits.push(r.mins[0] === 0 ? "Due" : Math.round(r.mins[0]) + " min");
         const name = rec.Name || allStopsName(id);
+        const away = rec.distFt != null ? `${Math.round(rec.distFt)} ft away` : "";
+        const subBits = [name ? "Nearby stop" : "", away, `#${id}`].filter(Boolean);
         nearbyParts.push(`<div class="curb-head" role="button" tabindex="0" data-nearby="1" data-stop="${esc(id)}">`
             + `<div class="curb-head-stop"><div class="curb-main">`
             + `<div class="curb-title">${esc(name || "Nearby stop")}</div>`
-            + `<div class="curb-sub">${name ? "Nearby stop · " : ""}#${esc(id)}</div>`
+            + `<div class="curb-sub">${esc(subBits.join(" · "))}</div>`
             + `</div>`
             + (etaBits.length ? `<span class="curb-etas">and ${etaBits.join(" / ")}</span>` : "")
             + `</div></div>`);
@@ -2124,9 +2178,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         ? boardHtml(geo, mainRows) + acrossHead + acrossHtml + nearbyHtml
         : "";
     centerBoard();   // piece 12: boarding guide centered on narrow screens
-    gLinesNote.innerHTML = (mainRows.length || acrossRows.length || nearbyRows.length)
-        ? `<span class="text-muted">dot = stop · diamond = your stop / terminal · arrow = direction of travel · filled dot = live vehicle · open dot = position estimated from ETA</span>`
-        : "";
+    gLinesNote.textContent = "";   // no legend line: the board is self-describing
 }
 
 // (Re)draw the board: resolve the anchor, paint the header at once, then
@@ -2223,10 +2275,37 @@ function distance(lat1, lon1, lat2, lon2, unit) {
 // ════════════════════════════════════════════════════════════════════
 // Clock
 // ════════════════════════════════════════════════════════════════════
-function tickClock() {
-    const s = new Date().toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit", second: "2-digit" });
-    gClock.textContent = s.replace(/\s?[AP]M$/, "");       // no AM/PM
+function fmtClockTime(ms) {
+    return new Date(ms).toLocaleTimeString("en-us",
+        { hour: "numeric", minute: "2-digit", second: "2-digit" }).replace(/\s?[AP]M$/, "");
 }
+
+function tickClock() {
+    gClock.textContent = fmtClockTime(Date.now());
+    const bits = [lastRefreshAt ? `updated ${fmtClockTime(lastRefreshAt)}` : "updated —"];
+    if (!refreshEnabled) bits.push("auto-refresh off");
+    else if (nextRefreshAt)
+        bits.push(`refresh in ${Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000))}s`);
+    else if (refreshInFlight) bits.push("refreshing…");
+    gClockMeta.textContent = bits.join(" · ");
+}
+
+function setRefreshEnabled(on) {
+    refreshEnabled = on;
+    gRefreshToggle.setAttribute("aria-pressed", on ? "true" : "false");
+    const label = on ? "Pause timed refresh" : "Resume timed refresh";
+    gRefreshToggle.title = label;
+    gRefreshToggle.setAttribute("aria-label", label);
+    if (!on) {
+        if (refreshTimer) clearTimeout(refreshTimer);
+        refreshTimer = null;
+        nextRefreshAt = 0;
+    } else if (stops.length) {
+        scheduleRefresh();
+    }
+    tickClock();
+}
+gRefreshToggle.addEventListener("click", () => setRefreshEnabled(!refreshEnabled));
 
 // ════════════════════════════════════════════════════════════════════
 // Go
