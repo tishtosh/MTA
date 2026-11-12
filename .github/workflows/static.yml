@@ -23,11 +23,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job since we're just deploying static content.
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Build/upload runs separately from deploy. This also avoids the intermittent
+  # artifact-listing race when upload and deploy share one job.
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -51,6 +49,13 @@ jobs:
           # Upload the entire repository
           path: '.'
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
