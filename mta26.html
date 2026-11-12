@@ -2602,7 +2602,7 @@ if (gBusRoutePanel) gBusRoutePanel.addEventListener("click", e => {
 });
 if (gBusStopSelect) gBusStopSelect.addEventListener("change", () => {
     const id = gBusStopSelect.value;
-    if (id) selectStop(id);
+    if (id) selectStop(id, true);
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -2799,10 +2799,10 @@ function scrollPageTop() {
 
 // Re-anchor the board on `id`: update the pick, repaint, and refresh its
 // predictions. Shared by the nearby bars and the "View all stops" list.
-function selectStop(id) {
+function selectStop(id, keepPicker) {
     id = String(id || "");
     if (!id) return false;
-    resetBusPickers();
+    if (!keepPicker) resetBusPickers();
     if (String(pickedStop) === id) { refreshPredictions(); return true; }  // already the anchor
     pickedStop = id;
     const inList = stops.find(s => String(s.StopID) === id) || nearbyStopObjs.get(id);

@@ -221,6 +221,10 @@ const board = () => els.linesScroll.innerHTML;
   }
   check("bus route selection populates its stops",
     els.busStopSelect.hidden === false && /1002130|1002135/.test(els.busStopSelect.innerHTML));
+  els.busStopSelect.value = "1002130";
+  (els.busStopSelect._l.change || []).forEach(f => f());
+  check("bus stop selection keeps the route and stop selector visible",
+    els.busStopSelect.hidden === false && els.busStopSelect.value === "1002130");
 
   // The header shortcut checkboxes persist to a cookie.
   {
