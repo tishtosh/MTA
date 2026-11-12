@@ -15,14 +15,15 @@ permissions:
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Allow only one concurrent deployment, skipping runs queued between the
+# in-progress and latest queued run. Do not cancel in-progress runs: production
+# deployments should be allowed to complete.
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job since we're just deploying
+  # Single deploy job since we're just deploying static content.
   deploy:
     environment:
       name: github-pages
@@ -30,14 +31,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
+
+      # Pages must be enabled for this repository:
+      #   Settings → Pages → Build and deployment → Source: GitHub Actions
+      # GITHUB_TOKEN cannot create the Pages site. To enable it from CI,
+      # add a repository secret PAGES_TOKEN (a PAT with Pages write /
+      # administration access); configure-pages will then use it and try to
+      # enable Pages automatically.
       - name: Setup Pages
-        uses: actions/configure-pages@v3
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/configure-pages@v6
         with:
-          # Upload entire repository
+          token: ${{ secrets.PAGES_TOKEN || github.token }}
+          enablement: ${{ secrets.PAGES_TOKEN != '' }}
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          # Upload the entire repository
           path: '.'
+
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v5
