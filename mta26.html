@@ -2527,11 +2527,17 @@ function openSelectedInMaps() {
         }
         lat = st.Lat; lon = st.Lon; name = st.Name;
     }
-    const q = encodeURIComponent(stopName(name) || `${lat},${lon}`);
-    const isApple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent || "");
-    const url = isApple
-        ? `https://maps.apple.com/?ll=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&q=${q}`
-        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
+    const ua = navigator.userAgent || "";
+    const coords = `${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
+    const label = encodeURIComponent(stopName(name) || `${lat},${lon}`);
+    if (/Android/.test(ua)) {
+        // geo: lets Android open the user's default maps app (Maps, Waze, etc.).
+        window.location.href = `geo:${coords}?q=${coords}(${label})`;
+        return;
+    }
+    const url = /iPhone|iPad|iPod|Macintosh/.test(ua)
+        ? `https://maps.apple.com/?ll=${coords}&q=${label}`
+        : `https://www.google.com/maps/search/?api=1&query=${coords}`;
     window.open(url, "_blank", "noopener");
 }
 
