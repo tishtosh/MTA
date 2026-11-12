@@ -94,6 +94,21 @@
             margin: 10px 0 14px;
         }
         .ac-wrap select + select { margin-top: 6px; }
+        .route-panel {
+            display: flex; flex-wrap: wrap; gap: 6px;
+            max-height: 190px; overflow-y: auto;
+            padding: 8px; border: 1px solid #dee2e6; border-radius: 8px;
+            background: #fff;
+        }
+        .route-chip {
+            flex: none; padding: 3px 10px; border: 0; border-radius: 5px;
+            color: #fff; cursor: pointer;
+            font: 700 13px/1.4 system-ui, -apple-system, sans-serif;
+        }
+        .route-chip:hover { filter: brightness(1.08); }
+        .route-chip:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .route-chip.active { outline: 3px solid #212529; outline-offset: 1px; }
+        #busStopSelect { margin-top: 6px; }
 
         .ac-clear {
             position: absolute;
@@ -402,9 +417,7 @@
     <h3><small id="statusmessage" aria-live="polite"></small></h3>
 
     <div id="acWrap" class="ac-wrap">
-        <select id="busRouteSelect" class="form-select form-select-lg" aria-label="Bus route">
-            <option value="">Select a bus route…</option>
-        </select>
+        <div id="busRoutePanel" class="route-panel" role="listbox" aria-label="Bus routes"></div>
         <select id="busStopSelect" class="form-select form-select-lg" aria-label="Bus stop" hidden>
             <option value="">Select a stop…</option>
         </select>
@@ -630,7 +643,7 @@ const gStatus = document.getElementById("statusmessage");
 const gClock = document.getElementById("clock");
 const gClockMeta = document.getElementById("clockMeta");
 const gRefreshToggle = document.getElementById("btnRefreshToggle");
-const gBusRouteSelect = document.getElementById("busRouteSelect");
+const gBusRoutePanel = document.getElementById("busRoutePanel");
 const gBusStopSelect = document.getElementById("busStopSelect");
 const gLinesNote = document.getElementById("linesNote");
 const gBoardHeader = document.getElementById("boardHeader");
@@ -2534,7 +2547,12 @@ const acStop = {
 };
 
 function resetBusPickers() {
-    if (gBusRouteSelect) gBusRouteSelect.value = "";
+    if (gBusRoutePanel) {
+        gBusRoutePanel.querySelectorAll(".route-chip.active").forEach(b => {
+            b.classList.remove("active");
+            b.setAttribute("aria-selected", "false");
+        });
+    }
     if (gBusStopSelect) {
         gBusStopSelect.hidden = true;
         gBusStopSelect.innerHTML = `<option value="">Select a stop…</option>`;
@@ -2542,21 +2560,29 @@ function resetBusPickers() {
 }
 
 function populateBusRoutes(all) {
-    if (!gBusRouteSelect) return;
+    if (!gBusRoutePanel) return;
     const routes = new Set();
     for (const s of all || [])
         for (const r of s.Routes || [])
             if (r) routes.add(String(r).toUpperCase());
     const list = [...routes].sort((a, b) =>
         a.localeCompare(b, undefined, { numeric: true }));
-    gBusRouteSelect.innerHTML = `<option value="">Select a bus route…</option>`
-        + list.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join("");
+    gBusRoutePanel.innerHTML = list.map(r =>
+        `<button type="button" class="route-chip" data-route="${esc(r)}" role="option" aria-selected="false"`
+        + ` style="background:${routeColor(r)}">${esc(r)}</button>`).join("");
     resetBusPickers();
 }
 
 function populateBusStops(route) {
     if (!gBusStopSelect) return;
     if (!route) { resetBusPickers(); return; }
+    if (gBusRoutePanel) {
+        gBusRoutePanel.querySelectorAll(".route-chip").forEach(b => {
+            const on = b.dataset && b.dataset.route === route;
+            b.classList.toggle("active", on);
+            b.setAttribute("aria-selected", on ? "true" : "false");
+        });
+    }
     const list = (allStopsCache || [])
         .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === route))
         .sort((a, b) =>
@@ -2569,10 +2595,10 @@ function populateBusStops(route) {
     gBusStopSelect.hidden = false;
 }
 
-if (gBusRouteSelect) gBusRouteSelect.addEventListener("change", () => {
-    const route = gBusRouteSelect.value;
-    if (!route) { resetBusPickers(); return; }
-    populateBusStops(route);
+if (gBusRoutePanel) gBusRoutePanel.addEventListener("click", e => {
+    const chip = e.target.closest ? e.target.closest(".route-chip") : null;
+    if (!chip || !chip.dataset) return;
+    populateBusStops(chip.dataset.route);
 });
 if (gBusStopSelect) gBusStopSelect.addEventListener("change", () => {
     const id = gBusStopSelect.value;

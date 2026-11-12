@@ -211,11 +211,14 @@ const board = () => els.linesScroll.innerHTML;
     !b.includes('data-nearby="1"') || /\d+ ft away|Across the street/.test(b));
 
   // The entry field re-filters its dropdown on every keystroke.
-  check("bus route dropdown populated",
-    (els.busRouteSelect.innerHTML.match(/<option/g) || []).length > 5 &&
-    /D72|C87/.test(els.busRouteSelect.innerHTML));
-  els.busRouteSelect.value = "D72";
-  (els.busRouteSelect._l.change || []).forEach(f => f());
+  check("bus route panel populated with route rectangles",
+    (els.busRoutePanel.innerHTML.match(/route-chip/g) || []).length > 5 &&
+    /D72|C87/.test(els.busRoutePanel.innerHTML));
+  {
+    const chip = { dataset: { route: "D72" } };
+    const ev = { target: { closest: sel => sel === ".route-chip" ? chip : null } };
+    (els.busRoutePanel._l.click || []).forEach(f => f(ev));
+  }
   check("bus route selection populates its stops",
     els.busStopSelect.hidden === false && /1002130|1002135/.test(els.busStopSelect.innerHTML));
 
