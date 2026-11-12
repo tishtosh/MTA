@@ -2475,8 +2475,11 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         const sliceLen = nearbyRows.length - off;
         if (nearbyParts[i]) nearbyHtml += nearbyParts[i];
         if (sliceLen) {
-            const body = boardHtml({ ...geo, rows: geo.rows.slice(mainRows.length + off) },
-                nearbyRows.slice(off, off + sliceLen));
+            // Final guard: sort this stop's slice immediately before painting,
+            // so scheduled fallbacks and predictions always share one order.
+            const slice = nearbyRows.slice(off, off + sliceLen);
+            sortRowsBySoonest(slice, String(nearbyRecs[i].StopID), nowMs);
+            const body = boardHtml({ ...geo, rows: geo.rows.slice(mainRows.length + off) }, slice);
             nearbyHtml += `<div class="nearby-board">${body}</div>`;
         }
         off += sliceLen;
