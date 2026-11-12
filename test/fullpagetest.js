@@ -153,7 +153,7 @@ const board = () => els.linesScroll.innerHTML;
     const acrossIdx = b.indexOf("Across the street");
     check("across: counterpart named in label", acrossIdx > -1 && b.slice(acrossIdx, acrossIdx + 80).includes("#1002135"));
     check("across: heading bar carries an ETA summary", acrossIdx > -1 && /and \d+ min/.test(b.slice(acrossIdx, acrossIdx + 400)));
-    check("across: primary labeled 'At the selected stop'", b.includes("At the selected stop"));
+    check("across: no redundant selected-stop section heading", !b.includes("At the selected stop"));
     check("across: both C87 patterns as track rows", (b.match(/bt-line/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
     check("across: prompt refresh re-fetches in-scope stops (7 fetches)", fetchCount === 7);
