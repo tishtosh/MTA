@@ -576,7 +576,7 @@ async function fetchPredictions(stopId) {
 // Returns { Stop: {...}, ScheduleArrivals: [{ ScheduleTime, RouteID,
 // DirectionNum, TripHeadsign, TripDirectionText, TripID, ... }] } for the
 // current service day. Cached per stop per day, so a route with no live
-// prediction can fall back to its next scheduled arrival ("not predicted").
+// prediction can fall back to its next scheduled arrival ("not seen").
 const stopScheduleCache = {};      // StopID → { day, arrivals, ok, at }
 const stopScheduleInflight = {};   // StopID → in-flight promise
 const SCHEDULE_RETRY_MS = 5 * 60000;
@@ -725,60 +725,15 @@ async function fetchRouteDetails(routeId) {
     return routeDetailsInflight[routeId];
 }
 
-// Live bus positions:  GET /Bus.svc/json/jBusPositions   (verified 2026-11:
-// 200 from /Bus.svc; a RouteID filter only honors its FIRST value, so one
-// unfiltered request is the shared feed — ~350 rows / ~110 KB system-wide).
-// Returns { rows: [{ vehicle, lat, lon, trip, route, dirNum, heads, dirText,
-// at }], fetchedAt, newestAt } with sample times as epoch ms (the feed is
-// timezone-less ET); newestAt is the newest sample. On failure the last good
-// feed is returned as-is — the board's 120-minute freshness gate decides
-// whether the dots may move, so a dead feed freezes them rather than blanking.
-// parseFeedTime: the feed's DateTime is timezone-less ET and comes in two
-// shapes — with seconds (the current feed: 2026-11-10T22:26:14) and, in older
-// captures, without (2026-11-10T22:26). Try the raw string first; normalize
-// the no-seconds form as a fallback so a feed change can't silently drop
-// every row. Interpreted as viewer-local time (the 120-min gate below is
-// tolerant of the ET offset in practice).
+// parseFeedTime: the position feed's DateTime is timezone-less ET and comes in
+// two shapes — with seconds (2026-11-10T22:26:14) and, in older captures,
+// without (2026-11-10T22:26). Retained for the pure position-matching tests;
+// the live jBusPositions call was removed because vehicle markers are gone.
 function parseFeedTime(s) {
     if (typeof s !== "string" || !s) return NaN;
     const t = Date.parse(s);
     if (Number.isFinite(t)) return t;
     return Date.parse(s.replace(/:([0-9]{2})$/, ":$1:00"));
-}
-
-let posFeed = null;
-let posInflight = null;
-const POS_GAP_MS = 15000;
-
-async function fetchBusPositions() {
-    const now = Date.now();
-    if (posFeed && now - posFeed.fetchedAt < POS_GAP_MS) return posFeed;
-    if (posInflight) return posInflight;
-    posInflight = (async () => {
-        try {
-            const { data, error } = await apiGet("/Bus.svc/json/jBusPositions", {});
-            if (error || !data || !Array.isArray(data.BusPositions)) return posFeed;
-            const rows = [];
-            let newestAt = 0;
-            for (const b of data.BusPositions) {
-                const at = parseFeedTime(b.DateTime);
-                if (!Number.isFinite(at) || !Number.isFinite(Number(b.Lat))) continue;
-                rows.push({ vehicle: b.VehicleID != null ? String(b.VehicleID) : "",
-                             lat: Number(b.Lat), lon: Number(b.Lon),
-                             trip: b.TripID != null ? String(b.TripID) : "",
-                             route: String(b.RouteID || "").toUpperCase(),
-                             dirNum: b.DirectionNum != null ? String(b.DirectionNum) : "",
-                             heads: String(b.TripHeadsign || ""), dirText: String(b.DirectionText || ""),
-                             at });
-                if (at > newestAt) newestAt = at;
-            }
-            posFeed = { rows, fetchedAt: now, newestAt };
-            return posFeed;
-        } finally {
-            posInflight = null;
-        }
-    })();
-    return posInflight;
 }
 
 // Prediction → pattern matching (plan §1).
@@ -1329,13 +1284,13 @@ function fmtEta(min) {
 
 // The first ETA emphasized, the later ones muted after it
 // ("6 min then 14 min, 29 min"). With no prediction but a scheduled arrival,
-// show that clock time with a "not predicted" suffix instead.
+// show that clock time with a "not seen" suffix instead.
 function boardEtasHtml(mins, scheduled) {
     const list = (mins || []).slice(0, 8);
     if (!list.length) {
         if (scheduled)
             return `<span class="board-eta-first">${esc(fmtScheduleTime(scheduled.at))}</span>`
-                + ` <span class="board-eta-rest">not predicted</span>`;
+                + ` <span class="board-eta-rest">not seen</span>`;
         return `<span class="board-eta-rest">no arrival or departure</span>`;
     }
     let h = `<span class="board-eta-first">${esc(fmtEta(list[0]))}</span>`;
@@ -2203,7 +2158,7 @@ function boardHeaderHtml(st, arrivals) {
         nextLine = "Next bus <span class=\"text-muted\">arrivals unavailable — retrying</span>";
     } else {
         // No live prediction: test the schedule and show the next scheduled
-        // arrival explicitly as "not predicted".
+        // arrival explicitly as "not seen".
         const sched = nextScheduledFor(id);
         if (sched) {
             const schedBits = [
@@ -2211,7 +2166,7 @@ function boardHeaderHtml(st, arrivals) {
                 esc(sched.heads || sched.dirText || "")
             ].filter(Boolean).join(" ");
             nextLine = `Next bus ${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
-                + ` <span class="bt-next-rest">not predicted</span>`;
+                + ` <span class="bt-next-rest">not seen</span>`;
         } else {
             nextLine = "Next bus <span class=\"text-muted\">no arrival or departure</span>";
         }
@@ -2374,8 +2329,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
 }
 
 // (Re)draw the board: resolve the anchor, paint the header at once, then
-// fetch whatever route details are not cached plus the current bus-position
-// feed in parallel and paint. `boardToken` discards stale results when the
+// fetch whatever route details are not cached and paint. `boardToken` discards stale results when the
 // selection changes mid-flight.
 let boardToken = 0;
 
@@ -2386,7 +2340,7 @@ function renderLines() {
     if (!st) {
         gBoardHeader.innerHTML = "";
         gLinesScroll.innerHTML = "";
-        gLinesNote.textContent = "no stops to show — use the locate button or search a stop name above";
+        gLinesNote.textContent = "no stops to show — use a shortcut or search a stop name above";
         return;
     }
     const anchorId = String(st.StopID);
@@ -2423,25 +2377,24 @@ function renderLines() {
         if (routeDetailsCache[r] !== undefined) have[r] = routeDetailsCache[r];
         else missing.push(r);
     }
-    const paint = (pos) => {
+    const paint = () => {
         if (token !== boardToken) return;    // the selection moved on mid-flight
-        renderBoardNow(anchorId, arr, have, pos ? pos.rows : [], acrossStop,
-            nearbyStops(st));
+        // Bus positions are no longer fetched: the vehicle markers are gone,
+        // so the board matches directions from the predictions themselves.
+        renderBoardNow(anchorId, arr, have, [], acrossStop, nearbyStops(st));
         // Plan §2.2: confirm the opposite-side counterpart once the patterns
         // are resolved (it needs them). Sticky — a re-confirmation is a no-op,
         // and a fresh confirmation prompts the counterpart's first fetch.
         confirmAcross(st, have);
     };
-    const posP = fetchBusPositions();
     if (!missing.length) {
-        posP.then(paint);
+        paint();
         return;
     }
-    Promise.all([...missing.map(r => fetchRouteDetails(r)), posP])
+    Promise.all(missing.map(r => fetchRouteDetails(r)))
         .then(list => {
-            const pos = list[list.length - 1];
-            list.slice(0, -1).forEach((e, i) => { have[missing[i]] = e || null; });
-            paint(pos);
+            list.forEach((e, i) => { have[missing[i]] = e || null; });
+            paint();
         });
 }
 

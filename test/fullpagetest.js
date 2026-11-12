@@ -25,7 +25,6 @@ const FX = (n) => path.join(__dirname, "fixtures", n);
 // ---- network boundary: sanitized fixtures (raw API JSON, thinned) ----
 const jStopsAll = JSON.parse(fs.readFileSync(FX("jstops_all.json"), "utf8"));
 const jStopsNear = JSON.parse(fs.readFileSync(FX("jstops_near.json"), "utf8"));
-const jPos = JSON.parse(fs.readFileSync(FX("pos.json"), "utf8"));
 const jRoute = {
   C87: JSON.parse(fs.readFileSync(FX(ACROSS ? "route_C87_across.json" : "route_C87.json"), "utf8")),
   D72: JSON.parse(fs.readFileSync(FX("route_D72.json"), "utf8"))
@@ -36,10 +35,15 @@ const jPred = {
 };
 const jStopSchedule = JSON.parse(fs.readFileSync(FX("stop_schedule.json"), "utf8"));
 let fetchCount = 0;
+const predFetches = {};   // StopID → prediction request count
 const fetch = async (url) => {
   fetchCount++;
   if (process.env.DEBUG) console.log("FETCH", url);
   const u = new URL(url);
+  if (u.pathname.endsWith("/jPredictions")) {
+    const id = u.searchParams.get("StopID");
+    predFetches[id] = (predFetches[id] || 0) + 1;
+  }
   const body =
     u.pathname.endsWith("/jStops")
       ? (u.searchParams.has("Lat") ? jStopsNear : jStopsAll)
@@ -47,11 +51,9 @@ const fetch = async (url) => {
         ? jPred[u.searchParams.get("StopID")]
         : u.pathname.endsWith("/jRouteDetails")
           ? jRoute[u.searchParams.get("RouteID")]
-          : u.pathname.endsWith("/jBusPositions")
-            ? jPos
-            : u.pathname.endsWith("/jStopSchedule")
-              ? jStopSchedule
-              : undefined;
+          : u.pathname.endsWith("/jStopSchedule")
+            ? jStopSchedule
+            : undefined;
   if (!body) throw new Error("unstubbed URL: " + url);
   return { ok: true, status: 200, json: async () => body };
 };
@@ -163,7 +165,6 @@ const board = () => els.linesScroll.innerHTML;
     check("across: no redundant selected-stop section heading", !b.includes("At the selected stop"));
     check("across: both C87 patterns listed", (b.match(/>C87<\/span>/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
-    check("across: prompt refresh re-fetches in-scope stops (9 fetches)", fetchCount === 9);
   } else if (ANCHOR === "1002130") {
     check("130: next bus D72 @14 min", h.includes("Next bus") && h.includes("D72") && h.includes("14 min"));
     check("130: D72 compact row hides the route-details note", !b.includes("route details unavailable"));
@@ -171,8 +172,8 @@ const board = () => els.linesScroll.innerHTML;
     check("130: C87 service row toward TENLEYTOWN", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
     check("130: compact row before service row", b.indexOf("North to Van Ness") < b.indexOf("TENLEYTOWN"));
     check("130: no track graphic on the compact row", !b.includes("board-tracksvg"));
-    check("130: no live prediction → next scheduled, not predicted",
-      b.includes("not predicted") && /\d{1,2}:\d{2}\s?[AP]M/.test(b));
+    check("130: no live prediction → next scheduled, not seen",
+      b.includes("not seen") && /\d{1,2}:\d{2}\s?[AP]M/.test(b));
   } else {
     check("135: next bus D72 @2 min", h.includes("Next bus") && h.includes("D72") && h.includes("2 min"));
     check("135: D72 row compact, no route-details note",
@@ -225,6 +226,12 @@ const board = () => els.linesScroll.innerHTML;
     check("shortcuts: header icon saves work stop to cookie",
       /mta_shortcuts=/.test(document.cookie) &&
       decodeURIComponent(document.cookie.split("=")[1]).includes('"work"'));
+  }
+
+  if (ACROSS) {
+    await wait(800);   // let the counterpart's prompt refresh settle
+    check("across: prompt refresh re-fetches both in-scope stops",
+      (predFetches["1002130"] || 0) >= 2 && (predFetches["1002135"] || 0) >= 2);
   }
 
   if (process.env.DEBUG) { console.log("HEADER>>> " + h); console.log("BOARD>>> " + b.slice(0, 3000)); }

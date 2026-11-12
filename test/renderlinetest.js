@@ -121,7 +121,7 @@ const h4 = sandbox.boardHeaderHtml({ StopID: "X", Name: "x", Error: null, Arriva
 check("header: no predictions → 'no arrival or departure'", h4.includes("no arrival or departure"));
 
 // With no live prediction but a schedule entry, the header shows the time
-// and labels it "not predicted".
+// and labels it "not seen".
 sandbox.__stopScheduleCache["1002130"] = {
   day: sandbox.scheduleDayKey(), ok: true, at: Date.now(),
   arrivals: [{ at: Date.now() + 3600000, route: "D60", dirNum: "1",
@@ -130,8 +130,8 @@ sandbox.__stopScheduleCache["1002130"] = {
 const hSched = sandbox.boardHeaderHtml(
   { StopID: "1002130", Name: "x", Error: null, Arrivals: [] }, []);
 delete sandbox.__stopScheduleCache["1002130"];
-check("header: no prediction → scheduled time + not predicted",
-  hSched.includes("not predicted") && hSched.includes("D60") && /\d{1,2}:\d{2}/.test(hSched));
+check("header: no prediction → scheduled time + not seen",
+  hSched.includes("not seen") && hSched.includes("D60") && /\d{1,2}:\d{2}/.test(hSched));
 
 // ---- against the locked live capture (1002130) ----
 const raw = JSON.parse(fs.readFileSync(require("path").join(__dirname, "fixtures", "pred_1002130.json"), "utf8"));

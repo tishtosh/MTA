@@ -62,9 +62,9 @@ t("R2 distinct routes land on stable colors",
 t("A1 0 min = Due", ctx.fmtEta(0) === "Due");
 t("A2 plain minutes", ctx.fmtEta(3) === "3 min" && ctx.fmtEta(17.4) === "17 min");
 t("A3 empty list", ctx.boardEtasHtml([]).includes("no arrival or departure"));
-t("A3b no prediction + schedule → time + not predicted", (() => {
+t("A3b no prediction + schedule → time + not seen", (() => {
   const h = ctx.boardEtasHtml([], { at: new Date(2099, 0, 1, 9, 15).getTime() });
-  return h.includes("not predicted") && /\d{1,2}:\d{2}/.test(h);
+  return h.includes("not seen") && /\d{1,2}:\d{2}/.test(h);
 })());
 {
   const h = ctx.boardEtasHtml([3, 14, 40]);
@@ -95,8 +95,8 @@ t("A3b no prediction + schedule → time + not predicted", (() => {
     /row-badge[^]*?board-dest[^]*?board-etas/.test(html) &&
     html.includes('class="board-eta-first">4 min'));
   t("D3 destination is the final headsign", html.includes("TerB") && html.includes("TerC"));
-  t("D3b service row with no prediction shows schedule + not predicted",
-    html.includes("not predicted") && /\d{1,2}:\d{2}/.test(html) &&
+  t("D3b service row with no prediction shows schedule + not seen",
+    html.includes("not seen") && /\d{1,2}:\d{2}/.test(html) &&
     html.includes('class="board-row is-scheduled"'));
   t("D4 compact row hides its route-details note", !html.includes("route details unavailable"));
   t("D5 stop lists are unnumbered and each stop is selectable",
