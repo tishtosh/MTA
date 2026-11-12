@@ -204,5 +204,32 @@ const rDup = sandbox.buildBoardRows("9999",
 check("syn J: live route+headsign suppresses duplicate service row",
   rDup.length === 1 && rDup[0].mins[0] === 4);
 
+// ---- K: cross-route rows sort by soonest ETA ----
+const rSort = sandbox.buildBoardRows("9999", [
+  { min: 3, route: "D72", dirNum: "0", heads: "North to Van Ness" },
+  { min: 13, route: "D72", dirNum: "0", heads: "North to Mt Pleasant" },
+  { min: 14, route: "D74", dirNum: "0", heads: "East to Rhode Island Av" },
+  { min: 7, route: "C53", dirNum: "1", heads: "South to Congress Hts" },
+  { min: 17, route: "C51", dirNum: "1", heads: "South to Anacostia" },
+  { min: 1, route: "C53", dirNum: "0", heads: "North to Woodley Park" },
+  { min: 22, route: "C51", dirNum: "0", heads: "North to Tenleytown" },
+  { min: 6, route: "C53", dirNum: "1", heads: "South to Congress Hts" },
+  { min: 15, route: "C51", dirNum: "1", heads: "South to Anacostia" },
+], {}, []);
+check("syn K: rows sorted by soonest ETA across routes",
+  rSort.every((r, i) => i === 0 || rSort[i - 1].first <= r.first) &&
+  rSort[0].route === "C53" && rSort[0].first === 1 &&
+  JSON.stringify(rSort.find(r => r.route === "C53" && r.dirNum === "1").mins) === "[6,7]");
+
+// ---- L: service row with empty headsign but matching direction text ----
+const rdDup2 = { D44: mkEntry("D44", [
+  { dirNum: "0", heads: "FORT TOTTEN", stops: [S("9999", 1, 1)] },
+  { dirNum: "1", heads: "", stops: [S("9999", 1, 1)] }]) };
+const rDup2 = sandbox.buildBoardRows("9999",
+  [{ min: 4, route: "D44", dir: "South to Federal Triangle", dirNum: "0",
+     heads: "South to Federal Triangle", vehicle: "44", trip: "441" }], rdDup2, []);
+check("syn L: service row matching a live direction text is removed",
+  rDup2.length === 1 && rDup2[0].mins[0] === 4);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

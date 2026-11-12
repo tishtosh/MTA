@@ -35,6 +35,7 @@ let src = [names.map(constBlock).join("\n"),
   extractFn("boardGeometry"), extractFn("esc"), extractFn("routeColor"),
   extractFn("fmtEta"), extractFn("boardEtasHtml"), extractFn("normHeads"),
   extractFn("scheduleDayKey"), extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
+  extractFn("sortRowsBySoonest"),
   "let selectionVersion = 0, acrossStop = null, boardUserScrolled = false, boardAuto = {};",
   extractFn("noteSelectionChange"),
   extractFn("boardRowHead"), extractFn("boardHtml")].join("\n");
@@ -135,10 +136,35 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   const html = ctx.boardHtml(ctx.boardGeometry(rows), rows);
   t("E1 departed row: hollow badge, departed icon, Departed label",
     html.includes('class="row-badge hollow"') && html.includes("bus-status departed") &&
+    html.includes('class="bus-status-slot"><i class="fa-solid fa-arrow-right-from-bracket') &&
     html.includes(">Departed<") && html.includes("min ago"));
-  t("E2 arriving row (0 min): arriving icon", html.includes("bus-status arriving"));
+  t("E2 arriving row (0 min): arriving icon", html.includes("bus-status arriving") &&
+    html.includes('class="bus-status-slot"><i class="fa-solid fa-bus'));
   t("E3 departed row sorts/keys separately", html.includes("is-departed") &&
     html.includes(encodeURIComponent("M5\u0000\u0000Departed End\u0000departed")));
+}
+
+// ── soonest-first sorting across predicted + scheduled rows ───────────
+{
+  const now = Date.now();
+  ctx.__stopScheduleCache["sortstop"] = {
+    day: ctx.scheduleDayKey(), ok: true, at: now,
+    arrivals: [{ at: now + 5 * 60000, route: "B", dirNum: "0", heads: "B" }],
+  };
+  const rows = [
+    { route: "A", dirNum: "0", dest: "A", mins: [10], first: 10 },
+    { route: "B", dirNum: "0", dest: "B", mins: [], first: 0 },
+  ];
+  ctx.sortRowsBySoonest(rows, "sortstop", now);
+  delete ctx.__stopScheduleCache["sortstop"];
+  t("F1 scheduled row (5 min out) sorts before a 10-min prediction",
+    rows[0].route === "B" && rows[0].scheduled && rows[1].route === "A");
+  const live = [
+    { route: "A", dirNum: "0", dest: "A", mins: [10], first: 10 },
+    { route: "B", dirNum: "0", dest: "B", mins: [2], first: 2 },
+  ];
+  ctx.sortRowsBySoonest(live, "no-schedule", now);
+  t("F2 predicted rows sort by soonest ETA", live[0].route === "B" && live[1].route === "A");
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

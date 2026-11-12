@@ -193,6 +193,7 @@
             padding: 0 7px;
         }
         .row-badge-wrap { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+        .bus-status-slot { width: 14px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
         .bus-status { font-size: 12px; }
         .bus-status.arriving { color: #2e7d32; }
         .bus-status.departed { color: #adb5bd; }
@@ -914,6 +915,23 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
                         anchorIdx: idx, anchorPatStop: d.stops[idx] || null });
         }
     }
+    // Post-filter: any service row that duplicates a live row (same route plus
+    // same direction, or a compatible headsign) is removed. This catches
+    // direction-variant/missing-DirectionNum cases the covered-set missed.
+    const liveRows = rows.filter(r => r.mins && r.mins.length);
+    for (let i = rows.length - 1; i >= 0; i--) {
+        const r = rows[i];
+        if (r.kind !== "service") continue;
+        const sh = normHeads(r.heads || r.dest);
+        const dup = liveRows.some(l => {
+            if (l === r || l.route !== r.route) return false;
+            if (l.dirNum != null && r.dirNum != null &&
+                String(l.dirNum) === String(r.dirNum)) return true;
+            const lh = normHeads(l.heads || l.dest);
+            return !!(sh && lh && (lh.includes(sh) || sh.includes(lh)));
+        });
+        if (dup) rows.splice(i, 1);
+    }
     const rank = { track: 0, compact: 1, service: 2 };
     // Buses with live ETAs sort by departure time (soonest first); rows with
     // no prediction (service/scheduled fallback) follow them.
@@ -1393,7 +1411,7 @@ function boardRowHead(row, color, g, k, scheduled) {
         subParts.push(`<button type="button" class="bt-allstops" aria-expanded="${expandedStops.has(k)}">View all stops`
             + ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`);
     return `<div class="board-head">`
-        + `<span class="row-badge-wrap">${badge}${statusIcon}</span>`
+        + `<span class="row-badge-wrap"><span class="bus-status-slot">${statusIcon}</span>${badge}</span>`
         + `<div class="row-mainline">`
         + (dest ? `<span class="board-dest">${dest}</span>` : `<span class="board-dest">Destination unavailable</span>`)
         + `</div>`
@@ -2365,6 +2383,23 @@ function buildBusMarkers(row, g, scale, posRows, now) {
 // it), then each nearby stop within 500 ft under its own dark separator bar.
 // The confirmed opposite-side stop is the FIRST nearby stop and its bar reads
 // "Across the street" instead of a distance.
+// Sort live and scheduled-fallback rows together by the soonest time.
+function sortRowsBySoonest(rows, anchorId, now) {
+    for (const r of rows) {
+        if (!r.departed && (!r.mins || !r.mins.length))
+            r.scheduled = r.scheduled || nextScheduledFor(anchorId, r.route, r.dirNum, r.dest);
+    }
+    const effMin = (r) => {
+        if (r.mins && r.mins.length) return r.mins[0];
+        if (r.scheduled) return (r.scheduled.at - now) / 60000;
+        return Infinity;
+    };
+    rows.sort((a, b) => effMin(a) - effMin(b)
+        || String(a.route).localeCompare(String(b.route))
+        || String(a.dirNum).localeCompare(String(b.dirNum)));
+    return rows;
+}
+
 function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, anchorNearby, departedArrivals) {
     // Recently departed buses go above live rows, oldest departure first.
     const nowMs = Date.now();
@@ -2379,19 +2414,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         })
         .sort((a, b) => a.departedAt - b.departedAt);
     const liveRows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
-    // Sort live and scheduled-fallback rows together by the soonest time.
-    const effMin = (r) => {
-        if (r.mins && r.mins.length) return r.mins[0];
-        if (r.scheduled) return (r.scheduled.at - nowMs) / 60000;
-        return Infinity;
-    };
-    for (const r of liveRows) {
-        if (!r.mins || !r.mins.length)
-            r.scheduled = nextScheduledFor(anchorId, r.route, r.dirNum, r.dest);
-    }
-    liveRows.sort((a, b) => effMin(a) - effMin(b)
-        || String(a.route).localeCompare(String(b.route))
-        || String(a.dirNum).localeCompare(String(b.dirNum)));
+    sortRowsBySoonest(liveRows, anchorId, nowMs);
     const mainRows = [...departedRows, ...liveRows];
     // Merge the across-the-street counterpart into the nearby list (first)
     // so it is never shown twice.
@@ -2411,7 +2434,9 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         const arrOf = acrossId && String(stp.StopID) === acrossId
             ? (across.Arrivals || [])
             : (stp.Arrivals || []);
-        nearbyRows.push(...buildBoardRows(String(stp.StopID), arrOf, routeDetails, posRows));
+        const rows = buildBoardRows(String(stp.StopID), arrOf, routeDetails, posRows);
+        sortRowsBySoonest(rows, String(stp.StopID), nowMs);
+        nearbyRows.push(...rows);
     }
     // Board geometry supplies each row's ordered stop list for the
     // "View all stops" disclosure.
