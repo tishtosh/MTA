@@ -1141,8 +1141,11 @@ function confirmAcross(st, have) {
     const hit = acrossTheStreet(stopRec(st), cands, patternsByStop(have));
     if (!hit) return null;
     const id = String(hit.id);
-    acrossStop = stops.find(s => String(s.StopID) === id)
-        || makeStop(id, hit.name, hit.lat, hit.lon);
+    // Share the same object as the nearby section so its predictions cannot
+    // land on a different object and go stale/duplicated.
+    acrossStop = nearbyStopObj({ id, name: hit.name, lat: hit.lat, lon: hit.lon,
+                                 routes: hit.routes });
+    nearbyStopObjs.set(id, acrossStop);
     acrossStop.Routes = hit.routes;
     refreshPredictions();               // the counterpart's first predictions, promptly
     return acrossStop;
@@ -2430,12 +2433,11 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         return rec;
     });
     const nearbyRows = [];
+    const nearbyRowCounts = [];
     for (const stp of nearbyRecs) {
-        const arrOf = acrossId && String(stp.StopID) === acrossId
-            ? (across.Arrivals || [])
-            : (stp.Arrivals || []);
-        const rows = buildBoardRows(String(stp.StopID), arrOf, routeDetails, posRows);
+        const rows = buildBoardRows(String(stp.StopID), stp.Arrivals || [], routeDetails, posRows);
         sortRowsBySoonest(rows, String(stp.StopID), nowMs);
+        nearbyRowCounts.push(rows.length);
         nearbyRows.push(...rows);
     }
     // Board geometry supplies each row's ordered stop list for the
@@ -2452,9 +2454,8 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     for (let i = 0; i < nearbyRecs.length; i++) {
         const rec = nearbyRecs[i];
         const id = String(rec.StopID);
-        // buildBoardRows appends each stop's rows in rec order, so a running
-        // offset tracks this stop's slice of nearbyRows without re-deriving it.
-        const sliceLen = nearbyRows.length - off;
+        // per-stop row count; nearbyRows is already fully built.
+        const sliceLen = nearbyRowCounts[i];
         const name = rec.Name || allStopsName(id);
         const where = id === acrossId
             ? "Across the street"
@@ -2472,7 +2473,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     let nearbyHtml = "";
     off = 0;
     for (let i = 0; i < nearbyRecs.length; i++) {
-        const sliceLen = nearbyRows.length - off;
+        const sliceLen = nearbyRowCounts[i];
         if (nearbyParts[i]) nearbyHtml += nearbyParts[i];
         if (sliceLen) {
             // Final guard: sort this stop's slice immediately before painting,
