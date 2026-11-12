@@ -147,11 +147,11 @@
         .curb-sub { margin: 1px 0 0; font-size: 12px; color: #cfd8e3; }
 
         .board-head {
-            display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+            display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
             font: 14px/1.4 system-ui, -apple-system, sans-serif;
         }
         .row-mainline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
-        .row-subline { margin-top: 2px; font-size: 12px; color: #8a959e; }
+        .row-subline { flex-basis: 100%; margin-top: 2px; font-size: 12px; color: #8a959e; }
         .board-routecode { flex: none; min-width: 36px; font-weight: 700; font-size: 14px; }
         /* Route badge: white code on the route's saturated color (the palette
            is dark enough to keep it legible). */
@@ -159,17 +159,21 @@
             flex: none; padding: 2px 9px; border-radius: 5px;
             color: #fff; font-weight: 700; font-size: 13px; line-height: 1.4;
         }
-        .board-dest { opacity: .85; }
+        /* Final destination: bold and set on a quiet grey highlight, sitting
+           immediately after the badge. */
+        .board-dest {
+            font-weight: 700; color: #182338;
+            background: #e9ecef; padding: 1px 6px; border-radius: 3px;
+        }
         .board-note { font-size: 11px; opacity: .6; }
-        /* The ETA line starts at the same left edge as the badge (and the
-           destination above it). */
+        /* The ETA group packs left, right after the destination. */
         .board-etas {
             white-space: nowrap;
             display: inline-flex; align-items: baseline; gap: 6px;
             font-variant-numeric: tabular-nums;
         }
-        .board-eta-first { font-weight: 700; font-size: 15px; }
-        .board-eta-rest { opacity: .65; }
+        .board-eta-first { font-weight: 700; font-size: 18px; color: #182338; }
+        .board-eta-rest { font-size: 13px; color: #6c757d; }
 
         .bt-allstops {
             flex: none; margin-left: 8px; padding: 0 7px;
@@ -179,6 +183,10 @@
         }
         .bt-allstops:hover { background: #f1f3f5; }
         .bt-allstops:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .bt-allstops .bt-chevron {
+            font-size: 9px; transition: transform .15s ease;
+        }
+        .bt-allstops[aria-expanded="true"] .bt-chevron { transform: rotate(180deg); }
         .bt-stoplist {
             margin: 6px 0 2px; padding-left: 0; list-style: none;
             font: 12px/1.55 system-ui, -apple-system, sans-serif;
@@ -239,7 +247,7 @@
                 </button>
             </div>
             <div class="d-flex align-items-center" style="gap: 12px">
-                <button id="btnHome" class="navicon" title="Stops near the home location (URL lat/lon)" aria-label="Show stops near home location">
+                <button id="btnHome" class="navicon" title="Select the home stop (1002135)" aria-label="Select the home stop">
                     <i class="fa-solid fa-house fa-xl-mta"></i>
                 </button>
                 <button id="btnLocate" class="navicon" title="Stops near my current location" aria-label="Show stops near my current location">
@@ -311,7 +319,7 @@ const DC_CENTER = { lat: 38.89790, lon: -77.03661 };
 //   ?lat=38.934&lon=-77.045    search for stops near this point
 //   ?radius=300                search radius in meters
 //   ?refresh=30                prediction refresh interval, seconds (15..600)
-// No params: live nearby search at the 20010 corner (HOME) above.
+// No params: the default home stop (1002135) above.
 // Defaults: radius 300 m, refresh 30 s.
 const params = new URLSearchParams(location.search);
 
@@ -1167,14 +1175,15 @@ function fmtEta(min) {
     return m === 0 ? "Due" : `${m} min`;
 }
 
-// The first ETA emphasized, the later ones muted after it ("· 17 · 39 min").
+// The first ETA emphasized, the later ones muted after it
+// ("6 min then 14 min, 29 min").
 function boardEtasHtml(mins) {
     const list = (mins || []).slice(0, 8);
     if (!list.length)
         return `<span class="board-eta-rest">no upcoming predictions</span>`;
     let h = `<span class="board-eta-first">${esc(fmtEta(list[0]))}</span>`;
     if (list.length > 1)
-        h += `<span class="board-eta-rest">then ${list.slice(1).map(m => String(Math.max(0, Math.round(m)))).join(" · ")} min</span>`;
+        h += `<span class="board-eta-rest">then ${list.slice(1).map(m => esc(fmtEta(m))).join(", ")}</span>`;
     return h;
 }
 
@@ -1192,7 +1201,8 @@ function boardRowHead(row, color, g, k) {
         : esc(row.dest || row.dir || "");
     const subParts = [];
     if (g && g.hasTrack && (g.stops || []).length >= 2)
-        subParts.push(`<button type="button" class="bt-allstops" aria-expanded="${expandedStops.has(k)}">View all stops</button>`);
+        subParts.push(`<button type="button" class="bt-allstops" aria-expanded="${expandedStops.has(k)}">View all stops`
+            + ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`);
     return `<div class="board-head">`
         + `<span class="row-badge" style="background:${color}">${esc(row.route)}</span>`
         + `<div class="row-mainline">`
@@ -1259,7 +1269,7 @@ async function runFlow() {
             // come from the directory once it has loaded.
             stops = [defaultStopRec()];
         } else {
-            // ?lat&lon (or HOME): find stops near the search point
+            // ?lat&lon (or Locate): find stops near the search point
             const d = distance(DC_CENTER.lat, DC_CENTER.lon, searchPoint.lat, searchPoint.lon, "m");
             const at = d > 50 ? DC_CENTER : searchPoint;     // far from DC → search DC center
             gStatus.textContent = `${d.toFixed(1)} mi to the Whitehouse` + (at === DC_CENTER ? " (searching DC center)" : "") + " …";
@@ -1458,9 +1468,24 @@ function render() {
 
 document.getElementById("btnBus").addEventListener("click", () => location.reload());
 
-document.getElementById("btnHome").addEventListener("click", () => {
-    searchPoint = HOME;                   // home = the 20010 corner (always a real search)
-    runFlow();
+document.getElementById("btnHome").addEventListener("click", async () => {
+    // Home is the same as picking the default stop from the entry field:
+    // anchor on 1002135 and refresh it (not a nearby search around HOME).
+    searchPoint = null;
+    forceNearby = false;
+    const id = String(DEFAULT_STOP_ID);
+    const st = (allStopsCache || []).find(s => String(s.StopID) === id)
+        || stops.find(s => String(s.StopID) === id)
+        || makeStop(id, null, null, null);
+    acStop.showPick(st);
+    selectStop(id);
+    if (!allStopsCache) {
+        try {
+            await loadStopDirectory();
+            const dir = (allStopsCache || []).find(s => String(s.StopID) === id);
+            if (dir && String(pickedStop) === id) acStop.showPick(dir);
+        } catch (e) { /* the board retries the directory on its next paint */ }
+    }
 });
 
 document.getElementById("btnLocate").addEventListener("click", () => {
@@ -1563,6 +1588,13 @@ function makeAutocomplete(input, listEl, clearBtn, onPick, onClear, onPickLost) 
         if (onPick) onPick(st);
     }
 
+    // Show a pick made outside the list (e.g. the Home button) in the field,
+    // with the clear button visible and any open suggestion list dismissed.
+    function showPick(st) {
+        input.value = st.Name || (st.StopID ? `#${st.StopID}` : "");
+        setPicked(true);
+    }
+
     input.addEventListener("input", () => {
         if (picked) { setPicked(false); if (onPickLost) onPickLost(); }
         const q = input.value.trim();
@@ -1623,6 +1655,7 @@ function makeAutocomplete(input, listEl, clearBtn, onPick, onClear, onPickLost) 
 
     return {
         setPicked,
+        showPick,
         reset() { setPicked(false); input.value = ""; },
     };
 }
