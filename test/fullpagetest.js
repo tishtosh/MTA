@@ -214,11 +214,16 @@ const board = () => els.linesScroll.innerHTML;
   check("bus route panel populated with route rectangles",
     (els.busRoutePanel.innerHTML.match(/route-chip/g) || []).length > 5 &&
     /D72|C87/.test(els.busRoutePanel.innerHTML));
+  check("bus routes panel starts collapsed", els.busRoutePanel.hidden === true);
+  (els.busRoutesToggle._l.click || []).forEach(f => f());
+  check("bus routes toggle expands the panel", els.busRoutePanel.hidden === false);
   {
     const chip = { dataset: { route: "D72" } };
     const ev = { target: { closest: sel => sel === ".route-chip" ? chip : null } };
     (els.busRoutePanel._l.click || []).forEach(f => f(ev));
   }
+  check("bus route selection collapses the route panel",
+    els.busRoutePanel.hidden === true);
   check("bus route selection populates its stops",
     els.busStopSelect.hidden === false && /1002130|1002135/.test(els.busStopSelect.innerHTML));
   els.busStopSelect.value = "1002130";

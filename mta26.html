@@ -101,6 +101,18 @@
             padding: 8px; border: 1px solid #dee2e6; border-radius: 8px;
             background: #fff;
         }
+        .route-panel[hidden] { display: none; }
+        .bus-routes-toggle {
+            display: flex; align-items: center; gap: 6px;
+            margin: 0 0 6px; padding: 6px 10px;
+            border: 1px solid #ced4da; border-radius: 6px;
+            background: #fff; color: #343a40; cursor: pointer;
+            font: 600 13px/1.4 system-ui, -apple-system, sans-serif;
+        }
+        .bus-routes-toggle:hover { background: #f1f3f5; }
+        .bus-routes-toggle:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .bus-routes-toggle .bt-chevron { font-size: 9px; transition: transform .15s ease; }
+        .bus-routes-toggle[aria-expanded="true"] .bt-chevron { transform: rotate(180deg); }
         .route-chip {
             flex: none; padding: 3px 10px; border: 0; border-radius: 5px;
             color: #fff; cursor: pointer;
@@ -300,10 +312,18 @@
            corners are square so it merges with the main-board group below. */
         .board-stophead {
             position: relative;
-            margin: 8px 2px 0; padding: 10px 92px 12px 16px;
+            margin: 8px 2px 0; padding: 10px 92px 34px 16px;
             background: #182338; color: #fff;
             border-radius: 10px 10px 0 0;
         }
+        .board-share {
+            position: absolute; right: 10px; bottom: 8px;
+            background: rgba(255,255,255,.12); border: 0; border-radius: 6px;
+            color: #cfd8e3; padding: 5px 8px; cursor: pointer;
+            font-size: 14px; line-height: 1;
+        }
+        .board-share:hover { color: #fff; background: rgba(255,255,255,.2); }
+        .board-share:focus-visible { outline: 2px solid #8ce99a; outline-offset: 1px; }
         /* Shortcut checkboxes: save the current stop as home/work/favorite. */
         .board-shortcuts {
             position: absolute; top: 8px; right: 10px;
@@ -418,11 +438,6 @@
                         title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
-                <button id="btnShareMap" class="navicon nav-shortcut nav-map"
-                        title="Open selected stop in Maps"
-                        aria-label="Open selected stop in Maps">
-                    <i class="fa-solid fa-share-nodes"></i>
-                </button>
             </div>
         </div>
     </nav>
@@ -432,7 +447,11 @@
     <h3><small id="statusmessage" aria-live="polite"></small></h3>
 
     <div id="acWrap" class="ac-wrap">
-        <div id="busRoutePanel" class="route-panel" role="listbox" aria-label="Bus routes"></div>
+        <button id="busRoutesToggle" class="bus-routes-toggle" type="button" aria-expanded="false">
+            <span>Bus routes</span>
+            <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+        </button>
+        <div id="busRoutePanel" class="route-panel" role="listbox" aria-label="Bus routes" hidden></div>
         <select id="busStopSelect" class="form-select form-select-lg" aria-label="Bus stop" hidden>
             <option value="">Select a stop…</option>
         </select>
@@ -658,6 +677,7 @@ const gStatus = document.getElementById("statusmessage");
 const gClock = document.getElementById("clock");
 const gClockMeta = document.getElementById("clockMeta");
 const gRefreshToggle = document.getElementById("btnRefreshToggle");
+const gBusRoutesToggle = document.getElementById("busRoutesToggle");
 const gBusRoutePanel = document.getElementById("busRoutePanel");
 const gBusStopSelect = document.getElementById("busStopSelect");
 const gLinesNote = document.getElementById("linesNote");
@@ -670,7 +690,6 @@ const gMetroSelect = document.getElementById("metroSelect");
 const gBusBtn = document.getElementById("btnBus");
 const gMetroBtn = document.getElementById("btnMetro");
 const gCurrentBtn = document.getElementById("btnCurrent");
-const gShareMapBtn = document.getElementById("btnShareMap");
 const gShortcutBtns = {
     home: document.getElementById("btnHome"),
     work: document.getElementById("btnWork"),
@@ -2516,7 +2535,6 @@ function openSelectedInMaps() {
     window.open(url, "_blank", "noopener");
 }
 
-if (gShareMapBtn) gShareMapBtn.addEventListener("click", openSelectedInMaps);
 
 gBusBtn.addEventListener("click", () => setMode("bus"));
 gMetroBtn.addEventListener("click", () => setMode("metro"));
@@ -2528,6 +2546,8 @@ for (const slot of SHORTCUT_SLOTS) {
 // The header checkboxes save the current stop/station as home/work/favorite
 // (and clear it when the same item is clicked again).
 gBoardHeader.addEventListener("click", e => {
+    const share = e.target.closest ? e.target.closest(".board-share") : null;
+    if (share) { openSelectedInMaps(); return; }
     const btn = e.target.closest ? e.target.closest(".board-shortcut") : null;
     if (!btn || !btn.dataset) return;
     const slot = btn.dataset.shortcut;
@@ -2587,20 +2607,39 @@ const acStop = {
 
 function resetBusPickers() {
     if (gBusRoutePanel) {
+        gBusRoutePanel.hidden = true;
         gBusRoutePanel.querySelectorAll(".route-chip.active").forEach(b => {
             b.classList.remove("active");
             b.setAttribute("aria-selected", "false");
         });
     }
+    if (gBusRoutesToggle) gBusRoutesToggle.setAttribute("aria-expanded", "false");
     if (gBusStopSelect) {
         gBusStopSelect.hidden = true;
         gBusStopSelect.innerHTML = `<option value="">Select a stop…</option>`;
     }
 }
 
+function collapseBusRoutePanel() {
+    if (gBusRoutePanel) gBusRoutePanel.hidden = true;
+    if (gBusRoutesToggle) gBusRoutesToggle.setAttribute("aria-expanded", "false");
+}
+
 function collapseBusStopPicker() {
     if (gBusStopSelect) gBusStopSelect.hidden = true;
 }
+
+if (gBusRoutesToggle) gBusRoutesToggle.addEventListener("click", () => {
+    const open = gBusRoutePanel ? gBusRoutePanel.hidden : false;
+    if (open) {
+        if (allStopsCache && (!gBusRoutePanel.innerHTML || !gBusRoutePanel.children.length))
+            populateBusRoutes(allStopsCache);
+        gBusRoutePanel.hidden = false;
+    } else {
+        gBusRoutePanel.hidden = true;
+    }
+    gBusRoutesToggle.setAttribute("aria-expanded", open ? "true" : "false");
+});
 
 function populateBusRoutes(all) {
     if (!gBusRoutePanel) return;
@@ -2642,6 +2681,7 @@ if (gBusRoutePanel) gBusRoutePanel.addEventListener("click", e => {
     const chip = e.target.closest ? e.target.closest(".route-chip") : null;
     if (!chip || !chip.dataset) return;
     populateBusStops(chip.dataset.route);
+    collapseBusRoutePanel();
 });
 if (gBusStopSelect) gBusStopSelect.addEventListener("change", () => {
     const id = gBusStopSelect.value;
@@ -2995,6 +3035,8 @@ function boardHeaderHtml(st, arrivals) {
         + (st.Name ? `<span class="board-stopid">#${esc(id)}</span>` : "")
         + `</div>`
         + `<div class="board-next">${nextLine}</div>`
+        + `<button type="button" class="board-share" title="Open in Maps" aria-label="Open in Maps">`
+        + `<i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i></button>`
         + `</div>`;
 }
 
