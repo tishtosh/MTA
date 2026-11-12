@@ -49,8 +49,30 @@
 
         /* clock block: current time over "updated … · refresh in Ns", with
            the auto-refresh toggle beside it. */
+        /* full-page access gate */
+        .gate {
+            position: fixed; inset: 0; z-index: 5000;
+            display: flex; align-items: center; justify-content: center;
+            background: #182338;
+        }
+        .gate[hidden] { display: none; }
+        .gate-card {
+            width: min(90vw, 320px); background: #fff; padding: 22px;
+            border-radius: 12px; display: flex; flex-direction: column; gap: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,.35);
+        }
+        .gate-title { font: 700 18px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
+        .gate-error { min-height: 18px; color: #c92a2a; font-size: 13px; }
+
         /* three shortcut buttons keep the header compact on phones */
         .nav-shortcut i { font-size: 2em; width: 46px; }
+        .nav-shortcut { position: relative; }
+        .nav-shortcut .nav-bookmark {
+            position: absolute; right: 2px; bottom: -2px;
+            font-size: 10px; width: auto; color: #adb5bd;
+            z-index: 0; pointer-events: none;
+        }
+        .nav-shortcut > i:not(.nav-bookmark) { position: relative; z-index: 1; }
         .nav-shortcut.is-set i { color: #2e7d32; }
 
         .clock-meta {
@@ -193,9 +215,9 @@
             padding: 0 7px;
         }
         .row-badge-wrap { display: inline-flex; align-items: center; gap: 5px; flex: none; }
-        .bus-status-slot { width: 14px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+        .bus-status-slot { width: 18px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
         .bus-status { font-size: 12px; }
-        .bus-status.arriving { color: #2e7d32; }
+        .bus-status.arriving { color: #8ce99a; font-size: 17px; }
         .bus-status.departed { color: #adb5bd; }
         /* Final destination: bold and set on a quiet grey highlight, sitting
            immediately after the badge. */
@@ -283,6 +305,15 @@
 
 <body style="height:1500px">
 
+<div id="gate" class="gate">
+    <form id="gateForm" class="gate-card">
+        <div class="gate-title">Enter password</div>
+        <input id="gateInput" class="form-control" type="password" autocomplete="off" aria-label="Password">
+        <button class="btn btn-dark" type="submit">Continue</button>
+        <div id="gateError" class="gate-error" role="alert"></div>
+    </form>
+</div>
+
 <div class="container">
     <nav class="navbar fixed-top navbar-light bg-light">
         <div class="container d-flex align-items-center">
@@ -302,12 +333,15 @@
             <div class="d-flex align-items-center" style="gap: 12px">
                 <button id="btnHome" class="navicon nav-shortcut" title="Home stop" aria-label="Go to home stop">
                     <i class="fa-solid fa-house fa-xl-mta"></i>
+                    <i class="fa-regular fa-bookmark nav-bookmark" aria-hidden="true"></i>
                 </button>
                 <button id="btnWork" class="navicon nav-shortcut" title="Work stop" aria-label="Go to work stop">
                     <i class="fa-solid fa-briefcase fa-xl-mta"></i>
+                    <i class="fa-regular fa-bookmark nav-bookmark" aria-hidden="true"></i>
                 </button>
                 <button id="btnFav" class="navicon nav-shortcut" title="Favorite stop" aria-label="Go to favorite stop">
                     <i class="fa-solid fa-star fa-xl-mta"></i>
+                    <i class="fa-regular fa-bookmark nav-bookmark" aria-hidden="true"></i>
                 </button>
             </div>
         </div>
@@ -327,14 +361,12 @@
     </div>
 
     <!-- v5: route picture first — the stop (name + ID) and its next bus
-         up top, then the board: one track per route+direction+destination
-         that boards here, the across-the-street stop in its own section,
-         all on one shared scale. The arrivals table follows. -->
+         up top, then the board: one row per route+direction+destination
+         that boards here, the across-the-street stop in its own section. -->
     <div id="viewArrivals">
         <small id="linesNote" class="text-muted" aria-live="polite" style="display:block"></small>
         <div id="boardHeader"></div>
         <div id="linesScroll" class="lines-scroll"></div>
-        <div id="tINSERTHERE"></div>
     </div>
 </div>
 
@@ -345,16 +377,44 @@
 // Configuration
 // ════════════════════════════════════════════════════════════════════
 
-// ⚠  This key ships inside a public static page — anyone who loads the
-//    page (or the repo) can read it. See README.md → "API key handling".
-//    This is the ONLY place the key appears in the file.
-// const API_KEY = "REDACTED_WMATA_KEY";
-const API_KEY = "REDACTED_WMATA_KEY";
+// ⚠  Client-side gating is obfuscation, not cryptographic security: the
+//    access check and the encoded key are both visible to anyone reading the
+//    page source. See README.md → "API key handling".
+// The key is XOR-encoded with the access password and decoded on unlock.
+const KEY_B64 = "REDACTED_WMATA_KEY=";
+const GATE_B64 = "YnVz";       // base64 of the access word; not stored literally
+let API_KEY = "";
 
 
 // WMATA public API — WMATA operates the DC (Metrobus) bus system.
 // Portal / docs / key registration: https://developer.wmata.com
 const WMATA_API = "https://api.wmata.com";
+
+// Decode the API key with the access password (XOR + base64).
+function decodeWithPassword(b64, pass) {
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    for (let i = 0; i < bytes.length; i++)
+        bytes[i] ^= pass.charCodeAt(i % pass.length);
+    return new TextDecoder().decode(bytes);
+}
+
+function checkAccess(pass) {
+    try { return btoa(pass) === GATE_B64; } catch (e) { return false; }
+}
+
+function unlockAccess(pass) {
+    if (!checkAccess(pass)) return false;
+    API_KEY = decodeWithPassword(KEY_B64, pass);
+    const gate = document.getElementById("gate");
+    if (gate) gate.hidden = true;
+    runFlow();
+    return true;
+}
+
+function showGate() {
+    const input = document.getElementById("gateInput");
+    if (input) input.focus();
+}
 
 // The 20010 corner (Cleveland Park), for building ?busstop= links:
 //   1002135 / 1002130  Park Rd NW + 19 St NW        (C87, D72)
@@ -449,7 +509,6 @@ const gStatus = document.getElementById("statusmessage");
 const gClock = document.getElementById("clock");
 const gClockMeta = document.getElementById("clockMeta");
 const gRefreshToggle = document.getElementById("btnRefreshToggle");
-const gTableHost = document.getElementById("tINSERTHERE");
 const gStopEntry = document.getElementById("stopEntry");
 const gStopEntryClear = document.getElementById("stopEntryClear");
 const gStopEntryList = document.getElementById("stopEntryList");
@@ -1449,7 +1508,7 @@ function boardHtml(geom, rows) {
                   const mark = s.anchor ? ` <b class="bt-mark">your stop</b>`
                      : s.terminal ? ` <b class="bt-mark">terminal</b>` : "";
                   return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(s.id)}">`
-                      + `${esc(s.name || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</li>`;
+                      + `${esc(stopName(s.name) || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</li>`;
                 }).join("") + `</ul>`
             : "";
         const rowClass = row.departed ? " is-departed" : (scheduled ? " is-scheduled" : "");
@@ -1532,20 +1591,16 @@ async function runFlow() {
         if (stopListFromURL && stopListFromURL.length && !forceNearby && !pickedStop && stops[0]) {
             const s = stops[0];
             pickedStop = s.StopID;
-            gStopEntry.value = s.Name || `#${s.StopID}`;
+            gStopEntry.value = stopName(s.Name) || `#${s.StopID}`;
             acStop.setPicked(true);
         }
-        // Paint the stop list/names immediately; arrivals are fetched in the
+        // Paint the stop names immediately; arrivals are fetched in the
         // background and repaint when they land.
-        render();
         renderLines();
         refreshPredictions().catch(() => {});
     } catch (e) {
-        // Stops lookup failed (bad key / network): keep whatever is shown —
-        // but re-render, since the pick was reset above (the table must match
-        // the entry field).
+        // Stops lookup failed (bad key / network): keep whatever is shown.
         gStatus.textContent = `Could not reach WMATA: ${e.message}`;
-        render();
     } finally {
         busy = false;
         scheduleRefresh();
@@ -1609,9 +1664,7 @@ async function refreshPredictions() {
             scheduleRefresh();
             return;
         }
-        render();
-        // The picture rides on the same predictions: keep it moving on every
-        // tick (single view — no tab to check for).
+        // Keep the board moving on every tick.
         renderLines();
         scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
         tickClock();                   // reflect this update + the new countdown at once
@@ -1666,60 +1719,24 @@ function esc(s) {
     ));
 }
 
-function fmtDistance(ft) {
-    if (ft == null) return "—";
-    return ft < 5280 ? `${ft} ft` : `${(ft / 5280).toFixed(1)} mi`;
+// Stop names use "+" in the WMATA feed; display it as " and ".
+function stopName(name) {
+    return String(name || "").replace(/\s*\+\s*/g, " and ");
 }
 
-// The stops the arrivals table tracks. No pick: the nearby / ?busstop= list.
+// The stops the board tracks. No pick: the nearby / ?busstop= list.
 // With a pick: just that stop — resolved from the list when it's there, or
 // materialized from the stop directory when the user picked a stop that is
 // not in the list (it is then live-tracked like any other).
 function shownStops() {
     if (!pickedStop) return stops;
-    // A ?busstop= deep link keeps every requested ID in the arrivals table
+    // A ?busstop= deep link keeps every requested ID in the tracked set
     // until the user explicitly picks another stop (pickedStopObj is set by
     // that pick; the URL prefill leaves it null).
     if (stopListFromURL && !forceNearby && !pickedStopObj) return stops;
     if (pickedStopObj) return [pickedStopObj];
     const inList = stops.find(s => s.StopID === pickedStop);
     return inList ? [inList] : stops;
-}
-
-function render() {
-    const shown = shownStops();
-    let rows = "";
-    for (const s of shown) {
-        rows += "<tr class='table-primary vert'>"
-            + "<td class='text-center'><i class='fa-solid fa-person-walking'></i></td>"
-            + `<td>${fmtDistance(s.Distance)}</td>`
-            + `<td colspan="2">${esc(s.Name || s.StopID)} <small class="text-muted">(#${esc(s.StopID)})</small></td>`
-            + "</tr>";
-
-        if (s.Error) {
-            const msg = s.Error.rateLimited ? "too many requests — will retry" : "predictions unavailable";
-            rows += "<tr><td class='text-center'><i class='fa-solid fa-triangle-exclamation text-warning'></i></td>"
-                + `<td colspan="3" class="text-muted">${esc(msg)}</td></tr>`;
-        } else if (!s.Arrivals.length) {
-            rows += "<tr><td class='text-center'><i class='fa-solid fa-clock'></i></td>"
-                + "<td colspan='3' class='text-muted'>no arrivals scheduled</td></tr>";
-        } else {
-            for (const a of s.Arrivals) {
-                rows += "<tr><td class='text-center'><i class='fa-solid fa-clock'></i></td>"
-                    + `<td>${esc(a.min)}</td>`
-                    + `<td><b>${esc(a.route)}</b></td>`
-                    + `<td>${esc(a.dir)}</td></tr>`;
-            }
-        }
-    }
-    gTableHost.innerHTML = shown.length
-        ? `<div class="container">
-             <table class="table table-sm table-hover">
-                 <thead><tr><th style="width:8%"></th><th style="width:18%"></th><th style="width:20%"></th><th>destination</th></tr></thead>
-                 <tbody>${rows}</tbody>
-             </table>
-           </div>`
-        : "";
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1755,7 +1772,7 @@ function updateShortcutNav() {
         const label = shortcutLabel(slot);
         btn.classList.toggle("is-set", !!(saved && saved.id));
         if (saved && saved.id) {
-            const name = saved.name || `#${saved.id}`;
+            const name = stopName(saved.name) || `#${saved.id}`;
             btn.title = `${label}: ${name}`;
             btn.setAttribute("aria-label", `Go to ${label}: ${name}`);
         } else if (slot === "home") {
@@ -1882,12 +1899,12 @@ function makeAutocomplete(input, listEl, clearBtn, onPick, onClear, onPickLost) 
         openList(items.length
             ? items.map((s, i) =>
                 `<div class="ac-item${i === active ? " active" : ""}" data-i="${i}" role="option" aria-selected="${i === active}">` +
-                `${esc(s.Name || "#" + s.StopID)}<span class="code">#${esc(s.StopID)}</span></div>`).join("")
+                `${esc(stopName(s.Name) || "#" + s.StopID)}<span class="code">#${esc(s.StopID)}</span></div>`).join("")
             : `<div class="ac-none">no matching stops</div>`);
     }
 
     function pick(st) {
-        input.value = st.Name || `#${st.StopID}`;
+        input.value = stopName(st.Name) || `#${st.StopID}`;
         setPicked(true);
         if (onPick) onPick(st);
     }
@@ -1895,7 +1912,7 @@ function makeAutocomplete(input, listEl, clearBtn, onPick, onClear, onPickLost) 
     // Show a pick made outside the list (e.g. the Home button) in the field,
     // with the clear button visible and any open suggestion list dismissed.
     function showPick(st) {
-        input.value = st.Name || (st.StopID ? `#${st.StopID}` : "");
+        input.value = stopName(st.Name) || (st.StopID ? `#${st.StopID}` : "");
         setPicked(true);
     }
 
@@ -1989,8 +2006,7 @@ const acStop = makeAutocomplete(
         const inList = stops.find(s => s.StopID === st.StopID);
         pickedStopObj = inList || materializeDirStop(st);
         noteSelectionChange();     // void the old counterpart before its refresh
-        render();                  // show the chosen stop immediately…
-        renderLines();             // …before its arrivals land
+        renderLines();             // show the chosen stop before its arrivals land
         refreshPredictions();      // its predictions, then the 30 s cycle tracks it
     },
     () => {                       // ✕: back to the nearby search
@@ -1999,7 +2015,7 @@ const acStop = makeAutocomplete(
         runFlow();
         renderLines();            // the picture falls back to the closest nearby stop
     },
-    () => { noteSelectionChange(); resetPick(true); render(); renderLines(); },
+    () => { noteSelectionChange(); resetPick(true); renderLines(); },
 );
 
 // ════════════════════════════════════════════════════════════════════
@@ -2054,7 +2070,7 @@ function positionHoverTip(dot) {
 }
 
 function hoverTipHtml(st, pred) {
-    const head = `${esc(st.Name || "#" + st.StopID)} <small style="opacity:.75">(#${esc(st.StopID)})</small>`;
+    const head = `${esc(stopName(st.Name) || "#" + st.StopID)} <small style="opacity:.75">(#${esc(st.StopID)})</small>`;
     if (!pred.predictions.length) return head + "<br><small>no arrivals scheduled</small>";
     const rows = pred.predictions.map(p =>
         `<div><b>${esc(p.route)}</b> · ${esc(p.min)} min <small style="opacity:.75">${esc(p.dir || "")}</small></div>`).join("");
@@ -2074,7 +2090,7 @@ async function hoverTipFor(dot) {
     };
     let pred = hoverPredictions.get(st.StopID);
     if (pred) { show(hoverTipHtml(st, pred)); return; }     // cached: instant
-    show(`${esc(st.Name || "#" + st.StopID)} <small style="opacity:.75">(#${esc(st.StopID)})</small><br>loading…`);
+    show(`${esc(stopName(st.Name) || "#" + st.StopID)} <small style="opacity:.75">(#${esc(st.StopID)})</small><br>loading…`);
     try {
         pred = await fetchPredictions(st.StopID);
         hoverPredictions.set(st.StopID, pred);
@@ -2083,7 +2099,7 @@ async function hoverTipFor(dot) {
     }
     if (tok !== hoverTok || !dot.isConnected) return;       // card moved on, or the row was redrawn
     show(pred ? hoverTipHtml(st, pred)
-              : `${esc(st.Name || "#" + st.StopID)}<br><small>couldn't load arrivals</small>`);
+              : `${esc(stopName(st.Name) || "#" + st.StopID)}<br><small>couldn't load arrivals</small>`);
 }
 
 // Piece 11: the stop markers (dots + the anchor/terminal diamonds) reveal
@@ -2279,7 +2295,7 @@ function shortcutButtonsHtml(id) {
 // ("9 min then 13 min, 31 min").
 function boardHeaderHtml(st, arrivals) {
     const id = String(st.StopID || "");
-    const label = st.Name || `#${id}`;
+    const label = st.Name ? stopName(st.Name) : `#${id}`;
     const list = (arrivals || []).slice().sort((a, b) => a.min - b.min);
     const next = list[0] || null;
     let nextLine;
@@ -2463,7 +2479,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         const subBits = [where, `#${id}`].filter(Boolean);
         nearbyParts.push(`<div class="curb-head" role="button" tabindex="0" data-nearby="1" data-stop="${esc(id)}">`
             + `<div class="curb-head-stop"><div class="curb-main">`
-            + `<div class="curb-title">${esc(name || "Nearby stop")}</div>`
+            + `<div class="curb-title">${esc(stopName(name) || "Nearby stop")}</div>`
             + `<div class="curb-sub">${esc(subBits.join(" · "))}</div>`
             + `</div>`
             + `</div></div>`);
@@ -2634,12 +2650,24 @@ function setRefreshEnabled(on) {
 }
 gRefreshToggle.addEventListener("click", () => setRefreshEnabled(!refreshEnabled));
 
+// Access gate: check the password, decode the API key, then start the app.
+const gateForm = document.getElementById("gateForm");
+if (gateForm) gateForm.addEventListener("submit", e => {
+    e.preventDefault();
+    const input = document.getElementById("gateInput");
+    const err = document.getElementById("gateError");
+    if (!unlockAccess(input ? input.value : "")) {
+        if (err) err.textContent = "Incorrect password";
+        if (input) { input.value = ""; input.focus(); }
+    }
+});
+
 // ════════════════════════════════════════════════════════════════════
 // Go
 // ════════════════════════════════════════════════════════════════════
 tickClock();
 setInterval(tickClock, 1000);
-runFlow();
+showGate();
 </script>
 
 </body>

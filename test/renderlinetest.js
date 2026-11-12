@@ -45,7 +45,7 @@ vm.runInContext(
   [extractConst("ROUTE_COLORS"), "const stopScheduleCache = {};", "let shortcuts = {};",
    'const SHORTCUT_SLOTS = ["home", "work", "fav"];',
    extractFn("shortcutLabel"), extractFn("shortcutButtonsHtml"),
-   extractFn("routeColor"), extractFn("esc"),
+   extractFn("routeColor"), extractFn("esc"), extractFn("stopName"),
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),

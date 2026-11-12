@@ -32,7 +32,7 @@ const names = ["BOARD_MAX_SIDE_PX", "BOARD_MIN_EXTENT_FT", "BOARD_MIN_EXTENT_PX"
 let src = [names.map(constBlock).join("\n"),
   extractFn("distance"), extractFn("localXY"), extractFn("projArcOnShape"),
   extractFn("trackArcs"), extractFn("rowLayout"), extractFn("boardScale"),
-  extractFn("boardGeometry"), extractFn("esc"), extractFn("routeColor"),
+  extractFn("boardGeometry"), extractFn("esc"), extractFn("stopName"), extractFn("routeColor"),
   extractFn("fmtEta"), extractFn("boardEtasHtml"), extractFn("normHeads"),
   extractFn("scheduleDayKey"), extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
   extractFn("sortRowsBySoonest"),

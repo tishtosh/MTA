@@ -98,6 +98,7 @@ const sandbox = {
   Promise, Symbol, RegExp, Error, TypeError, RangeError, parseInt, parseFloat, isNaN,
   URL, URLSearchParams, AbortController,
   setTimeout, clearTimeout, setInterval, clearInterval,
+  btoa, atob, TextDecoder, Uint8Array,
   fetch,
   document,
   location: { search: "?busstop=" + STOP, href: "http://localhost/?busstop=" + STOP, reload() {} },
@@ -110,6 +111,8 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 vm.runInContext(script, sandbox, { filename: "mta26-script.js" });
+// Unlock the access gate (the app no longer starts until the password check).
+sandbox.unlockAccess("bus");
 
 // ---- wait for the async pipeline, then assert ----
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -140,7 +143,7 @@ const board = () => els.linesScroll.innerHTML;
 
   check("board header painted", h !== "");
   check("header: stop ID shown", h.includes("#" + ANCHOR));
-  check("header: canonical directory name", h.includes("Park Rd NW+19 St NW"));
+  check("header: canonical directory name", h.includes("Park Rd NW and 19 St NW"));
   check("header: Next bus line", h.includes("Next bus"));
   check("header: 'Selected boarding stop' removed", !h.includes("Selected boarding stop"));
   check("header: home/work/favorite shortcut icons",
@@ -190,10 +193,6 @@ const board = () => els.linesScroll.innerHTML;
   }
 
   if (MULTI) {
-    const tab = els.tINSERTHERE.innerHTML;
-    for (const id of STOP.split(",")) {
-      check(`multi: table keeps #${id}`, tab.includes("#" + id));
-    }
     const hIds = h.match(/#\d{7}/g) || [];
     check("multi: board anchors on the FIRST id", hIds.length >= 1 && hIds.every(x => x.slice(1) === ANCHOR));
     check("multi: stop count line removed", !/\d+ stops?/.test(els.statusmessage?.textContent || ""));
@@ -201,7 +200,6 @@ const board = () => els.linesScroll.innerHTML;
 
   check("no across section with live fixtures", !ACROSS ? !b.includes("Across the street") : true);
   check("ticker retired (no #tickerHost in DOM)", els.tickerHost === undefined);
-  check("arrival table rendered", els.tINSERTHERE.innerHTML.includes("table") || els.tINSERTHERE.innerHTML !== "");
 
   // Clock block: current time, last updated time, and the refresh countdown.
   check("clock: current time + updated + countdown",
