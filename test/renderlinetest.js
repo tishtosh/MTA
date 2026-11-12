@@ -40,9 +40,12 @@ sandbox.allStopsCache = null;
 sandbox.DEFAULT_STOP_ID = "1002135";
 vm.createContext(sandbox);
 vm.runInContext(
-  [extractConst("ROUTE_COLORS"), extractFn("routeColor"), extractFn("esc"),
-   extractFn("fmtEta"), extractFn("shownStops"), extractFn("anchorStop"),
-   extractFn("boardHeaderHtml")].join("\n"),
+  [extractConst("ROUTE_COLORS"), "const stopScheduleCache = {};",
+   extractFn("routeColor"), extractFn("esc"),
+   extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
+   extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
+   extractFn("shownStops"), extractFn("anchorStop"),
+   extractFn("boardHeaderHtml")].join("\n") + "\nglobalThis.__stopScheduleCache = stopScheduleCache;",
   sandbox);
 
 let pass = 0, fail = 0;
@@ -104,6 +107,19 @@ check("header: failed predictions → 'arrivals unavailable'", h3.includes("arri
 
 const h4 = sandbox.boardHeaderHtml({ StopID: "X", Name: "x", Error: null, Arrivals: [] }, []);
 check("header: no predictions → 'no upcoming predictions'", h4.includes("no upcoming predictions"));
+
+// With no live prediction but a schedule entry, the header shows the time
+// and labels it "not predicted".
+sandbox.__stopScheduleCache["1002130"] = {
+  day: sandbox.scheduleDayKey(), ok: true, at: Date.now(),
+  arrivals: [{ at: Date.now() + 3600000, route: "D60", dirNum: "1",
+               heads: "North to Silver Spring", dirText: "NORTH" }],
+};
+const hSched = sandbox.boardHeaderHtml(
+  { StopID: "1002130", Name: "x", Error: null, Arrivals: [] }, []);
+delete sandbox.__stopScheduleCache["1002130"];
+check("header: no prediction → scheduled time + not predicted",
+  hSched.includes("not predicted") && hSched.includes("D60") && /\d{1,2}:\d{2}/.test(hSched));
 
 // ---- against the locked live capture (1002130) ----
 const raw = JSON.parse(fs.readFileSync(require("path").join(__dirname, "fixtures", "pred_1002130.json"), "utf8"));

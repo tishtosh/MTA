@@ -34,6 +34,7 @@ const jPred = {
   "1002130": JSON.parse(fs.readFileSync(FX("pred_1002130.json"), "utf8")),
   "1002135": JSON.parse(fs.readFileSync(FX("pred_1002135.json"), "utf8"))
 };
+const jStopSchedule = JSON.parse(fs.readFileSync(FX("stop_schedule.json"), "utf8"));
 let fetchCount = 0;
 const fetch = async (url) => {
   fetchCount++;
@@ -48,7 +49,9 @@ const fetch = async (url) => {
           ? jRoute[u.searchParams.get("RouteID")]
           : u.pathname.endsWith("/jBusPositions")
             ? jPos
-            : undefined;
+            : u.pathname.endsWith("/jStopSchedule")
+              ? jStopSchedule
+              : undefined;
   if (!body) throw new Error("unstubbed URL: " + url);
   return { ok: true, status: 200, json: async () => body };
 };
@@ -157,7 +160,7 @@ const board = () => els.linesScroll.innerHTML;
     check("across: no redundant selected-stop section heading", !b.includes("At the selected stop"));
     check("across: both C87 patterns listed", (b.match(/>C87<\/span>/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
-    check("across: prompt refresh re-fetches in-scope stops (7 fetches)", fetchCount === 7);
+    check("across: prompt refresh re-fetches in-scope stops (9 fetches)", fetchCount === 9);
   } else if (ANCHOR === "1002130") {
     check("130: next bus D72 @14 min", h.includes("Next bus") && h.includes("D72") && h.includes("14 min"));
     check("130: D72 row is compact (route details unavailable)", b.includes("route details unavailable"));
@@ -165,6 +168,8 @@ const board = () => els.linesScroll.innerHTML;
     check("130: C87 service row toward TENLEYTOWN", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
     check("130: compact row before service row", b.indexOf("route details unavailable") < b.indexOf("TENLEYTOWN"));
     check("130: no track graphic on the compact row", !b.includes("board-tracksvg"));
+    check("130: no live prediction → next scheduled, not predicted",
+      b.includes("not predicted") && /\d{1,2}:\d{2}\s?[AP]M/.test(b));
   } else {
     check("135: next bus D72 @2 min", h.includes("Next bus") && h.includes("D72") && h.includes("2 min"));
     check("135: D72 row compact", b.includes("route details unavailable"));

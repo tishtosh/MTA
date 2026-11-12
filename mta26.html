@@ -494,6 +494,79 @@ async function fetchPredictions(stopId) {
     return { name, predictions: preds };
 }
 
+// Stop schedule:  GET /Bus.svc/json/jStopSchedule?StopID   (verified 2026-11)
+// Returns { Stop: {...}, ScheduleArrivals: [{ ScheduleTime, RouteID,
+// DirectionNum, TripHeadsign, TripDirectionText, TripID, ... }] } for the
+// current service day. Cached per stop per day, so a route with no live
+// prediction can fall back to its next scheduled arrival ("not predicted").
+const stopScheduleCache = {};      // StopID → { day, arrivals, ok, at }
+const stopScheduleInflight = {};   // StopID → in-flight promise
+const SCHEDULE_RETRY_MS = 5 * 60000;
+
+function scheduleDayKey() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+async function fetchStopSchedule(stopId) {
+    const { data, error } = await apiGet("/Bus.svc/json/jStopSchedule", { StopID: stopId });
+    if (error) throw error;
+    const arrivals = ((data && data.ScheduleArrivals) || []).map(s => ({
+        at: new Date(s.ScheduleTime).getTime(),
+        route: String(s.RouteID || "").toUpperCase(),
+        dirNum: s.DirectionNum != null ? String(s.DirectionNum) : "",
+        heads: String(s.TripHeadsign || ""),
+        dirText: String(s.TripDirectionText || ""),
+    })).filter(s => s.route && Number.isFinite(s.at));
+    arrivals.sort((a, b) => a.at - b.at);
+    return arrivals;
+}
+
+function ensureStopSchedule(stopId) {
+    const id = String(stopId || "");
+    if (!id) return Promise.resolve([]);
+    const day = scheduleDayKey();
+    const hit = stopScheduleCache[id];
+    if (hit && hit.day === day && (hit.ok || Date.now() - hit.at < SCHEDULE_RETRY_MS))
+        return Promise.resolve(hit.arrivals);
+    if (stopScheduleInflight[id]) return stopScheduleInflight[id];
+    stopScheduleInflight[id] = fetchStopSchedule(id)
+        .then(arrivals => {
+            stopScheduleCache[id] = { day, arrivals, ok: true, at: Date.now() };
+            return arrivals;
+        })
+        .catch(() => {
+            stopScheduleCache[id] = { day, arrivals: [], ok: false, at: Date.now() };
+            return [];
+        })
+        .finally(() => { delete stopScheduleInflight[id]; });
+    return stopScheduleInflight[id];
+}
+
+// The next scheduled arrival at `stopId` (optionally for one route/direction),
+// from today's cached schedule. Null when the schedule has none left.
+function nextScheduledFor(stopId, route, dirNum, heads) {
+    const hit = stopScheduleCache[String(stopId || "")];
+    if (!hit || hit.day !== scheduleDayKey()) return null;
+    const now = Date.now();
+    const r = route ? String(route).toUpperCase() : "";
+    const dn = dirNum == null || dirNum === "" ? "" : String(dirNum);
+    const h = heads ? normHeads(heads) : "";
+    for (const s of hit.arrivals) {
+        if (s.at < now) continue;
+        if (r && s.route !== r) continue;
+        if (dn && s.dirNum && s.dirNum !== dn) continue;
+        if (!dn && h && s.heads && normHeads(s.heads) !== h) continue;
+        return s;
+    }
+    return null;
+}
+
+// "11:45 AM" for a scheduled arrival time.
+function fmtScheduleTime(ms) {
+    return new Date(ms).toLocaleTimeString("en-us", { hour: "numeric", minute: "2-digit" });
+}
+
 // Route details:  GET /Bus.svc/json/jRouteDetails?RouteID   (verified 2026-11:
 // 200 from /Bus.svc, 404 from /NextBusService.svc; CORS *; jPredictions-style
 // api_key auth). Returns { RouteID, Name, Direction0, Direction1 } where each
@@ -1176,11 +1249,16 @@ function fmtEta(min) {
 }
 
 // The first ETA emphasized, the later ones muted after it
-// ("6 min then 14 min, 29 min").
-function boardEtasHtml(mins) {
+// ("6 min then 14 min, 29 min"). With no prediction but a scheduled arrival,
+// show that clock time with a "not predicted" suffix instead.
+function boardEtasHtml(mins, scheduled) {
     const list = (mins || []).slice(0, 8);
-    if (!list.length)
+    if (!list.length) {
+        if (scheduled)
+            return `<span class="board-eta-first">${esc(fmtScheduleTime(scheduled.at))}</span>`
+                + ` <span class="board-eta-rest">not predicted</span>`;
         return `<span class="board-eta-rest">no upcoming predictions</span>`;
+    }
     let h = `<span class="board-eta-first">${esc(fmtEta(list[0]))}</span>`;
     if (list.length > 1)
         h += `<span class="board-eta-rest">then ${list.slice(1).map(m => esc(fmtEta(m))).join(", ")}</span>`;
@@ -1195,7 +1273,7 @@ const rowKey = (r) => `${r.route}\u0000${String(r.dirNum ?? "")}\u0000${r.dest |
 // One row's header: a route badge (white on the route color), the final
 // destination below it, then the ETA list, all left-aligned from the badge.
 // Track rows also carry the "View all stops" disclosure button (piece 11).
-function boardRowHead(row, color, g, k) {
+function boardRowHead(row, color, g, k, scheduled) {
     const dest = (row.kind === "track" || row.kind === "service")
         ? (row.dest ? esc(row.dest) : "")
         : esc(row.dest || row.dir || "");
@@ -1209,8 +1287,8 @@ function boardRowHead(row, color, g, k) {
         + (dest ? `<span class="board-dest">${dest}</span>` : `<span class="board-dest">Destination unavailable</span>`)
         + (row.note ? `<span class="board-note">${esc(row.note)}</span>` : "")
         + `</div>`
-        + ((row.mins && row.mins.length) || (g && g.hasTrack)
-            ? `<span class="board-etas">${boardEtasHtml(row.mins)}</span>` : "")
+        + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled
+            ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled)}</span>` : "")
         + (subParts.length ? `<div class="row-subline">${subParts.join(" ")}</div>` : "")
         + `</div>`;
 }
@@ -1226,6 +1304,11 @@ function boardHtml(geom, rows) {
         row.anchorId = (row.anchorPatStop || {}).id || row.anchorId;
         const k = rowKey(row);
         const open = expandedStops.has(k);
+        // No live prediction for this row? Fall back to the stop's next
+        // scheduled arrival, matched by route (+ direction).
+        const scheduled = (!row.mins || !row.mins.length)
+            ? nextScheduledFor(row.anchorId, row.route, row.dirNum, row.dest)
+            : null;
         // Piece 11: the ordered stop list behind the "View all stops" button.
         // No numeric index; each stop is a button that re-anchors the board.
         const list = g && g.hasTrack && (g.stops || []).length >= 2
@@ -1238,7 +1321,7 @@ function boardHtml(geom, rows) {
                 }).join("") + `</ul>`
             : "";
         out += `<div class="board-row" data-rowkey="${encodeURIComponent(k)}">`
-            + `${boardRowHead(row, color, g, k)}${list}</div>`;
+            + `${boardRowHead(row, color, g, k, scheduled)}${list}</div>`;
     }
     return `<div class="board">${out}</div>`;
 }
@@ -1333,18 +1416,23 @@ async function refreshPredictions() {
         if (acrossStop) toFetch.set(acrossStop.StopID, acrossStop);
         if (!toFetch.size) return;
         let saw429 = false;
-        await Promise.all([...toFetch.values()].map(async (stop) => {
-            try {
-                const { name, predictions } = await fetchPredictions(stop.StopID);
-                if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
-                stop.Arrivals = predictions;
-                stop.Error = null;
-            } catch (e) {
-                stop.Arrivals = [];
-                stop.Error = e;                                 // rendered as a muted row
-                if (e.rateLimited) saw429 = true;
-            }
-        }));
+        await Promise.all([
+            ...[...toFetch.values()].map(async (stop) => {
+                try {
+                    const { name, predictions } = await fetchPredictions(stop.StopID);
+                    if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
+                    stop.Arrivals = predictions;
+                    stop.Error = null;
+                } catch (e) {
+                    stop.Arrivals = [];
+                    stop.Error = e;                                 // rendered as a muted row
+                    if (e.rateLimited) saw429 = true;
+                }
+            }),
+            // Schedule fallback for rows with no live prediction. Cached per
+            // stop/day; failures never block the predictions render.
+            ...[...toFetch.keys()].map(id => ensureStopSchedule(id)),
+        ]);
         rateLimited = saw429;          // → next refresh is delayed (self-throttling)
         lastRefreshAt = Date.now();
         // Plan §4: a stale result must not land after a new selection —
@@ -1976,7 +2064,19 @@ function boardHeaderHtml(st, arrivals) {
     } else if (st.Error) {
         nextLine = "Next bus <span class=\"text-muted\">arrivals unavailable — retrying</span>";
     } else {
-        nextLine = "Next bus <span class=\"text-muted\">no upcoming predictions</span>";
+        // No live prediction: test the schedule and show the next scheduled
+        // arrival explicitly as "not predicted".
+        const sched = nextScheduledFor(id);
+        if (sched) {
+            const schedBits = [
+                `<span class="row-badge" style="background:${routeColor(sched.route)}">${esc(sched.route)}</span>`,
+                esc(sched.heads || sched.dirText || "")
+            ].filter(Boolean).join(" ");
+            nextLine = `Next bus ${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
+                + ` <span class="bt-next-rest">not predicted</span>`;
+        } else {
+            nextLine = "Next bus <span class=\"text-muted\">no upcoming predictions</span>";
+        }
     }
     return `<div class="board-stophead">`
         + `<div><span class="board-stopname">${esc(label)}</span>`
