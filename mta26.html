@@ -126,24 +126,25 @@
             padding: 8px 12px; margin: 6px 0;
         }
 
-        /* Section headings (across / nearby): quiet cards. Clickable:
-           selecting that stop slides its section to the top of the board. */
+        /* Section headings (nearby): dark cards, a slate that stays distinct
+           from the boarding-stop hero above. Clickable: selecting that stop
+           slides its section to the top of the board. */
         .curb-head {
             margin: 14px 2px 4px; padding: 10px 16px; border-radius: 10px;
-            background: #eef1f4; border: 1px solid #dde2e7; cursor: pointer;
+            background: #3d4b5c; border: 1px solid #344152; cursor: pointer;
         }
-        .curb-head:hover { background: #e6eaee; }
+        .curb-head:hover { background: #46566a; }
         .curb-head:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
-        /* Each stop's own heading (across / nearby) is a single line: a left-
-           aligned title/sub block and a right-aligned ETA summary, so the bar
-           reads "stop name … TENLEYTOWN · C87 — and xx min / yy min". */
+        /* Each stop's own heading is a single line: a left-aligned title/sub
+           block and a right-aligned ETA summary, so the bar reads
+           "stop name … Across the street · #id — and xx min / yy min". */
         .curb-head-stop { display: flex; align-items: center; gap: 16px; }
         .curb-main { flex: 1 1 auto; min-width: 0; }
-        .curb-etas { flex: none; white-space: nowrap; font-size: 12px; color: #8a959e; }
+        .curb-etas { flex: none; white-space: nowrap; font-size: 12px; color: #cfd8e3; }
         .curb-title {
-            font: 600 15px/1.3 system-ui, -apple-system, sans-serif; color: #212529;
+            font: 600 15px/1.3 system-ui, -apple-system, sans-serif; color: #fff;
         }
-        .curb-sub { margin: 1px 0 0; font-size: 12px; color: #8a959e; }
+        .curb-sub { margin: 1px 0 0; font-size: 12px; color: #cfd8e3; }
 
         .board-head {
             display: flex; align-items: flex-start; gap: 10px;
@@ -192,19 +193,15 @@
         }
         .bt-stoplist .bt-mark { font-weight: 700; color: #0056b3; }
 
-        /* the stop header: a dark hero card — eyebrow, name + ID, next bus. */
+        /* the stop header: a dark hero card — name, next bus. */
         .board-stophead {
             margin: 8px 2px 4px; padding: 10px 16px 12px;
             background: #182338; color: #fff; border-radius: 10px;
         }
-        .board-stopeyebrow {
-            font: 500 11px/1.4 system-ui, -apple-system, sans-serif;
-            letter-spacing: .05em; color: #9fb0c7; margin-bottom: 2px;
-        }
         .board-stopname { margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.25; }
         .board-stopid { margin-left: 8px; font: 500 12px/1.4 system-ui, -apple-system, sans-serif; color: #9fb0c7; }
         .board-next { margin: 6px 0 0; font-size: 14px; color: #cfd8e3; }
-        .bt-next-eta { font-weight: 700; font-size: 20px; color: #fff; font-variant-numeric: tabular-nums; }
+        .bt-next-eta { font-weight: 700; font-size: 20px; color: #8ce99a; font-variant-numeric: tabular-nums; }
         .bt-next-rest { font-size: 13px; color: #9fb0c7; font-variant-numeric: tabular-nums; }
 
         /* floating tooltip that follows a hovered stop dot */
@@ -304,6 +301,7 @@ const WMATA_API = "https://api.wmata.com";
 // 1002141/1002148 no longer exist (verified 2026-11). The no-param view
 // does a live nearby search instead of using fixed IDs, so it self-heals
 // if the IDs change again; see README → "Maintenance".
+//
 
 // Park Rd NW, Cleveland Park (20010) — the "home" corner
 const HOME = { lat: 38.93468, lon: -77.04512 };
@@ -875,8 +873,8 @@ function acrossTheStreet(anchor, candidates, patterns) {
 
 // The one confirmed opposite-side stop (plan §2.2), if the data supports
 // exactly one. Reset on every selection change; its predictions ride along
-// in refreshPredictions' deduped set, and its rows form the board's second
-// curb section on the same scale and the same guide.
+// in refreshPredictions' deduped set, and its rows join the nearby list as
+// its first entry, labeled "Across the street".
 let acrossStop = null;
 
 // Every selection change (a new search, Home, Locate, a new or cleared
@@ -1330,13 +1328,11 @@ async function runFlow() {
             // ?busstop= given: use it as-is, ignore lat/lon (as documented).
             // Coordinates stay null — the arrivals list never needs them,
             // and the stop directory (the jStops dump) is the coord source.
-            gStatus.textContent = `${stopListFromURL.length} stop${stopListFromURL.length > 1 ? "s" : ""} from URL`;
             stops = stopListFromURL.map(id => makeStop(id, null, null, null));
         } else if (!searchPoint) {
             // No lat/lon in the URL and no geolocation grant: default to the
             // first corner of the 20010 intersection (plan §2). Coordinates
             // come from the directory once it has loaded.
-            gStatus.textContent = `Showing ${DEFAULT_STOP_ID}`;
             stops = [defaultStopRec()];
         } else {
             // ?lat&lon (or HOME): find stops near the search point
@@ -1429,9 +1425,9 @@ async function refreshPredictions() {
         renderLines();
         scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
         tickClock();                   // reflect this update + the new countdown at once
-        const shownCount = shownStops().length;
-        gStatus.textContent = `${shownCount} stop${shownCount > 1 ? "s" : ""}` +
-            (rateLimited ? " · API rate limit hit, slowing refresh" : "");
+        gStatus.textContent = rateLimited
+            ? "API rate limit hit, slowing refresh"
+            : (stops.length ? "" : gStatus.textContent);
     } finally {
         refreshInFlight = false;
         if (refreshQueued) {
@@ -1925,8 +1921,8 @@ function slideSectionToTop(headEl) {
 gLinesScroll.addEventListener("click", e => {
     const head = e.target.closest ? e.target.closest(".curb-head") : null;
     if (!head || !head.dataset) return;
-    // Both secondary heading kinds name their stop: the across counterpart and
-    // each per-stop nearby bar.
+    // Each nearby bar names its stop; the across counterpart is simply the
+    // first bar, with "Across the street" as its location description.
     const id = head.dataset.stop;
     if (!id || String(pickedStop) === id) return;   // already the anchor
     pickedStop = id;
@@ -1960,15 +1956,22 @@ function onBoardScroll() {
 }
 gLinesScroll.addEventListener("scroll", onBoardScroll);
 
-// The stop the board anchors on: the picked stop, or (no pick — nearby
-// mode) the closest nearby stop, shownStops()[0] (the list is
-// distance-sorted, and the view never prompts). With the directory loaded,
-// its entry is preferred (canonical name, coordinates, and the full
-// Routes list the service rows need). A directory that is still loading or
-// failed must never block the board (plan §2) — the stop object at hand is
-// a sufficient fallback, and a name can also come from jPredictions.
+// The stop the board anchors on: the picked stop, else the default corner
+// (1002135) when it is in the shown list, else the closest nearby stop
+// (shownStops()[0], distance-sorted). With the directory loaded, its entry is
+// preferred (canonical name, coordinates, and the full Routes list the
+// service rows need). A directory that is still loading or failed must never
+// block the board (plan §2) — the stop object at hand is a sufficient
+// fallback, and a name can also come from jPredictions.
 function anchorStop() {
-    const want = String(pickedStop || ((shownStops()[0] || {}).StopID) || "");
+    const shown = shownStops();
+    let want;
+    if (pickedStop) {
+        want = String(pickedStop);
+    } else {
+        const def = shown.find(s => String(s.StopID) === DEFAULT_STOP_ID);
+        want = String((def || shown[0] || {}).StopID || "");
+    }
     if (!want) return null;
     if (allStopsCache) {
         const hit = allStopsCache.find(s => String(s.StopID) === want);
@@ -2006,7 +2009,6 @@ function boardHeaderHtml(st, arrivals) {
         nextLine = "Next bus <span class=\"text-muted\">no upcoming predictions</span>";
     }
     return `<div class="board-stophead">`
-        + `<div class="board-stopeyebrow">Selected boarding stop</div>`
         + `<div><span class="board-stopname">${esc(label)}</span>`
         + (st.Name ? `<span class="board-stopid">#${esc(id)}</span>` : "")
         + `</div>`
@@ -2076,30 +2078,38 @@ function buildBusMarkers(row, g, scale, posRows, now) {
 
 // Paint the board from fully resolved inputs. Sections, top to bottom:
 // the selected stop's rows (no heading — the boarding stop card above names
-// it), the confirmed opposite-side stop (plan §2.2, grey heading), then each
-// nearby stop within 500 ft under its own grey separator bar. Every section
-// shares ONE px-per-foot scale and ONE boarding x — board geometry runs over
-// ALL row sets, so every board lines up on the same guide inside the one
-// horizontal scroll area.
+// it), then each nearby stop within 500 ft under its own dark separator bar.
+// The confirmed opposite-side stop is the FIRST nearby stop and its bar reads
+// "Across the street" instead of a distance. Every section shares ONE
+// px-per-foot scale and ONE boarding x — board geometry runs over ALL row
+// sets, so every board lines up on the same guide inside the one horizontal
+// scroll area.
 function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, anchorNearby) {
     const mainRows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
-    const acrossRows = across
-        ? buildBoardRows(String(across.StopID), across.Arrivals || [], routeDetails, posRows)
-        : [];
-    const nearbyRecs = (anchorNearby || []).map(n => {
+    // Merge the across-the-street counterpart into the nearby list (first)
+    // so it is never shown twice.
+    const acrossId = across ? String(across.StopID) : "";
+    const nearbyBase = (anchorNearby || []).filter(n => String(n.id) !== acrossId);
+    if (across) nearbyBase.unshift({
+        id: acrossId, name: across.Name, lat: across.Lat, lon: across.Lon,
+        routes: across.Routes || [], distFt: null
+    });
+    const nearbyRecs = nearbyBase.map(n => {
         const rec = stops.find(s => String(s.StopID) === n.id)
             || makeStop(n.id, n.name, n.lat, n.lon);
         return Object.assign(rec, { Routes: n.routes || [], distFt: n.distFt });
     });
     const nearbyRows = [];
     for (const stp of nearbyRecs) {
-        const arrOf = (pickedStopObj && String(pickedStopObj.StopID) === String(stp.StopID))
-            ? (pickedStopObj.Arrivals || [])
-            : ((shownStops().find(s => String(s.StopID) === String(stp.StopID)) || { Arrivals: [] }).Arrivals || []);
+        const arrOf = acrossId && String(stp.StopID) === acrossId
+            ? (across.Arrivals || [])
+            : (pickedStopObj && String(pickedStopObj.StopID) === String(stp.StopID))
+                ? (pickedStopObj.Arrivals || [])
+                : ((shownStops().find(s => String(s.StopID) === String(stp.StopID)) || { Arrivals: [] }).Arrivals || []);
         nearbyRows.push(...buildBoardRows(String(stp.StopID), arrOf, routeDetails, posRows));
     }
     // ONE geometry over every curb section: the shared scale and guide.
-    let geo = boardGeometry([...mainRows, ...acrossRows, ...nearbyRows]);
+    let geo = boardGeometry([...mainRows, ...nearbyRows]);
     const now = Date.now();
     // The 120-minute freshness gate (plan §3): when the feed's newest sample
     // is older than that (including a feed that failed to refresh), no live
@@ -2108,34 +2118,14 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     const liveRows = posFeed && now - posFeed.newestAt <= BUS_SAMPLE_MAX_AGE_MS
         ? (posRows || []) : [];
     mainRows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[i], geo.scale, liveRows, now); });
-    acrossRows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[mainRows.length + i], geo.scale, liveRows, now); });
-    nearbyRows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[mainRows.length + acrossRows.length + i], geo.scale, liveRows, now); });
+    nearbyRows.forEach((r, i) => { r.busMarkers = buildBusMarkers(r, geo.rows[mainRows.length + i], geo.scale, liveRows, now); });
     // Section headings. The selected stop is already named in the boarding
     // stop card above the board, so its rows need no heading of their own.
-    // Every secondary STOP gets its own light bar: the across counterpart
-    // reads "Across the street" with name · #id in the sub, each nearby stop
-    // is titled with its own name and a "Nearby stop · #id" sub, and to the
-    // right an ETA summary of the stop's rows, "and xx min / yy min", after
-    // the final destination. Clicking a secondary heading selects that stop —
-    // which slides its section (now first) to the top of the board.
-    const acrossEtaBits = [];
-    if (acrossRows.length && across) {
-        for (const r of acrossRows)
-            if (r.dest && r.mins && r.mins.length)
-                acrossEtaBits.push(`${(r.mins[0] === 0 ? "Due" : Math.round(r.mins[0]) + " min")}`);
-    }
-    const acrossHead = acrossRows.length && across
-        ? `<div class="curb-head" role="button" tabindex="0" data-stop="${esc(String(across.StopID))}">`
-              + `<div class="curb-head-stop"><div class="curb-main">`
-              + `<div class="curb-title">Across the street</div>`
-              + (across.Name ? `<div class="curb-sub">${esc(across.Name)} · #${esc(across.StopID)}</div>` : "")
-              + `</div>`
-              + (acrossEtaBits.length ? `<span class="curb-etas">and ${acrossEtaBits.join(" / ")}</span>` : "")
-              + `</div></div>`
-        : "";
-    // One light separator bar PER nearby stop (not one shared header): the
-    // bar is titled with that stop's own name and shows its distance from the
-    // anchor, and sits between this stop's rows and the next stop's.
+    // Every nearby STOP gets its own dark bar: title = the stop's name, sub =
+    // "Across the street · #id" for the counterpart or "N ft away · #id", and
+    // to the right an ETA summary of the stop's rows, "and xx min / yy min".
+    // Clicking a bar selects that stop — which slides its section (now first)
+    // to the top of the board.
     let nearbyParts = [];
     let off = 0;
     for (let i = 0; i < nearbyRecs.length; i++) {
@@ -2149,8 +2139,10 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
             if (r.dest && r.mins && r.mins.length)
                 etaBits.push(r.mins[0] === 0 ? "Due" : Math.round(r.mins[0]) + " min");
         const name = rec.Name || allStopsName(id);
-        const away = rec.distFt != null ? `${Math.round(rec.distFt)} ft away` : "";
-        const subBits = [name ? "Nearby stop" : "", away, `#${id}`].filter(Boolean);
+        const where = id === acrossId
+            ? "Across the street"
+            : (rec.distFt != null ? `${Math.round(rec.distFt)} ft away` : "");
+        const subBits = [where, `#${id}`].filter(Boolean);
         nearbyParts.push(`<div class="curb-head" role="button" tabindex="0" data-nearby="1" data-stop="${esc(id)}">`
             + `<div class="curb-head-stop"><div class="curb-main">`
             + `<div class="curb-title">${esc(name || "Nearby stop")}</div>`
@@ -2160,9 +2152,6 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
             + `</div></div>`);
         off += sliceLen;
     }
-    const acrossHtml = acrossRows.length
-        ? boardHtml({ ...geo, rows: geo.rows.slice(mainRows.length, mainRows.length + acrossRows.length) }, acrossRows)
-        : "";
     // Interleave: each nearby stop's rows directly under its own bar.
     let nearbyHtml = "";
     off = 0;
@@ -2170,12 +2159,12 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         const sliceLen = nearbyRows.length - off;
         if (nearbyParts[i]) nearbyHtml += nearbyParts[i];
         if (sliceLen)
-            nearbyHtml += boardHtml({ ...geo, rows: geo.rows.slice(mainRows.length + acrossRows.length + off) },
+            nearbyHtml += boardHtml({ ...geo, rows: geo.rows.slice(mainRows.length + off) },
                 nearbyRows.slice(off, off + sliceLen));
         off += sliceLen;
     }
-    gLinesScroll.innerHTML = (mainRows.length || acrossRows.length || nearbyRows.length)
-        ? boardHtml(geo, mainRows) + acrossHead + acrossHtml + nearbyHtml
+    gLinesScroll.innerHTML = (mainRows.length || nearbyRows.length)
+        ? boardHtml(geo, mainRows) + nearbyHtml
         : "";
     centerBoard();   // piece 12: boarding guide centered on narrow screens
     gLinesNote.textContent = "";   // no legend line: the board is self-describing
