@@ -46,9 +46,10 @@
             outline: 2px solid #0056b3;
             outline-offset: 2px;
         }
+        .mode-icon i { color: #adb5bd; }
         .mode-icon.active i { color: #2e7d32; }
 
-        /* clock block: current time over "updated … · refresh in Ns", with
+        /* clock block: current time over "at … ·refresh in Ns", with
            the auto-refresh toggle beside it. */
         /* full-page access gate */
         .gate {
@@ -66,7 +67,7 @@
         .gate-error { min-height: 18px; color: #c92a2a; font-size: 13px; }
 
         /* three shortcut buttons keep the header compact on phones */
-        .nav-shortcut i { font-size: 2em; width: 46px; }
+        .nav-shortcut i { font-size: 2em; width: 46px; color: #adb5bd; }
         .nav-shortcut { position: relative; }
         .nav-shortcut .nav-bookmark {
             position: absolute; right: 2px; bottom: -2px;
@@ -202,8 +203,6 @@
             font: 14px/1.4 system-ui, -apple-system, sans-serif;
         }
         .row-mainline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
-        /* "View all stops" shares the header row and is pushed to the right. */
-        .row-subline { margin-left: auto; font-size: 12px; color: #8a959e; }
         .board-routecode { flex: none; min-width: 36px; font-weight: 700; font-size: 14px; }
         /* Route badge: white code on the route's saturated color (the palette
            is dark enough to keep it legible). */
@@ -215,12 +214,25 @@
             background: transparent; border: 2px solid currentColor;
             padding: 0 7px;
         }
-        /* Metro line names share one rectangle width (fits "Orange"/"Yellow"). */
+        /* Metro line names share one rectangle width (fits "Orange"/"Yellow"
+           plus the stop-list chevron). */
         .row-badge.metro-line {
-            width: 72px; box-sizing: border-box;
+            width: 84px; box-sizing: border-box;
             display: inline-flex; align-items: center; justify-content: center;
             text-align: center;
         }
+        /* A badge with a stop list is the disclosure control itself. */
+        .row-badge.bt-allstops {
+            padding: 2px 9px; border: 0; border-radius: 5px;
+            font: 700 13px/1.4 system-ui, -apple-system, sans-serif; color: #fff;
+            display: inline-flex; align-items: center; gap: 4px;
+            cursor: pointer;
+        }
+        .row-badge.bt-allstops:hover { filter: brightness(1.08); }
+        .row-badge.hollow.bt-allstops {
+            border: 2px solid currentColor; padding: 0 7px;
+        }
+        .row-badge.hollow.bt-allstops:hover { background: transparent; }
         .row-badge-wrap { display: inline-flex; align-items: center; gap: 5px; flex: none; }
         .bus-status-slot { width: 18px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
         .bus-status { font-size: 12px; }
@@ -305,6 +317,21 @@
             font-size: 13px;
             line-height: 1.45;
             pointer-events: none;
+        }
+
+        /* Keep the top bar on one line on phones: smaller mode/shortcut icons,
+           tighter gaps, and hide the secondary clock meta on narrow screens. */
+        @media (max-width: 640px) {
+            .navbar .container { flex-wrap: nowrap; gap: 2px; }
+            .fa-xl-mta { font-size: 2em; width: 42px; }
+            .nav-shortcut i { font-size: 1.4em; width: 30px; }
+            .nav-shortcut .nav-bookmark { font-size: 0.35em; }
+            #clock { font-size: 22px !important; }
+            .clock-meta { font-size: 9px; }
+            .navbar .container > div:last-child { gap: 4px !important; }
+        }
+        @media (max-width: 560px) {
+            .clock-meta { display: none; }
         }
 
     </style>
@@ -1532,7 +1559,7 @@ const rowKey = (r) => `${r.route}\u0000${String(r.dirNum ?? "")}\u0000${r.dest |
 
 // One row's header: a route badge (white on the route color), the final
 // destination below it, then the ETA list, all left-aligned from the badge.
-// Track rows also carry the "View all stops" disclosure button (piece 11).
+// Track rows also carry the stop-list chevron on the route badge (piece 11).
 function boardRowHead(row, color, g, k, scheduled) {
     const dest = (row.kind === "track" || row.kind === "service")
         ? (row.dest ? esc(row.dest) : "")
@@ -1547,16 +1574,20 @@ function boardRowHead(row, color, g, k, scheduled) {
             ? `<i class="fa-solid ${arrivingIcon} bus-status arriving"${arrivingStyle} title="Arriving" aria-label="Arriving"></i>`
             : "";
     const badgeText = row.metro ? metroLineName(row.route) : row.route;
-    const badgeClass = `row-badge${row.metro ? " metro-line" : ""}${departed ? " hollow" : ""}`;
+    const hasList = (g && g.hasTrack && (g.stops || []).length >= 2) ||
+        (row.metro && row.toCode);
+    const chevron = hasList
+        ? ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>`
+        : "";
+    const badgeClass = `row-badge${row.metro ? " metro-line" : ""}${departed ? " hollow" : ""}${hasList ? " bt-allstops" : ""}`;
+    const badgeTag = hasList ? "button" : "span";
+    const badgeAttrs = hasList
+        ? ` type="button" class="${badgeClass}" aria-expanded="${expandedStops.has(k)}"`
+        : ` class="${badgeClass}"`;
+    const badgeInner = `${esc(badgeText)}${chevron}`;
     const badge = departed
-        ? `<span class="${badgeClass}" style="color:${color};border-color:${color}">${esc(badgeText)}</span>`
-        : `<span class="${badgeClass}" style="background:${color}">${esc(badgeText)}</span>`;
-    const subParts = [];
-    if ((g && g.hasTrack && (g.stops || []).length >= 2) ||
-        (row.metro && row.toCode)) {
-        subParts.push(`<button type="button" class="bt-allstops" aria-expanded="${expandedStops.has(k)}">View all stops`
-            + ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`);
-    }
+        ? `<${badgeTag}${badgeAttrs} style="color:${color};border-color:${color}">${badgeInner}</${badgeTag}>`
+        : `<${badgeTag}${badgeAttrs} style="background:${color}">${badgeInner}</${badgeTag}>`;
     return `<div class="board-head">`
         + `<span class="row-badge-wrap"><span class="bus-status-slot">${statusIcon}</span>${badge}</span>`
         + `<div class="row-mainline">`
@@ -1564,7 +1595,6 @@ function boardRowHead(row, color, g, k, scheduled) {
         + `</div>`
         + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled || departed
             ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled, row.departedAt)}</span>` : "")
-        + (subParts.length ? `<div class="row-subline">${subParts.join(" ")}</div>` : "")
         + `</div>`;
 }
 
@@ -1585,7 +1615,7 @@ function boardHtml(geom, rows) {
         const scheduled = (!row.departed && (!row.mins || !row.mins.length))
             ? (row.scheduled || nextScheduledFor(row.anchorId, row.route, row.dirNum, row.dest))
             : null;
-        // Piece 11: the ordered stop list behind the "View all stops" button.
+        // Piece 11: the ordered stop list behind the badge chevron.
         // No numeric index; each stop is a button that re-anchors the board.
         const list = g && g.hasTrack && (g.stops || []).length >= 2
             ? `<ul class="bt-stoplist"${open ? "" : " hidden"}>`
@@ -1635,6 +1665,7 @@ async function runFlow() {
     try {
         resetPick();                     // a new flow starts from the session's list (any picked stop is undone)
         noteSelectionChange();           // void the old counterpart + any in-flight refresh
+        scrollPageTop();
         if (stopListFromURL && !forceNearby) {
             // ?busstop= given: use it as-is, ignore lat/lon (as documented).
             // Coordinates stay null — the arrivals list never needs them,
@@ -1759,6 +1790,7 @@ function setMode(next) {
     gBoardHeader.innerHTML = "";
     gLinesScroll.innerHTML = "";
     gLinesNote.textContent = "";
+    scrollPageTop();
     if (mode === "bus") {
         if (allStopsCache) populateBusSelect(allStopsCache);
         runFlow();
@@ -1794,6 +1826,7 @@ function setMetroAnchor(code) {
     metroAnchor = Object.assign({}, anchor, { distFt: 0 });
     if (gMetroSelect) gMetroSelect.value = anchor.Code;
     expandedStops.clear();
+    scrollPageTop();
     metroNearby = all.filter(s => s.Code !== anchor.Code)
         .map(s => Object.assign({}, s, {
             distFt: distance(anchor.Lat, anchor.Lon, s.Lat, s.Lon, "f")
@@ -2648,6 +2681,15 @@ function slideSectionToTop(headEl) {
     } catch (e) { /* non-scrollable container: the repaint already moved it */ }
 }
 
+// A stop/station change returns the page to the top so the new header is
+// immediately visible.
+function scrollPageTop() {
+    if (typeof window === "undefined" || typeof window.scrollTo !== "function") return;
+    const behavior = REDUCE_MOTION.matches ? "auto" : "smooth";
+    try { window.scrollTo({ top: 0, behavior }); }
+    catch (e) { window.scrollTo(0, 0); }
+}
+
 // Re-anchor the board on `id`: update the pick, repaint, and refresh its
 // predictions. Shared by the nearby bars and the "View all stops" list.
 function selectStop(id) {
@@ -2659,6 +2701,7 @@ function selectStop(id) {
     const inList = stops.find(s => String(s.StopID) === id) || nearbyStopObjs.get(id);
     pickedStopObj = inList || (allStopsCache || []).find(s => String(s.StopID) === id)
         || makeStop(id, null, null, null);
+    scrollPageTop();
     noteSelectionChange();     // void the old counterpart before its refresh
     renderLines();             // re-anchors the board: this section lands first…
     refreshPredictions();      // …and its predictions arrive on the next paint
@@ -3090,12 +3133,12 @@ function fmtClockTime(ms) {
 
 function tickClock() {
     gClock.textContent = fmtClockTime(Date.now());
-    const bits = [lastRefreshAt ? `updated ${fmtClockTime(lastRefreshAt)}` : "updated —"];
+    const bits = [lastRefreshAt ? `at ${fmtClockTime(lastRefreshAt)}` : "at —"];
     if (!refreshEnabled) bits.push("auto-refresh off");
     else if (nextRefreshAt)
         bits.push(`refresh in ${Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000))}s`);
     else if (refreshInFlight) bits.push("refreshing…");
-    gClockMeta.textContent = bits.join(" · ");
+    gClockMeta.textContent = bits.join(" ·");
 }
 
 function setRefreshEnabled(on) {

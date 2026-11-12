@@ -167,7 +167,7 @@ const board = () => els.linesScroll.innerHTML;
     check("across: counterpart named in label", acrossIdx > -1 && b.slice(acrossIdx, acrossIdx + 80).includes("#1002135"));
     check("across: heading bar has no ETA summary", !b.includes("curb-etas"));
     check("across: no redundant selected-stop section heading", !b.includes("At the selected stop"));
-    check("across: both C87 patterns listed", (b.match(/>C87<\/span>/g) || []).length === 2);
+    check("across: both C87 patterns listed", (b.match(/row-badge[^>]*>C87/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
   } else if (ANCHOR === "1002130") {
     check("130: next bus D72 @14 min", h.includes("Next bus") && h.includes("D72") && h.includes("14 min"));
@@ -202,10 +202,10 @@ const board = () => els.linesScroll.innerHTML;
   check("no across section with live fixtures", !ACROSS ? !b.includes("Across the street") : true);
   check("ticker retired (no #tickerHost in DOM)", els.tickerHost === undefined);
 
-  // Clock block: current time, last updated time, and the refresh countdown.
-  check("clock: current time + updated + countdown",
+  // Clock block: current time, last update time, and refresh countdown.
+  check("clock: current time + update time + countdown",
     !!els.clock.textContent &&
-    /updated \d{1,2}:\d{2}:\d{2}/.test(els.clockMeta.textContent) &&
+    /at \d{1,2}:\d{2}:\d{2}/.test(els.clockMeta.textContent) &&
     /refresh in \d+s/.test(els.clockMeta.textContent));
   check("nearby: distance or across-street label",
     !b.includes('data-nearby="1"') || /\d+ ft away|Across the street/.test(b));

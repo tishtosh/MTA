@@ -104,9 +104,9 @@ t("A3b no prediction + schedule → time + not seen", (() => {
     html.includes('<ul class="bt-stoplist" hidden>') && !html.includes("<ol") &&
     html.includes('class="bt-stop-item" role="button" tabindex="0" data-stop="a"') &&
     !/\d+\.\s/.test(html));
-  t("D6 'View all stops' button with chevron + boarding/terminal marked",
-    html.includes('class="bt-allstops" aria-expanded="false">View all stops') &&
-    html.includes('class="fa-solid fa-chevron-down bt-chevron"') &&
+  t("D6 route badge carries the stop-list chevron; no separate button",
+    html.includes('bt-allstops') && html.includes('bt-chevron') &&
+    !html.includes("View all stops") &&
     html.includes('<b class="bt-mark">your stop</b>') && html.includes('<b class="bt-mark">terminal</b>'));
   {
     const k1 = ctx.__rowKey({ route: "M1", dest: "TerB" });   // dirNum absent, like these rows
@@ -135,7 +135,7 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   ];
   const html = ctx.boardHtml(ctx.boardGeometry(rows), rows);
   t("E1 departed row: hollow badge, departed icon, Departed label",
-    html.includes('class="row-badge hollow"') && html.includes("bus-status departed") &&
+    html.includes('row-badge hollow') && html.includes("bus-status departed") &&
     html.includes('class="bus-status-slot"><i class="fa-solid fa-arrow-right-from-bracket') &&
     html.includes(">Departed<") && html.includes("min ago"));
   t("E2 arriving row (0 min): arriving icon", html.includes("bus-status arriving") &&
