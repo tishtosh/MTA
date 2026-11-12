@@ -865,12 +865,14 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
         v.preds.push(p);
         if (p.vehicle) v.vehicles.push(p.vehicle);
     }
-    const covered = new Set(), ambiguous = new Set();
+    const covered = new Set(), ambiguous = new Set(), liveHeads = {};
     for (const p of predictions || []) {
         if (!p) continue;
         const dn = p.dirNum == null || p.dirNum === "" ? "?" : String(p.dirNum);
         covered.add(p.route + "|" + dn);
         if (dn === "?") ambiguous.add(p.route);
+        const h = normHeads(p.heads || p.dir);
+        if (h) (liveHeads[p.route] || (liveHeads[p.route] = [])).push(h);
     }
     for (const v of rows) {
         v.mins.sort((a, b) => a - b);
@@ -899,6 +901,12 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
         for (const d of entry.directions) {
             if (covered.has(route + "|" + d.dirNum)) continue;
             if (!containsStopId(d, anchor)) continue;
+            // Do not add a scheduled "not seen" row when a live prediction
+            // already carries the same route + headsign (direction variants
+            // and missing DirectionNum can otherwise duplicate the bus).
+            const sh = normHeads(d.heads);
+            if (sh && (liveHeads[route] || []).some(h => h === sh || h.includes(sh) || sh.includes(h)))
+                continue;
             const idx = d.stops.findIndex(s => s.id === anchor);
             rows.push({ kind: "service", route, dirNum: d.dirNum,
                         heads: d.heads, dest: d.heads || d.dirText || "",

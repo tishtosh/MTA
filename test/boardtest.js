@@ -194,5 +194,15 @@ sandbox.updateDeparted(stopJ, [], 1030000);
 check("syn I: a far-future vanished prediction is not marked departed",
   stopJ.Departed.length === 0);
 
+// ---- J: no duplicate scheduled row for a live route+headsign ----
+const rdDup = { D44: mkEntry("D44", [
+  { dirNum: "0", heads: "FORT TOTTEN", stops: [S("9999", 1, 1)] },
+  { dirNum: "1", heads: "FEDERAL TRIANGLE", stops: [S("9999", 1, 1)] }]) };
+const rDup = sandbox.buildBoardRows("9999",
+  [{ min: 4, route: "D44", dir: "South to Federal Triangle", dirNum: "0",
+     heads: "South to Federal Triangle", vehicle: "44", trip: "440" }], rdDup, []);
+check("syn J: live route+headsign suppresses duplicate service row",
+  rDup.length === 1 && rDup[0].mins[0] === 4);
+
 console.log("\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
