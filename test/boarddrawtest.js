@@ -35,6 +35,8 @@ let src = [names.map(constBlock).join("\n"),
   extractFn("boardGeometry"), extractFn("esc"), extractFn("routeColor"),
   extractFn("fmtEta"), extractFn("boardEtasHtml"), extractFn("normHeads"),
   extractFn("scheduleDayKey"), extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
+  "let selectionVersion = 0, acrossStop = null, boardUserScrolled = false, boardAuto = {};",
+  extractFn("noteSelectionChange"),
   extractFn("boardRowHead"), extractFn("boardHtml")].join("\n");
 // const/let bindings stay in the script's lexical scope, not on ctx — expose
 // the two piece-11 ones so the tests can poke them.
@@ -59,7 +61,7 @@ t("R2 distinct routes land on stable colors",
   ctx.routeColor("D72") === expectColor("D72") && ctx.routeColor("M1") === ctx.routeColor("M1"));
 t("A1 0 min = Due", ctx.fmtEta(0) === "Due");
 t("A2 plain minutes", ctx.fmtEta(3) === "3 min" && ctx.fmtEta(17.4) === "17 min");
-t("A3 empty list", ctx.boardEtasHtml([]).includes("no upcoming predictions"));
+t("A3 empty list", ctx.boardEtasHtml([]).includes("no arrival or departure"));
 t("A3b no prediction + schedule → time + not predicted", (() => {
   const h = ctx.boardEtasHtml([], { at: new Date(2099, 0, 1, 9, 15).getTime() });
   return h.includes("not predicted") && /\d{1,2}:\d{2}/.test(h);
@@ -96,7 +98,7 @@ t("A3b no prediction + schedule → time + not predicted", (() => {
   t("D3b service row with no prediction shows schedule + not predicted",
     html.includes("not predicted") && /\d{1,2}:\d{2}/.test(html) &&
     html.includes('class="board-row is-scheduled"'));
-  t("D4 compact row keeps its note", html.includes("route details unavailable"));
+  t("D4 compact row hides its route-details note", !html.includes("route details unavailable"));
   t("D5 stop lists are unnumbered and each stop is selectable",
     html.includes('<ul class="bt-stoplist" hidden>') && !html.includes("<ol") &&
     html.includes('class="bt-stop-item" role="button" tabindex="0" data-stop="a"') &&
@@ -115,6 +117,9 @@ t("A3b no prediction + schedule → time + not predicted", (() => {
       (html2.match(/<ul class="bt-stoplist" hidden>/g) || []).length === 2 &&
       html2.includes('aria-expanded="true"') && html2.includes('<ul class="bt-stoplist">'));
   }
+  ctx.__expandedStops.add("stale-key");
+  ctx.noteSelectionChange();
+  t("D8 changing stops collapses every stop list", ctx.__expandedStops.size === 0);
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

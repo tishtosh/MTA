@@ -51,6 +51,7 @@
            the auto-refresh toggle beside it. */
         /* three shortcut buttons keep the header compact on phones */
         .nav-shortcut i { font-size: 2em; width: 46px; }
+        .nav-shortcut.is-set i { color: #2e7d32; }
 
         .clock-meta {
             font: 500 11px/1.3 system-ui, -apple-system, sans-serif;
@@ -123,16 +124,14 @@
         /* The main stop's rows sit inside one bordered group whose top edge
            meets the dark boarding-stop box (square bottom corners above). */
         .main-board {
-            margin: 0 2px 8px; padding: 0 8px;
+            margin: 0 2px 8px; padding: 0;
             border: 1px solid #dee2e6; border-top: 0;
             border-radius: 0 0 10px 10px; background: #fff;
         }
         .main-board .board { margin: 0; }
-        /* A row with no live prediction: its scheduled fallback is boxed in a
-           quieter, dashed surface so it reads as timetable information. */
-        .board-row.is-scheduled {
-            background: #f8f9fa; border: 1px dashed #adb5bd;
-        }
+        /* A row with no live prediction: its scheduled fallback sits on a
+           quieter surface so it reads as timetable information. */
+        .board-row.is-scheduled { background: #f8f9fa; }
 
         /* One row = one quiet card: white surface, hairline border, rounded.
            The header + sub-line sit in a flex column so a wrapping line and
@@ -141,6 +140,16 @@
             display: flex; flex-direction: column; gap: 2px;
             background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
             padding: 8px 12px; margin: 6px 0;
+        }
+        /* Inside the main-stop group every route is the same stacked row:
+           square edges, no side borders, single separators. The group itself
+           supplies the rounded bottom. */
+        .main-board .board-row {
+            margin: 0; border-radius: 0;
+            border-left: 0; border-right: 0; border-bottom: 0;
+        }
+        .main-board .board-row + .board-row {
+            border-top: 1px solid #dee2e6;
         }
 
         /* Section headings (nearby): dark cards, a slate that stays distinct
@@ -183,7 +192,6 @@
             font-weight: 700; color: #182338;
             background: #e9ecef; padding: 1px 6px; border-radius: 3px;
         }
-        .board-note { font-size: 11px; opacity: .6; }
         /* The ETA group packs left, right after the destination. */
         .board-etas {
             white-space: nowrap;
@@ -1032,6 +1040,7 @@ let selectionVersion = 0;
 function noteSelectionChange() {
     selectionVersion++;
     acrossStop = null;
+    expandedStops.clear();       // a new stop starts with every list collapsed
     boardUserScrolled = false;   // piece 12: a new board re-claims centering
     boardAuto = { at: 0, left: null };
 }
@@ -1325,7 +1334,7 @@ function boardEtasHtml(mins, scheduled) {
         if (scheduled)
             return `<span class="board-eta-first">${esc(fmtScheduleTime(scheduled.at))}</span>`
                 + ` <span class="board-eta-rest">not predicted</span>`;
-        return `<span class="board-eta-rest">no upcoming predictions</span>`;
+        return `<span class="board-eta-rest">no arrival or departure</span>`;
     }
     let h = `<span class="board-eta-first">${esc(fmtEta(list[0]))}</span>`;
     if (list.length > 1)
@@ -1353,7 +1362,6 @@ function boardRowHead(row, color, g, k, scheduled) {
         + `<span class="row-badge" style="background:${color}">${esc(row.route)}</span>`
         + `<div class="row-mainline">`
         + (dest ? `<span class="board-dest">${dest}</span>` : `<span class="board-dest">Destination unavailable</span>`)
-        + (row.note ? `<span class="board-note">${esc(row.note)}</span>` : "")
         + `</div>`
         + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled
             ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled)}</span>` : "")
@@ -1649,6 +1657,7 @@ function updateShortcutNav() {
         if (!btn) continue;
         const saved = shortcuts[slot];
         const label = shortcutLabel(slot);
+        btn.classList.toggle("is-set", !!(saved && saved.id));
         if (saved && saved.id) {
             const name = saved.name || `#${saved.id}`;
             btn.title = `${label}: ${name}`;
@@ -2202,7 +2211,7 @@ function boardHeaderHtml(st, arrivals) {
             nextLine = `Next bus ${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
                 + ` <span class="bt-next-rest">not predicted</span>`;
         } else {
-            nextLine = "Next bus <span class=\"text-muted\">no upcoming predictions</span>";
+            nextLine = "Next bus <span class=\"text-muted\">no arrival or departure</span>";
         }
     }
     return `<div class="board-stophead">`

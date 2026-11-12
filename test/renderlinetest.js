@@ -118,7 +118,7 @@ const h3 = sandbox.boardHeaderHtml({ StopID: "X", Name: "x", Error: { rateLimite
 check("header: failed predictions → 'arrivals unavailable'", h3.includes("arrivals unavailable"));
 
 const h4 = sandbox.boardHeaderHtml({ StopID: "X", Name: "x", Error: null, Arrivals: [] }, []);
-check("header: no predictions → 'no upcoming predictions'", h4.includes("no upcoming predictions"));
+check("header: no predictions → 'no arrival or departure'", h4.includes("no arrival or departure"));
 
 // With no live prediction but a schedule entry, the header shows the time
 // and labels it "not predicted".
