@@ -222,7 +222,7 @@ const board = () => els.linesScroll.innerHTML;
     const ev = { target: { closest: sel => sel === ".board-shortcut" ? btn : null } };
     (els.boardHeader._l.click || []).forEach(f => f(ev));
     check("shortcuts: header icon saves work stop to cookie",
-      /mta_shortcuts=/.test(document.cookie) &&
+      /mta_shortcuts_bus=/.test(document.cookie) &&
       decodeURIComponent(document.cookie.split("=")[1]).includes('"work"'));
   }
 

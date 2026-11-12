@@ -46,6 +46,7 @@
             outline: 2px solid #0056b3;
             outline-offset: 2px;
         }
+        .mode-icon.active i { color: #2e7d32; }
 
         /* clock block: current time over "updated … · refresh in Ns", with
            the auto-refresh toggle beside it. */
@@ -318,8 +319,11 @@
     <nav class="navbar fixed-top navbar-light bg-light">
         <div class="container d-flex align-items-center">
             <div class="d-flex align-items-center">
-                <button id="btnBus" class="navicon" title="Reload" aria-label="Reload page">
+                <button id="btnBus" class="navicon mode-icon" title="Bus" aria-label="Show bus stops" aria-pressed="true">
                     <i class="fa-solid fa-bus fa-xl-mta"></i>
+                </button>
+                <button id="btnMetro" class="navicon mode-icon" title="Metro" aria-label="Show Metro stations" aria-pressed="false">
+                    <i class="fa-solid fa-train-subway fa-xl-mta"></i>
                 </button>
                 <div class="d-flex flex-column" style="line-height:1.15">
                     <span class="navbar-text" id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></span>
@@ -351,7 +355,7 @@
 <div style="margin-top:100px" class="container">
     <h3><small id="statusmessage" aria-live="polite"></small></h3>
 
-    <div class="ac-wrap">
+    <div id="acWrap" class="ac-wrap">
         <input id="stopEntry" class="form-control form-control-lg" type="text"
                placeholder="Look up a bus stop by name (drives the view)…" autocomplete="off" spellcheck="false"
                role="combobox" aria-expanded="false" aria-controls="stopEntryList" aria-label="Bus stop name">
@@ -407,8 +411,13 @@ function unlockAccess(pass) {
     API_KEY = decodeWithPassword(KEY_B64, pass);
     const gate = document.getElementById("gate");
     if (gate) gate.hidden = true;
-    runFlow();
+    startApp();
     return true;
+}
+
+function startApp() {
+    if (mode === "metro") runMetro();
+    else runFlow();
 }
 
 function showGate() {
@@ -479,24 +488,70 @@ let allStopsCache = null;     // the full stop dump, cached per page load
 let stopDirLoad = null;       // in-flight loadStopDirectory() promise (dedupes the fetch)
 const nearbyStopObjs = new Map();   // StopID → shared stop object for nearby sections
 
-// ── Shortcut locations (home / work / favorite) ───────────────────────
-// Saved in a cookie as { home:{id,name}, work:{id,name}, fav:{id,name} }.
-const SHORTCUT_COOKIE = "mta_shortcuts";
+// Metro state. Stations/arrivals/schedules are kept separately from buses.
+let metroStationsCache = null;
+let metroStationsLoad = null;
+let metroAnchor = null;
+let metroNearby = [];
+let metroAnchorCode = null;
+let metroLive = {};                 // station Code → live trains
+let metroLiveError = {};            // station Code → error
+let metroSchedule = {};             // station Code → scheduled departures
+let metroRefreshInFlight = false, metroRefreshQueued = false;
+const METRO_NEARBY_FT = 5280 * 1.5;
+
+const METRO_COLORS = {
+    RD: "#c62828", BL: "#1565c0", OR: "#ef6c00",
+    SV: "#6c757d", GR: "#2e7d32", YL: "#9e9d24"
+};
+function metroLineColor(line) {
+    return METRO_COLORS[String(line || "").toUpperCase()] || "#5d4037";
+}
+
+// ── Mode (bus / metro) and shortcut locations ─────────────────────────
+// Bookmarks are stored per mode; home/work/favorite are not shared.
+const MODE_COOKIE = "mta_mode";
 const SHORTCUT_SLOTS = ["home", "work", "fav"];
+let mode = readModeCookie();
 let shortcuts = readShortcutCookie();
+
+function readModeCookie() {
+    try {
+        const hit = String(document.cookie || "").split("; ")
+            .find(p => p.startsWith(MODE_COOKIE + "="));
+        const m = hit ? decodeURIComponent(hit.slice(MODE_COOKIE.length + 1)) : "";
+        return m === "metro" ? "metro" : "bus";
+    } catch (e) { return "bus"; }
+}
+
+function writeModeCookie() {
+    try {
+        document.cookie = `${MODE_COOKIE}=${mode}; max-age=31536000; path=/; SameSite=Lax`;
+    } catch (e) { /* session-only fallback */ }
+}
+
+function shortcutCookieName() {
+    return "mta_shortcuts_" + mode;
+}
 
 function readShortcutCookie() {
     try {
-        const hit = String(document.cookie || "").split("; ")
-            .find(p => p.startsWith(SHORTCUT_COOKIE + "="));
+        const name = shortcutCookieName();
+        let hit = String(document.cookie || "").split("; ")
+            .find(p => p.startsWith(name + "="));
+        // Legacy bus cookie from before per-mode bookmarks.
+        if (!hit && mode === "bus")
+            hit = String(document.cookie || "").split("; ")
+                .find(p => p.startsWith("mta_shortcuts="));
         if (!hit) return {};
-        return JSON.parse(decodeURIComponent(hit.slice(SHORTCUT_COOKIE.length + 1))) || {};
+        const at = hit.indexOf("=");
+        return JSON.parse(decodeURIComponent(hit.slice(at + 1))) || {};
     } catch (e) { return {}; }
 }
 
 function writeShortcutCookie() {
     try {
-        document.cookie = `${SHORTCUT_COOKIE}=${encodeURIComponent(JSON.stringify(shortcuts))}`
+        document.cookie = `${shortcutCookieName()}=${encodeURIComponent(JSON.stringify(shortcuts))}`
             + "; max-age=31536000; path=/; SameSite=Lax";
     } catch (e) { /* cookies unavailable: shortcuts last for the session */ }
 }
@@ -516,6 +571,9 @@ const gLinesNote = document.getElementById("linesNote");
 const gBoardHeader = document.getElementById("boardHeader");
 const gLinesScroll = document.getElementById("linesScroll");
 const gHoverTip = document.getElementById("hovertip");
+const gAcWrap = document.getElementById("acWrap");
+const gBusBtn = document.getElementById("btnBus");
+const gMetroBtn = document.getElementById("btnMetro");
 const gShortcutBtns = {
     home: document.getElementById("btnHome"),
     work: document.getElementById("btnWork"),
@@ -1460,10 +1518,11 @@ function boardRowHead(row, color, g, k, scheduled) {
         : esc(row.dest || row.dir || "");
     const departed = !!row.departed;
     const arriving = !departed && row.mins && row.mins.length && row.mins[0] <= 1;
+    const arrivingIcon = row.metro ? "fa-train-subway" : "fa-bus";
     const statusIcon = departed
         ? `<i class="fa-solid fa-arrow-right-from-bracket bus-status departed" title="Departed" aria-label="Departed"></i>`
         : arriving
-            ? `<i class="fa-solid fa-bus bus-status arriving" title="Arriving" aria-label="Arriving"></i>`
+            ? `<i class="fa-solid ${arrivingIcon} bus-status arriving" title="Arriving" aria-label="Arriving"></i>`
             : "";
     const badge = departed
         ? `<span class="row-badge hollow" style="color:${color};border-color:${color}">${esc(row.route)}</span>`
@@ -1607,12 +1666,426 @@ async function runFlow() {
     }
 }
 
-// Re-fetch predictions for the stops currently shown, plus the confirmed
-// across-the-street counterpart. Promise.all so the render happens exactly
-// once, after every request has settled — including the ones that failed
-// (the old code only rendered when the last request SUCCEEDED, so one
-// 400/429 left a blank page). With a stop picked in the entry field, only
-// that stop is fetched.
+// ════════════════════════════════════════════════════════════════════
+// Metro rail
+// ════════════════════════════════════════════════════════════════════
+
+function normalizeMetroStation(s) {
+    const lines = [s.LineCode1, s.LineCode2, s.LineCode3, s.LineCode4].filter(Boolean);
+    return { Code: String(s.Code || ""), Name: s.Name || "",
+             Lat: Number(s.Lat), Lon: Number(s.Lon), Lines: lines, distFt: null };
+}
+
+function loadMetroStations() {
+    if (metroStationsCache) return Promise.resolve(metroStationsCache);
+    if (metroStationsLoad) return metroStationsLoad;
+    metroStationsLoad = apiGet("/Rail.svc/json/jStations", {})
+        .then(({ data, error }) => {
+            if (error) throw error;
+            metroStationsCache = ((data && data.Stations) || [])
+                .map(normalizeMetroStation)
+                .filter(s => s.Code && Number.isFinite(s.Lat) && Number.isFinite(s.Lon));
+            return metroStationsCache;
+        })
+        .finally(() => { metroStationsLoad = null; });
+    return metroStationsLoad;
+}
+
+function metroRefPoint() {
+    if (searchPoint) return searchPoint;
+    const st = anchorStop();
+    if (st && st.Lat != null && st.Lon != null)
+        return { lat: Number(st.Lat), lon: Number(st.Lon) };
+    return HOME;
+}
+
+function updateModeIcons() {
+    if (gBusBtn) {
+        gBusBtn.classList.toggle("active", mode === "bus");
+        gBusBtn.setAttribute("aria-pressed", mode === "bus" ? "true" : "false");
+    }
+    if (gMetroBtn) {
+        gMetroBtn.classList.toggle("active", mode === "metro");
+        gMetroBtn.setAttribute("aria-pressed", mode === "metro" ? "true" : "false");
+    }
+}
+
+function setMode(next) {
+    if (next !== "bus" && next !== "metro") return;
+    if (next === mode) return;
+    mode = next;
+    writeModeCookie();
+    shortcuts = readShortcutCookie();
+    updateShortcutNav();
+    updateModeIcons();
+    if (gAcWrap) gAcWrap.hidden = mode !== "bus";
+    gBoardHeader.innerHTML = "";
+    gLinesScroll.innerHTML = "";
+    gLinesNote.textContent = "";
+    if (mode === "bus") runFlow();
+    else { metroAnchorCode = null; runMetro(); }
+}
+
+async function runMetro() {
+    if (gAcWrap) gAcWrap.hidden = true;
+    gLinesNote.textContent = "loading Metro stations…";
+    try {
+        const all = await loadMetroStations();
+        const ref = metroRefPoint();
+        let anchor = metroAnchorCode ? all.find(s => s.Code === metroAnchorCode) : null;
+        if (!anchor) {
+            anchor = all.slice().sort((a, b) =>
+                distance(ref.lat, ref.lon, a.Lat, a.Lon, "f") -
+                distance(ref.lat, ref.lon, b.Lat, b.Lon, "f"))[0];
+        }
+        if (!anchor) { gLinesNote.textContent = "no Metro stations found"; return; }
+        setMetroAnchor(anchor.Code);
+    } catch (e) {
+        gStatus.textContent = `Could not load Metro: ${e.message}`;
+        gLinesNote.textContent = "Metro data unavailable";
+    }
+}
+
+function setMetroAnchor(code) {
+    const all = metroStationsCache || [];
+    const anchor = all.find(s => s.Code === String(code));
+    if (!anchor) return;
+    metroAnchorCode = anchor.Code;
+    metroAnchor = Object.assign({}, anchor, { distFt: 0 });
+    metroNearby = all.filter(s => s.Code !== anchor.Code)
+        .map(s => Object.assign({}, s, {
+            distFt: distance(anchor.Lat, anchor.Lon, s.Lat, s.Lon, "f")
+        }))
+        .filter(s => s.distFt <= METRO_NEARBY_FT)
+        .sort((a, b) => a.distFt - b.distFt)
+        .slice(0, 3);
+    renderMetro();
+    refreshMetro();
+}
+
+function metroMin(v) {
+    if (v === "BRD" || v === "ARR") return 0;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
+async function fetchMetroLive(codes) {
+    const { data, error } = await apiGet(
+        "/StationPrediction.svc/json/GetPrediction/" + codes.join(","), {});
+    if (error) throw error;
+    const by = {};
+    for (const t of (data && data.Trains) || []) {
+        const min = metroMin(t.Min);
+        const code = String(t.LocationCode || "");
+        const line = String(t.Line || "").toUpperCase();
+        const dest = t.DestinationName || t.Destination || "";
+        if (min == null || !code || !line || line === "NO" || /no passenger/i.test(dest))
+            continue;
+        (by[code] || (by[code] = [])).push({
+            min, route: line,
+            dir: dest, heads: dest,
+            dirNum: t.Group != null ? String(t.Group) : "",
+            vehicle: null, trip: null
+        });
+    }
+    for (const code of Object.keys(by)) by[code].sort((a, b) => a.min - b.min);
+    return by;
+}
+
+function metroRowsFor(station) {
+    const now = Date.now();
+    const live = metroLive[station.Code] || [];
+    const rows = [];
+    const groups = new Map();
+    for (const t of live) {
+        const key = t.route + "|" + (t.dirNum || "") + "|" + t.heads;
+        let r = groups.get(key);
+        if (!r) {
+            r = { kind: "compact", route: t.route, dirNum: t.dirNum || "",
+                  dest: t.heads, mins: [], first: 0, metro: true };
+            groups.set(key, r);
+            rows.push(r);
+        }
+        r.mins.push(t.min);
+    }
+    for (const r of rows) {
+        r.mins.sort((a, b) => a - b);
+        r.first = r.mins[0];
+    }
+    const liveHeads = rows.map(r => ({ route: r.route, heads: normHeads(r.dest) }));
+    const sched = (metroSchedule[station.Code] || [])
+        .filter(d => d.at >= now).sort((a, b) => a.at - b.at);
+    const schedGroups = new Map();
+    for (const d of sched) {
+        const dh = normHeads(d.heads);
+        if (liveHeads.some(l => l.route === d.route &&
+            metroHeadsMatch(l.heads, dh))) continue;
+        const key = d.route + "|" + dh;
+        const prev = schedGroups.get(key);
+        if (!prev || d.at < prev.scheduled.at)
+            schedGroups.set(key, {
+                kind: "service", route: d.route, dirNum: d.dirNum || "",
+                dest: d.heads, mins: [], first: 0, metro: true,
+                scheduled: { at: d.at }
+            });
+    }
+    rows.push(...schedGroups.values());
+    sortRowsBySoonest(rows, station.Code, now);
+    return rows;
+}
+
+function metroHeadsMatch(a, b) {
+    const A = normHeads(a), B = normHeads(b);
+    if (!A || !B) return false;
+    if (A === B || A.includes(B) || B.includes(A)) return true;
+    const n = Math.min(6, A.length, B.length);
+    return n >= 5 && A.slice(0, n) === B.slice(0, n);
+}
+
+function renderMetro() {
+    const station = metroAnchor;
+    if (!station) {
+        gBoardHeader.innerHTML = "";
+        gLinesScroll.innerHTML = "";
+        gLinesNote.textContent = "no Metro station selected";
+        return;
+    }
+    const now = Date.now();
+    const live = (metroLive[station.Code] || []).slice().sort((a, b) => a.min - b.min);
+    const nextSched = (metroSchedule[station.Code] || [])
+        .filter(d => d.at >= now).sort((a, b) => a.at - b.at)[0] || null;
+    const headSt = {
+        StopID: station.Code, Name: station.Name, Metro: true,
+        MetroScheduledNext: nextSched
+            ? { at: nextSched.at, route: nextSched.route, heads: nextSched.heads }
+            : null,
+        Error: metroLiveError[station.Code] || null
+    };
+    gBoardHeader.innerHTML = boardHeaderHtml(headSt, live);
+    const rowsHtml = (rows) => rows.map(r => {
+        const key = rowKey(r);
+        return `<div class="board-row${r.scheduled ? " is-scheduled" : ""}"`
+            + ` data-rowkey="${encodeURIComponent(key)}">`
+            + boardRowHead(r, metroLineColor(r.route), null, key, r.scheduled)
+            + `</div>`;
+    }).join("");
+    const mainRows = metroRowsFor(station);
+    const mainHtml = mainRows.length
+        ? `<div class="main-board"><div class="board">${rowsHtml(mainRows)}</div></div>`
+        : "";
+    let nearbyHtml = "";
+    for (const stn of metroNearby) {
+        const dist = stn.distFt == null ? ""
+            : (stn.distFt < 5280 ? `${Math.round(stn.distFt)} ft away`
+                                 : `${(stn.distFt / 5280).toFixed(1)} mi away`);
+        nearbyHtml += `<div class="curb-head" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
+            + `<div class="curb-head-stop"><div class="curb-main">`
+            + `<div class="curb-title">${esc(stopName(stn.Name) || stn.Code)}</div>`
+            + `<div class="curb-sub">${esc([dist, "#" + stn.Code].filter(Boolean).join(" · "))}</div>`
+            + `</div></div></div>`;
+        const rows = metroRowsFor(stn);
+        if (rows.length)
+            nearbyHtml += `<div class="nearby-board"><div class="board">${rowsHtml(rows)}</div></div>`;
+    }
+    gLinesScroll.innerHTML = mainHtml + nearbyHtml;
+    gLinesNote.textContent = "";
+}
+
+async function refreshMetro() {
+    if (metroRefreshInFlight) { metroRefreshQueued = true; return; }
+    metroRefreshInFlight = true;
+    try {
+        const stations = [metroAnchor, ...metroNearby].filter(Boolean);
+        if (!stations.length) return;
+        const codes = [...new Set(stations.map(s => s.Code))];
+        const liveP = fetchMetroLive(codes)
+            .then(live => { metroLive = live; metroLiveError = {}; })
+            .catch(e => { for (const c of codes) metroLiveError[c] = e; });
+        const schedP = ensureMetroSchedule(codes)
+            .then(sched => { metroSchedule = sched; })
+            .catch(() => {});
+        await liveP;
+        if (mode !== "metro") return;
+        lastRefreshAt = Date.now();
+        renderMetro();
+        tickClock();
+        scheduleRefresh();
+        await schedP;
+        if (mode !== "metro") return;
+        renderMetro();
+    } finally {
+        metroRefreshInFlight = false;
+        if (metroRefreshQueued) {
+            metroRefreshQueued = false;
+            if (mode === "metro") refreshMetro();
+        }
+    }
+}
+
+function refreshActive() {
+    return mode === "metro" ? refreshMetro() : refreshPredictions();
+}
+
+// ── Rail GTFS schedules (for "not seen" departures) ───────────────────
+// The rail GTFS static zip is downloaded once per page session; schedule
+// rows are cached per station/day.
+let metroGtfs = null;
+let metroGtfsLoad = null;
+const metroScheduleCache = {};
+const GTFS_LINES = { RED: "RD", BLUE: "BL", ORANGE: "OR",
+                     SILVER: "SV", GREEN: "GR", YELLOW: "YL" };
+
+function gtfsCsvFields(line) {
+    const out = [];
+    let cur = "", quoted = false;
+    for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (quoted) {
+            if (c === '"') {
+                if (line[i + 1] === '"') { cur += '"'; i++; }
+                else quoted = false;
+            } else cur += c;
+        } else if (c === '"') quoted = true;
+        else if (c === ",") { out.push(cur); cur = ""; }
+        else cur += c;
+    }
+    out.push(cur);
+    return out;
+}
+
+function zipU32(dv, off) {
+    return dv.getUint32(off, true);
+}
+
+async function inflateRaw(bytes) {
+    if (typeof DecompressionStream !== "function") return null;
+    const ds = new DecompressionStream("deflate-raw");
+    const stream = new Blob([bytes]).stream().pipeThrough(ds);
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function unzipEntries(buf) {
+    const dv = new DataView(buf);
+    let eocd = -1;
+    for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--) {
+        if (zipU32(dv, i) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error("bad zip");
+    const count = dv.getUint16(eocd + 10, true);
+    let p = zipU32(dv, eocd + 16);
+    const entries = {};
+    for (let i = 0; i < count; i++) {
+        if (zipU32(dv, p) !== 0x02014b50) break;
+        const method = dv.getUint16(p + 10, true);
+        const compSize = zipU32(dv, p + 20);
+        const nameLen = dv.getUint16(p + 28, true);
+        const extraLen = dv.getUint16(p + 30, true);
+        const commentLen = dv.getUint16(p + 32, true);
+        const localOff = zipU32(dv, p + 42);
+        const name = new TextDecoder().decode(new Uint8Array(buf, p + 46, nameLen));
+        p += 46 + nameLen + extraLen + commentLen;
+        const lNameLen = dv.getUint16(localOff + 26, true);
+        const lExtraLen = dv.getUint16(localOff + 28, true);
+        const dataStart = localOff + 30 + lNameLen + lExtraLen;
+        entries[name] = { method, comp: new Uint8Array(buf, dataStart, compSize) };
+    }
+    return entries;
+}
+
+async function gtfsText(entries, name) {
+    const e = entries[name];
+    if (!e) return "";
+    if (e.method === 0) return new TextDecoder().decode(e.comp);
+    const raw = await inflateRaw(e.comp);
+    return raw ? new TextDecoder().decode(raw) : "";
+}
+
+function gtfsTimeToMs(hms) {
+    const parts = String(hms || "").split(":").map(Number);
+    if (parts.length < 2 || parts.some(n => !Number.isFinite(n))) return NaN;
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime() + ((parts[0] * 3600 + parts[1] * 60 + (parts[2] || 0)) * 1000);
+}
+
+async function loadMetroGtfs() {
+    if (metroGtfs) return metroGtfs;
+    if (metroGtfsLoad) return metroGtfsLoad;
+    metroGtfsLoad = (async () => {
+        const res = await fetch(`${WMATA_API}/gtfs/rail-gtfs-static.zip?api_key=${encodeURIComponent(API_KEY)}`);
+        if (!res.ok) throw new Error("GTFS " + res.status);
+        const entries = await unzipEntries(await res.arrayBuffer());
+        const [tripsText, stopTimesText, calText] = await Promise.all([
+            gtfsText(entries, "trips.txt"),
+            gtfsText(entries, "stop_times.txt"),
+            gtfsText(entries, "calendar_dates.txt")
+        ]);
+        const d = new Date();
+        const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+        const active = new Set();
+        for (const line of calText.split("\n")) {
+            if (!line.trim()) continue;
+            const f = gtfsCsvFields(line);
+            if (f[1] !== ymd) continue;
+            if (f[2] === "1") active.add(f[0]);
+            else if (f[2] === "2") active.delete(f[0]);
+        }
+        const trips = new Map();
+        for (const line of tripsText.split("\n")) {
+            if (!line.trim()) continue;
+            const f = gtfsCsvFields(line);
+            if (!active.has(f[1])) continue;
+            trips.set(f[2], {
+                route: GTFS_LINES[f[0]] || f[0],
+                heads: f[3] || "",
+                dir: f[4] || ""
+            });
+        }
+        return { stopTimesText, trips };
+    })()
+      .then(g => { metroGtfs = g; return g; })
+      .finally(() => { metroGtfsLoad = null; });
+    return metroGtfsLoad;
+}
+
+async function ensureMetroSchedule(codes) {
+    const d = new Date();
+    const day = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+    if (codes.every(c => metroScheduleCache[c] && metroScheduleCache[c].day === day)) {
+        const out = {};
+        for (const c of codes) out[c] = metroScheduleCache[c].departures;
+        return out;
+    }
+    const gtfs = await loadMetroGtfs();
+    const codeSet = new Set(codes);
+    const by = {};
+    for (const c of codes) by[c] = [];
+    const now = Date.now(), horizon = now + 4 * 3600 * 1000;
+    for (const line of gtfs.stopTimesText.split("\n")) {
+        if (!line) continue;
+        const f = line.split(",");
+        if (f.length < 4) continue;
+        const m = /^(?:PF|PLF)_([A-Z][0-9]{2})_/.exec(f[3]);
+        if (!m || !codeSet.has(m[1])) continue;
+        const trip = gtfs.trips.get(f[0]);
+        if (!trip) continue;
+        const at = gtfsTimeToMs(f[2] || f[1]);
+        if (!Number.isFinite(at) || at < now || at > horizon) continue;
+        by[m[1]].push({ at, route: trip.route, heads: trip.heads, dirNum: trip.dir });
+    }
+    const out = {};
+    for (const c of codes) {
+        by[c].sort((a, b) => a.at - b.at);
+        metroScheduleCache[c] = { day, departures: by[c] };
+        out[c] = by[c];
+    }
+    return out;
+}
+
+
+// Re-fetch bus predictions for the stops currently shown, plus the confirmed
+// across-the-street counterpart. Promise.all so the render happens once after
+// every request has settled, including failures.
 let refreshInFlight = false, refreshQueued = false;
 
 async function refreshPredictions() {
@@ -1664,6 +2137,7 @@ async function refreshPredictions() {
             scheduleRefresh();
             return;
         }
+        if (mode !== "bus") { scheduleRefresh(); return; }
         // Keep the board moving on every tick.
         renderLines();
         scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
@@ -1694,15 +2168,16 @@ function scheduleRefresh() {
     nextRefreshAt = Date.now() + wait;
     refreshTimer = setTimeout(() => {
         refreshTimer = null;
-        refreshPredictions();
+        refreshActive();
     }, wait);
 }
 
 // Background tabs get throttled timers; refresh promptly when we come back.
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && refreshEnabled && !busy && stops.length) {
+    const haveData = mode === "metro" ? !!metroAnchor : stops.length > 0;
+    if (document.visibilityState === "visible" && refreshEnabled && !busy && haveData) {
         if (Date.now() - lastRefreshAt > REFRESH_MS / 2) {
-            refreshPredictions();
+            refreshActive();
         } else {
             scheduleRefresh();
         }
@@ -1765,6 +2240,7 @@ async function gotoStop(id, name) {
 }
 
 function updateShortcutNav() {
+    const noun = mode === "metro" ? "station" : "stop";
     for (const slot of SHORTCUT_SLOTS) {
         const btn = gShortcutBtns[slot];
         if (!btn) continue;
@@ -1776,54 +2252,66 @@ function updateShortcutNav() {
             btn.title = `${label}: ${name}`;
             btn.setAttribute("aria-label", `Go to ${label}: ${name}`);
         } else if (slot === "home") {
-            btn.title = `Home stop (${DEFAULT_STOP_ID})`;
-            btn.setAttribute("aria-label", `Go to home stop (${DEFAULT_STOP_ID})`);
+            btn.title = mode === "metro" ? "Nearest Metro station" : `Home stop (${DEFAULT_STOP_ID})`;
+            btn.setAttribute("aria-label", btn.title);
         } else {
-            btn.title = `No ${label} stop saved`;
-            btn.setAttribute("aria-label", `No ${label} stop saved`);
+            btn.title = `No ${label} ${noun} saved`;
+            btn.setAttribute("aria-label", btn.title);
         }
     }
 }
 
 function goShortcut(slot) {
+    if (mode === "metro") {
+        const saved = shortcuts[slot];
+        if (saved && saved.id) { metroAnchorCode = saved.id; runMetro(); return; }
+        if (slot === "home") { metroAnchorCode = null; runMetro(); return; }
+        gStatus.textContent = `No ${shortcutLabel(slot)} station saved — open a station and tap its ${shortcutLabel(slot).toLowerCase()} icon.`;
+        return;
+    }
     const saved = shortcuts[slot];
     if (saved && saved.id) { gotoStop(saved.id, saved.name); return; }
     if (slot === "home") { gotoStop(DEFAULT_STOP_ID, null); return; }
     gStatus.textContent = `No ${shortcutLabel(slot)} stop saved — open a stop and tap its ${shortcutLabel(slot).toLowerCase()} icon.`;
 }
 
-document.getElementById("btnBus").addEventListener("click", () => location.reload());
+gBusBtn.addEventListener("click", () => setMode("bus"));
+gMetroBtn.addEventListener("click", () => setMode("metro"));
 for (const slot of SHORTCUT_SLOTS) {
     const btn = gShortcutBtns[slot];
     if (btn) btn.addEventListener("click", () => goShortcut(slot));
 }
 
-// The header checkboxes save the current stop as home/work/favorite (and
-// clear it when the same stop is clicked again).
+// The header checkboxes save the current stop/station as home/work/favorite
+// (and clear it when the same item is clicked again).
 gBoardHeader.addEventListener("click", e => {
     const btn = e.target.closest ? e.target.closest(".board-shortcut") : null;
     if (!btn || !btn.dataset) return;
     const slot = btn.dataset.shortcut;
     if (!SHORTCUT_SLOTS.includes(slot)) return;
-    const st = anchorStop();
-    if (!st) return;
-    const id = String(st.StopID);
+    const st = mode === "metro" ? metroAnchor : anchorStop();
+    const id = st ? String(mode === "metro" ? st.Code : st.StopID) : "";
+    if (!id) return;
     if (shortcuts[slot] && String(shortcuts[slot].id) === id) delete shortcuts[slot];
     else shortcuts[slot] = { id, name: st.Name || "" };
     writeShortcutCookie();
-    const current = String((anchorStop() || {}).StopID || "");
+    const current = mode === "metro"
+        ? String((metroAnchor || {}).Code || "")
+        : String((anchorStop() || {}).StopID || "");
     gBoardHeader.querySelectorAll(".board-shortcut").forEach(b => {
         const s = b.dataset && b.dataset.shortcut;
         const on = !!(s && shortcuts[s] && String(shortcuts[s].id) === current);
         const label = shortcutLabel(s);
         b.classList.toggle("active", on);
         b.setAttribute("aria-pressed", on ? "true" : "false");
-        b.title = on ? `Saved as ${label} — click to clear` : `Save this stop as ${label}`;
+        b.title = on ? `Saved as ${label} — click to clear` : `Save this ${mode === "metro" ? "station" : "stop"} as ${label}`;
         b.setAttribute("aria-label", b.title);
     });
     updateShortcutNav();
 });
 updateShortcutNav();
+updateModeIcons();
+if (gAcWrap) gAcWrap.hidden = mode !== "bus";
 
 // ════════════════════════════════════════════════════════════════════
 // Stop-name autocomplete (the single shared entry field above the view)
@@ -2222,6 +2710,11 @@ gLinesScroll.addEventListener("click", e => {
     }
     const head = e.target.closest ? e.target.closest(".curb-head") : null;
     if (!head || !head.dataset) return;
+    if (mode === "metro" && head.dataset.metro) {
+        setMetroAnchor(head.dataset.stop);
+        return;
+    }
+    if (mode !== "bus") return;
     // Each nearby bar names its stop; the across counterpart is simply the
     // first bar, with "Across the street" as its location description.
     if (selectStop(head.dataset.stop)) slideSectionToTop(head);
@@ -2298,34 +2791,37 @@ function boardHeaderHtml(st, arrivals) {
     const label = st.Name ? stopName(st.Name) : `#${id}`;
     const list = (arrivals || []).slice().sort((a, b) => a.min - b.min);
     const next = list[0] || null;
+    const verb = st.Metro ? "Next train" : "Next bus";
+    const badgeColor = (route) => st.Metro ? metroLineColor(route) : routeColor(route);
     let nextLine;
     if (next) {
-        // Same service as the next bus: route plus direction (dirNum when the
-        // feed carries it, otherwise the headsign/direction text).
-        const svc = (a) => `${a.route}|${a.dirNum || a.heads || a.dir || ""}`;
+        // Same service as the next vehicle: route plus direction.
+        const svc = st.Metro
+            ? (a) => `${a.route}|${a.heads || a.dir || ""}`
+            : (a) => `${a.route}|${a.dirNum || a.heads || a.dir || ""}`;
         const mins = list.filter(a => svc(a) === svc(next)).map(a => a.min);
         const bits = [
-            `<span class="row-badge" style="background:${routeColor(next.route)}">${esc(next.route)}</span>`,
+            `<span class="row-badge" style="background:${badgeColor(next.route)}">${esc(next.route)}</span>`,
             esc(next.heads || next.dir || "")
         ].filter(Boolean).join(" ");
-        nextLine = `Next bus ${bits} <span class="bt-next-eta">${esc(fmtEta(mins[0]))}</span>`;
+        nextLine = `${verb} ${bits} <span class="bt-next-eta">${esc(fmtEta(mins[0]))}</span>`;
         if (mins.length > 1)
             nextLine += ` <span class="bt-next-rest">then ${mins.slice(1).map(m => esc(fmtEta(m))).join(", ")}</span>`;
     } else if (st.Error) {
-        nextLine = "Next bus <span class=\"text-muted\">arrivals unavailable — retrying</span>";
+        nextLine = `${verb} <span class="text-muted">arrivals unavailable — retrying</span>`;
     } else {
         // No live prediction: test the schedule and show the next scheduled
         // arrival explicitly as "not seen".
-        const sched = nextScheduledFor(id);
+        const sched = st.MetroScheduledNext || nextScheduledFor(id);
         if (sched) {
             const schedBits = [
-                `<span class="row-badge" style="background:${routeColor(sched.route)}">${esc(sched.route)}</span>`,
+                `<span class="row-badge" style="background:${badgeColor(sched.route)}">${esc(sched.route)}</span>`,
                 esc(sched.heads || sched.dirText || "")
             ].filter(Boolean).join(" ");
-            nextLine = `Next bus ${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
+            nextLine = `${verb} ${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
                 + ` <span class="bt-next-rest">not seen</span>`;
         } else {
-            nextLine = "Next bus <span class=\"text-muted\">no arrival or departure</span>";
+            nextLine = `${verb} <span class="text-muted">no arrival or departure</span>`;
         }
     }
     return `<div class="board-stophead">`
@@ -2643,7 +3139,7 @@ function setRefreshEnabled(on) {
         if (refreshTimer) clearTimeout(refreshTimer);
         refreshTimer = null;
         nextRefreshAt = 0;
-    } else if (stops.length) {
+    } else if (mode === "metro" ? metroAnchor : stops.length) {
         scheduleRefresh();
     }
     tickClock();

@@ -14,6 +14,7 @@ const SUITES = [
   ["renderlinetest.js"],   // piece 5: line rendering pipeline
   ["acrosstest.js"],       // piece 5: across-the-street resolver
   ["boarddrawtest.js"],    // piece 7a: SVG board drawing
+  ["metrotest.js"],        // Metro live/scheduled row merging
   ["centeringtest.js"],    // piece 12: narrow-screen centering
   ["fullpagetest.js", "1002130"],   // piece 13: whole page, live C87/D72 captures
   ["fullpagetest.js", "1002135"],   // piece 13: whole page, opposite corner
