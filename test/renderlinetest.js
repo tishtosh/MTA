@@ -1,5 +1,5 @@
 // Node test for the piece 7b pipeline: anchorStop (no directory hard-gate)
-// + boardHeaderHtml (stop name + ID + Next bus). Extracts the real code from
+// + boardHeaderHtml (stop name + Next bus). Extracts the real code from
 // the page's <script> (from mta26.html, via lib/extract) into a VM sandbox;
 // state vars are sandbox globals.
 const fs = require("fs");
@@ -37,6 +37,7 @@ sandbox.stops = [];
 sandbox.pickedStop = null;
 sandbox.pickedStopObj = null;
 sandbox.allStopsCache = null;
+sandbox.DEFAULT_STOP_ID = "1002135";
 vm.createContext(sandbox);
 vm.runInContext(
   [extractConst("ROUTE_COLORS"), extractFn("routeColor"), extractFn("esc"),
@@ -66,6 +67,12 @@ sandbox.pickedStop = null;                       // nearby mode
 sandbox.stops = [{ StopID: "A1", Name: "a", Arrivals: [] }, { StopID: "A2", Name: "b", Arrivals: [] }];
 check("no pick → first nearby stop", run("anchorStop()").StopID === "A1");
 
+sandbox.stops = [{ StopID: "A1", Name: "a", Arrivals: [] },
+                 { StopID: "1002135", Name: "default", Arrivals: [] }];
+check("no pick → default stop 1002135 preferred", run("anchorStop()").StopID === "1002135");
+
+sandbox.stops = [{ StopID: "A1", Name: "a", Arrivals: [] }, { StopID: "A2", Name: "b", Arrivals: [] }];
+
 sandbox.allStopsCache = [{ StopID: "A2", Name: "canonical b" }];   // A1 not in the directory
 check("no pick, partial directory → falls back to the list stop",
   run("anchorStop()").StopID === "A1");
@@ -80,7 +87,8 @@ const h1 = sandbox.boardHeaderHtml(
   { StopID: "1002130", Name: "Park Rd & 19th St NW", Arrivals: [], Error: null },
   [{ min: 14, route: "D72", dir: "North to Van Ness", heads: "North to Van Ness" }]);
 check("header: name", h1.includes("Park Rd &amp; 19th St NW"));
-check("header: #id after the name", /#1002130/.test(h1));
+check("header: stop ID shown after the name", /#1002130/.test(h1));
+check("header: 'Selected boarding stop' removed", !h1.includes("Selected boarding stop"));
 check("header: next bus route + headsign", /Next bus .*D72<\/span> North to Van Ness/.test(h1));
 check("header: ETA 14 min", h1.includes(">14 min<"));
 check("header: first ETA uses bt-next-eta", h1.includes("bt-next-eta"));

@@ -136,6 +136,8 @@ const board = () => els.linesScroll.innerHTML;
   check("header: stop ID shown", h.includes("#" + ANCHOR));
   check("header: canonical directory name", h.includes("Park Rd NW+19 St NW"));
   check("header: Next bus line", h.includes("Next bus"));
+  check("header: 'Selected boarding stop' removed", !h.includes("Selected boarding stop"));
+  check("header: no stop-count line", !/^\d+ stops?/.test(els.statusmessage.textContent));
 
   check("board painted into linesScroll", b !== "");
   check("board: every row on one shared width", new Set((b.match(/width="\d+\.\d+"/g) || [])).size <= 2);
@@ -173,7 +175,7 @@ const board = () => els.linesScroll.innerHTML;
     const nearIdx = b.indexOf('data-nearby="1"');
     const mainOnly = nearIdx > -1 ? b.slice(0, nearIdx) : b;
     check("135: no service rows in the primary section", !mainOnly.includes("TENLEYTOWN"));
-    check("135: nearby stop gets its own light heading bar",
+    check("135: nearby stop gets its own heading bar",
       nearIdx > -1 && b.slice(nearIdx, nearIdx + 400).includes("#1002130"));
     check("135: three ETAs on the compact row (2 · 17 · 39)", h.includes("2 min") && b.includes("then 17 · 39 min"));
   }
@@ -185,7 +187,7 @@ const board = () => els.linesScroll.innerHTML;
     }
     const hIds = h.match(/#\d{7}/g) || [];
     check("multi: board anchors on the FIRST id", hIds.length >= 1 && hIds.every(x => x.slice(1) === ANCHOR));
-    check("multi: status counts the URL list", (els.statusmessage?.textContent || "").startsWith(STOP.split(",").length + " stops"));
+    check("multi: stop count line removed", !/\d+ stops?/.test(els.statusmessage?.textContent || ""));
   }
 
   check("no across section with live fixtures", !ACROSS ? !b.includes("Across the street") : true);
@@ -197,7 +199,8 @@ const board = () => els.linesScroll.innerHTML;
     !!els.clock.textContent &&
     /updated \d{1,2}:\d{2}:\d{2}/.test(els.clockMeta.textContent) &&
     /refresh in \d+s/.test(els.clockMeta.textContent));
-  check("nearby: distance in feet", !b.includes('data-nearby="1"') || /\d+ ft away/.test(b));
+  check("nearby: distance or across-street label",
+    !b.includes('data-nearby="1"') || /\d+ ft away|Across the street/.test(b));
 
   // The entry field re-filters its dropdown on every keystroke.
   els.stopEntry.value = "park";
