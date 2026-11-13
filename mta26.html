@@ -91,6 +91,13 @@
         }
         .fav-badge.boston-bus { min-width: 65px; }
         .fav-badge.line { min-width: 74px; }
+        .fav-conns { display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: 4px; }
+        .fav-conns .fav-badge,
+        .fav-conns .fav-badge.line,
+        .fav-conns .fav-badge.boston-bus {
+            min-width: 0; padding: 0 4px; font-size: 10px; line-height: 1.5;
+            border-radius: 4px;
+        }
         .fav-desc { flex: 1; min-width: 0; }
         .fav-stops { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px 14px; }
         .fav-stops[hidden] { display: none; }
@@ -2253,7 +2260,8 @@ function boardHtml(geom, rows) {
                      : s.terminal ? ` <b class="bt-mark">terminal</b>` : "";
                   return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(s.id)}">`
                       + `${favStarHtml("bus", s.id, s.name, row.route)}`
-                      + `<span class="bt-stop-name">${esc(stopName(s.name) || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</span></li>`;
+                      + `<span class="bt-stop-name">${esc(stopName(s.name) || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</span>`
+                      + `<span class="fav-conns" data-conn="${esc(s.id)}" data-conn-kind="bus"></span></li>`;
                 }).join("") + `</ul>`
             : "";
         const rowClass = row.departed ? " is-departed" : (scheduled ? " is-scheduled" : "");
@@ -2515,6 +2523,7 @@ function clearCityCaches() {
     for (const k of Object.keys(stopScheduleCache)) delete stopScheduleCache[k];
     nearbyStopObjs.clear();
     expandedStops.clear();
+    stopConnections.clear();
     favBusFilterToken++;
     stops = [];
     pickedStop = null;
@@ -2786,6 +2795,15 @@ async function fetchMbtaMetroPath(from, to, line) {
     return [];
 }
 
+async function refreshBoardStopConnections() {
+    const nodes = [...gLinesScroll.querySelectorAll(".fav-conns[data-conn]")];
+    await Promise.all(nodes.map(async el => {
+        const conns = await fetchStopConnections(
+            el.dataset.connKind || "bus", el.dataset.conn);
+        if (el.parentNode) el.innerHTML = connectionBadgesHtml(conns);
+    }));
+}
+
 async function loadMetroStops(ul) {
     const from = ul.dataset.metroFrom, to = ul.dataset.metroTo;
     if (!from || !to) { ul.innerHTML = ""; return; }
@@ -2794,12 +2812,19 @@ async function loadMetroStops(ul) {
     try {
         const line = ul.dataset.line || "";
         const path = await fetchMetroPath(from, to, line);
+        const conns = new Map();
+        await Promise.all(path.map(async p => {
+            conns.set(p.StationCode, await fetchStopConnections("metro", p.StationCode));
+        }));
         ul.innerHTML = path.map(p => {
             const mark = p.StationCode === from ? ` <b class="bt-mark">your stop</b>`
                 : p.StationCode === to ? ` <b class="bt-mark">terminal</b>` : "";
+            const badges = connectionBadgesHtml(conns.get(p.StationCode));
             return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(p.StationCode)}">`
                 + `${favStarHtml("metro", p.StationCode, p.StationName, line)}`
-                + `<span class="bt-stop-name">${esc(stopName(p.StationName))} <small>(${esc(p.StationCode)})</small>${mark}</span></li>`;
+                + `<span class="bt-stop-name">${esc(stopName(p.StationName))} <small>(${esc(p.StationCode)})</small>${mark}</span>`
+                + (badges ? `<span class="fav-conns">${badges}</span>` : "")
+                + `</li>`;
         }).join("");
     } catch (e) {
         ul.innerHTML = `<li class="bt-stop-item">could not load stops</li>`;
@@ -3454,6 +3479,8 @@ async function fetchStopConnections(kind, id) {
     const out = { bus: [], metro: [] };
     try {
         if (isBoston()) {
+            if (!Object.keys(busRouteColors).length)
+                await loadBusRouteDirectory().catch(() => null);
             const { data } = await mbtaGet("/routes", { "filter[stop]": String(id) });
             for (const r of (data && data.data) || []) {
                 const type = r.attributes.type;
@@ -3470,7 +3497,10 @@ async function fetchStopConnections(kind, id) {
     } catch (e) { /* show no connections on failure */ }
     out.bus = [...new Set(out.bus)].slice(0, 6);
     out.metro = [...new Set(out.metro)].slice(0, 6);
-    stopConnections.set(key, out);
+    // Don't cache an empty DC result before its directory has loaded.
+    const missingDc = !isBoston() && ((kind === "metro" && !metroStationsCache) ||
+        (kind !== "metro" && !allStopsCache));
+    if (!missingDc) stopConnections.set(key, out);
     return out;
 }
 
@@ -3492,13 +3522,16 @@ async function loadStopConnections(rows) {
 }
 
 function favOrderedRow(kind, id, name, route, conns) {
+    const badges = conns ? connectionBadgesHtml(conns) : "";
     return `<div class="fav-stop">${favSelectHtml(kind, id, name, route)}`
         + `${favStarHtml(kind, id, name, route)}`
-        + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}</div>`;
+        + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}`
+        + (badges ? `<span class="fav-conns">${badges}</span>` : "")
+        + `</div>`;
 }
 
-function favOrderedBusRow(s, route) {
-    return favOrderedRow("bus", s.StopID, s.Name, route);
+function favOrderedBusRow(s, route, conns) {
+    return favOrderedRow("bus", s.StopID, s.Name, route, conns);
 }
 
 // Ordered stops for a Boston route: one representative trip per direction,
@@ -3528,7 +3561,7 @@ async function mbtaTripStops(tripId, useParent) {
     return out;
 }
 
-function heroRouteListHtml(stops, kind, route, anchor) {
+function heroRouteListHtml(stops, kind, route, anchor, connsMap) {
     if (!stops.length) return `<div class="fav-empty">no stops available</div>`;
     // Only the next stops: start at the selected stop and run toward the
     // trip's destination.
@@ -3538,9 +3571,13 @@ function heroRouteListHtml(stops, kind, route, anchor) {
         const id = String(s.StopID || s.id || "");
         const name = s.Name || s.name || "";
         const mark = id === String(anchor) ? ` <b class="bt-mark">your stop</b>` : "";
+        const conns = connsMap && connsMap.get(id);
+        const badges = conns ? connectionBadgesHtml(conns) : "";
         return `<div class="fav-stop">${favSelectHtml(kind, id, name, route)}`
             + `${favStarHtml(kind, id, name, route)}`
-            + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}${mark}</div>`;
+            + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}`
+            + (badges ? `<span class="fav-conns">${badges}</span>` : "")
+            + `${mark}</div>`;
     }).join("");
 }
 
@@ -3589,8 +3626,17 @@ async function toggleHeroRouteStops(btn) {
     box.innerHTML = `<div class="fav-empty">loading stops…</div>`;
     let stops = [];
     try { stops = await loadHeroRouteStops(btn); } catch (e) { stops = []; }
-    box.innerHTML = heroRouteListHtml(stops, btn.dataset.heroKind, btn.dataset.heroRoute,
-        btn.dataset.heroAnchor);
+    const kind = btn.dataset.heroKind;
+    const anchor = btn.dataset.heroAnchor;
+    const at = stops.findIndex(s => String(s.StopID || s.id) === String(anchor));
+    const shown = at >= 0 ? stops.slice(at) : stops;
+    let conns = new Map();
+    try {
+        conns = await loadStopConnections(shown.map(s =>
+            Object.assign({}, s, { kind })));
+    } catch (e) { /* no badges */ }
+    box.innerHTML = heroRouteListHtml(shown, kind, btn.dataset.heroRoute,
+        anchor, conns);
 }
 
 async function fetchMbtaRouteStops(routeKey, useParent) {
@@ -4062,9 +4108,15 @@ async function populateFavStops(container, kind, key) {
         if (kind === "bus") {
             if (isBoston()) {
                 const groups = await fetchMbtaRouteStops(key);
+                let conns = new Map();
+                if (groups.length) {
+                    const rows = groups.flatMap(g => g.stops)
+                        .map(s => ({ StopID: s.StopID, kind: "bus" }));
+                    conns = await loadStopConnections(rows);
+                }
                 container.innerHTML = groups.length ? groups.map(g =>
                     `<div class="fav-dir-label">${esc(g.name || ("Direction " + g.dir))}</div>`
-                    + g.stops.map(s => favOrderedBusRow(s, key)).join("")
+                    + g.stops.map(s => favOrderedBusRow(s, key, conns.get(String(s.StopID)))).join("")
                 ).join("") : `<div class="fav-empty">no stops for this route</div>`;
                 return;
             }
@@ -5093,6 +5145,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         : "";
     centerBoard();   // piece 12: boarding guide centered on narrow screens
     gLinesNote.textContent = "";   // no legend line: the board is self-describing
+    refreshBoardStopConnections();
 }
 
 // (Re)draw the board: resolve the anchor, paint the header at once, then
