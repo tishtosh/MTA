@@ -143,7 +143,7 @@ const board = () => els.linesScroll.innerHTML;
   const h = header(), b = board();
 
   check("board header painted", h !== "");
-  check("header: stop ID shown", h.includes("#" + ANCHOR));
+  check("header: stop reference removed", !h.includes("#" + ANCHOR));
   check("header: canonical directory name", h.includes("Park Rd NW and 19 St NW"));
   check("header: Next bus icon", h.includes('aria-label="Bus"'));
   check("header: 'Selected boarding stop' removed", !h.includes("Selected boarding stop"));
@@ -196,8 +196,7 @@ const board = () => els.linesScroll.innerHTML;
   }
 
   if (MULTI) {
-    const hIds = h.match(/#\d{7}/g) || [];
-    check("multi: board anchors on the FIRST id", hIds.length >= 1 && hIds.every(x => x.slice(1) === ANCHOR));
+    check("multi: header omits stop IDs", !h.match(/#\d{7}/));
     check("multi: stop count line removed", !/\d+ stops?/.test(els.statusmessage?.textContent || ""));
   }
 

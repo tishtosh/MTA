@@ -131,6 +131,11 @@
             font: 600 11px/1.3 system-ui, -apple-system, sans-serif;
             letter-spacing: .04em; text-transform: uppercase; color: #6c757d;
         }
+        .next-stops-label, .bt-next-label {
+            padding: 6px 2px 3px; list-style: none;
+            font: 600 10px/1.4 system-ui, -apple-system, sans-serif;
+            letter-spacing: .05em; text-transform: uppercase; color: #6c757d;
+        }
         .fav-empty { padding: 4px; color: #6c757d; font-size: 12px; }
         .fav-dist { flex: none; color: #6c757d; font-size: 11px; white-space: nowrap; }
         .fav-setting {
@@ -314,8 +319,8 @@
         }
         .main-board .board, .nearby-board .board { margin: 0; }
         /* The main departures live inside the hero card's colored bounds. */
-        .main-board.bus-board { background: #d8d8d8; border-color: #c9c9c9; }
-        .main-board.metro-board { background: #ece1cd; border-color: #dccdb6; }
+        .main-board.bus-board { background: #d8d8d8; border-color: #c9c9c9; border-radius: 0; }
+        .main-board.metro-board { background: #ece1cd; border-color: #dccdb6; border-radius: 0; }
         .main-board.bus-board .board-row,
         .main-board.metro-board .board-row { background: transparent; }
         .main-board.bus-board .board-row.is-scheduled,
@@ -366,6 +371,7 @@
         .nearby-card-title {
             font: 600 15px/1.3 system-ui, -apple-system, sans-serif; color: inherit;
         }
+        .nearby-mode-icon { margin-right: 5px; font-size: 13px; color: #495057; }
         .nearby-card-sub { margin: 1px 0 0; font-size: 12px; color: #5f5f5f; }
         .nearby-stop-card.nearby-metro .nearby-card-sub { color: #7a6a55; }
 
@@ -463,7 +469,7 @@
            corners are square so it merges with the main-board group below. */
         .hero-card {
             position: relative;
-            margin: 8px 2px 0; padding: 10px 92px 34px 16px;
+            margin: 8px 2px 0; padding: 10px 120px 34px 16px;
             background: #182338; color: #fff;
             border-radius: 10px 10px 0 0;
         }
@@ -526,6 +532,12 @@
         }
         .board-share:hover { color: #fff; background: rgba(255,255,255,.2); }
         .board-share:focus-visible { outline: 2px solid #8ce99a; outline-offset: 1px; }
+        .board-share-inline {
+            position: static; right: auto; bottom: auto; margin-right: 8px;
+            padding: 4px 5px; background: none; font-size: 13px;
+        }
+        .hero-card.hero-bus .board-share-inline,
+        .hero-card.hero-metro .board-share-inline { background: none; }
         /* Shortcut checkboxes: save the current stop as home/work/favorite. */
         .board-shortcuts {
             position: absolute; top: 8px; right: 10px;
@@ -2087,13 +2099,17 @@ async function ensureCrossBusNearby(station) {
     }
 }
 
+function nearbyModeIcon(metro) {
+    return `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"} nearby-mode-icon" aria-hidden="true"></i>`;
+}
+
 function crossMetroSectionHtml(st) {
     const dist = st.distFt == null ? "" : `${Math.round(st.distFt)} ft away`;
     const card = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0"`
         + ` data-cross="metro" data-stop="${esc(st.Code)}" data-name="${esc(st.Name || "")}">`
         + `<span class="hero-line-band" style="background:${metroLineColor((st.Lines || [])[0] || "")}"></span>`
         + `<div class="nearby-card-head"><div class="nearby-card-main">`
-        + `<div class="nearby-card-title">${esc(stopName(st.Name) || st.Code)}</div>`
+        + `<div class="nearby-card-title">${nearbyModeIcon(true)}${esc(stopName(st.Name) || st.Code)}</div>`
         + `<div class="nearby-card-sub">${esc([dist, "#" + st.Code].filter(Boolean).join(" · "))}</div>`
         + `</div></div></div>`;
     const line = st.next ? nextArrivalHtml("metro", st.next)
@@ -2112,7 +2128,7 @@ function crossBusSectionHtml(st) {
         + ` data-cross="bus" data-stop="${esc(st.StopID)}" data-name="${esc(st.Name || "")}">`
         + `<span class="hero-line-band bus-band"></span>`
         + `<div class="nearby-card-head"><div class="nearby-card-main">`
-        + `<div class="nearby-card-title">${esc(stopName(st.Name) || st.StopID)}</div>`
+        + `<div class="nearby-card-title">${nearbyModeIcon(false)}${esc(stopName(st.Name) || st.StopID)}</div>`
         + `<div class="nearby-card-sub">${esc([dist, "#" + st.StopID].filter(Boolean).join(" · "))}</div>`
         + `</div></div></div>`;
     const line = st.next ? nextArrivalHtml("bus", st.next)
@@ -2369,7 +2385,7 @@ function boardRowHead(row, color, g, k, scheduled) {
         : esc(row.dest || row.dir || "");
     const departed = !!row.departed;
     const arriving = !departed && row.mins && row.mins.length && row.mins[0] <= 1;
-    const arrivingIcon = row.metro ? "fa-train-subway" : "fa-bus";
+    const arrivingIcon = row.metro ? "fa-train" : "fa-bus";
     const arrivingStyle = ` style="color:${color}"`;
     const statusIcon = departed
         ? `<i class="fa-solid fa-arrow-right-from-bracket bus-status departed" title="Departed" aria-label="Departed"></i>`
@@ -2988,20 +3004,20 @@ async function loadMbtaRowStops(ul) {
         const stops = await mbtaTripStops(trip, false);
         const anchor = String(ul.dataset.anchor || "");
         const at = stops.findIndex(s => String(s.StopID) === anchor);
-        const shown = at >= 0 ? stops.slice(at) : stops;
+        const shown = at >= 0 ? stops.slice(at + 1) : stops;
         const conns = await loadStopConnections(
             shown.map(s => ({ StopID: s.StopID, kind: "bus" })));
         const line = ul.dataset.line || "";
-        ul.innerHTML = shown.length ? shown.map(s => {
+        const label = at >= 0 ? `<li class="bt-next-label">Next stops…</li>` : "";
+        ul.innerHTML = label + (shown.length ? shown.map(s => {
             const id = String(s.StopID);
-            const mark = id === anchor ? ` <b class="bt-mark">your stop</b>` : "";
             const badges = connectionBadgesHtml(conns.get(id), "bus", line);
             return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(id)}">`
                 + `${favStarHtml("bus", id, s.Name, line)}`
-                + `<span class="bt-stop-name">${esc(stopName(s.Name) || "#" + id)} <small>(${esc(id)})</small>${mark}</span>`
+                + `<span class="bt-stop-name">${esc(stopName(s.Name) || "#" + id)} <small>(${esc(id)})</small></span>`
                 + (badges ? `<span class="fav-conns">${badges}</span>` : "")
                 + `</li>`;
-        }).join("") : `<li class="bt-stop-item">no stops available</li>`;
+        }).join("") : `<li class="bt-stop-item">no further stops</li>`);
     } catch (e) {
         ul.innerHTML = `<li class="bt-stop-item">could not load stops</li>`;
     }
@@ -3029,20 +3045,21 @@ async function loadMetroStops(ul) {
     try {
         const line = ul.dataset.line || "";
         const path = await fetchMetroPath(from, to, line);
+        const next = path.slice(1);
         const conns = new Map();
-        await Promise.all(path.map(async p => {
+        await Promise.all(next.map(async p => {
             conns.set(p.StationCode, await fetchStopConnections("metro", p.StationCode));
         }));
-        ul.innerHTML = path.map(p => {
-            const mark = p.StationCode === from ? ` <b class="bt-mark">your stop</b>`
-                : p.StationCode === to ? ` <b class="bt-mark">terminal</b>` : "";
+        const label = path.length ? `<li class="bt-next-label">Next stops…</li>` : "";
+        ul.innerHTML = label + (next.length ? next.map(p => {
+            const mark = p.StationCode === to ? ` <b class="bt-mark">terminal</b>` : "";
             const badges = connectionBadgesHtml(conns.get(p.StationCode), "metro", line);
             return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(p.StationCode)}">`
                 + `${favStarHtml("metro", p.StationCode, p.StationName, line)}`
                 + `<span class="bt-stop-name">${esc(stopName(p.StationName))} <small>(${esc(p.StationCode)})</small>${mark}</span>`
                 + (badges ? `<span class="fav-conns">${badges}</span>` : "")
                 + `</li>`;
-        }).join("");
+        }).join("") : `<li class="bt-stop-item">no further stops</li>`);
     } catch (e) {
         ul.innerHTML = `<li class="bt-stop-item">could not load stops</li>`;
     }
@@ -3106,7 +3123,7 @@ function renderMetro() {
         let html = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
             + `<span class="hero-line-band" style="background:${metroLineColor((stn.Lines || [])[0] || "")}"></span>`
             + `<div class="nearby-card-head"><div class="nearby-card-main">`
-            + `<div class="nearby-card-title">${esc(stopName(stn.Name) || stn.Code)}</div>`
+            + `<div class="nearby-card-title">${nearbyModeIcon(true)}${esc(stopName(stn.Name) || stn.Code)}</div>`
             + `<div class="nearby-card-sub">${esc([dist, "#" + stn.Code].filter(Boolean).join(" · "))}</div>`
             + `</div></div></div>`;
         const rows = metroRowsFor(stn);
@@ -3910,21 +3927,21 @@ async function mbtaTripStops(tripId, useParent) {
 
 function heroRouteListHtml(stops, kind, route, anchor, connsMap) {
     if (!stops.length) return `<div class="fav-empty">no stops available</div>`;
-    // Only the next stops: start at the selected stop and run toward the
-    // trip's destination.
+    // Start after the selected stop; the current stop is not repeated.
     const at = stops.findIndex(s => String(s.StopID || s.id) === String(anchor));
-    const list = at >= 0 ? stops.slice(at) : stops;
-    return list.map(s => {
+    const list = at >= 0 ? stops.slice(at + 1) : stops;
+    const label = at >= 0 ? `<div class="next-stops-label">Next stops…</div>` : "";
+    if (!list.length) return label + `<div class="fav-empty">no further stops</div>`;
+    return label + list.map(s => {
         const id = String(s.StopID || s.id || "");
         const name = s.Name || s.name || "";
-        const mark = id === String(anchor) ? ` <b class="bt-mark">your stop</b>` : "";
         const conns = connsMap && connsMap.get(id);
         const badges = conns ? connectionBadgesHtml(conns, kind, route) : "";
-        return `<div class="fav-stop">${favSelectedMark(kind, id)}`
+        return `<div class="fav-stop">`
             + `${favStarHtml(kind, id, name, route)}`
             + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}`
             + (badges ? `<span class="fav-conns">${badges}</span>` : "")
-            + `${mark}</div>`;
+            + `</div>`;
     }).join("");
 }
 
@@ -5203,7 +5220,10 @@ function anchorStop() {
 // single special bookmarks; the star toggles the master favorites list.
 function shortcutButtonsHtml(id) {
     const kind = mode === "metro" ? "metro" : "bus";
-    return `<div class="board-shortcuts">` + SHORTCUT_SLOTS.map(slot => {
+    return `<div class="board-shortcuts">`
+        + `<button type="button" class="board-share board-share-inline" title="Open in Maps" aria-label="Open in Maps">`
+        + `<i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i></button>`
+        + SHORTCUT_SLOTS.map(slot => {
         if (slot === "fav") {
             const on = isFavorite(kind, id);
             const text = on ? "Remove favorite" : "Add to favorites";
@@ -5229,7 +5249,7 @@ function shortcutButtonsHtml(id) {
 function heroModeIcon(metro) {
     const label = metro ? "Train" : "Bus";
     return `<span class="hero-mode-icon" role="img" aria-label="${label}" title="${label}">`
-        + `<i class="fa-solid ${metro ? "fa-train-subway" : "fa-bus"}" aria-hidden="true"></i></span>`;
+        + `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"}" aria-hidden="true"></i></span>`;
 }
 
 // "Next bus" / "Next train" is represented by the mode icon; the label is
@@ -5237,7 +5257,7 @@ function heroModeIcon(metro) {
 function heroVerbHtml(metro) {
     const label = metro ? "Next train" : "Next bus";
     return `<span class="hero-verb" role="img" aria-label="${label}" title="${label}">`
-        + `<i class="fa-solid ${metro ? "fa-train-subway" : "fa-bus"}" aria-hidden="true"></i></span>`;
+        + `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"}" aria-hidden="true"></i></span>`;
 }
 
 // Stop header: a dark hero card — eyebrow, name + ID, then the next bus in
@@ -5299,21 +5319,22 @@ function heroCardHtml(st, arrivals) {
     const lineBand = st.Metro
         ? `<span class="hero-line-band" style="background:${metroLineColor(next ? next.route : ((st.Lines || [])[0] || ""))}"></span>`
         : `<span class="hero-line-band bus-band"${busBandAttr(next && next.route)}></span>`;
+    const heroRoute = String((next && next.route) ||
+        (st.Metro ? ((st.Lines || [])[0] || "") : ((st.Routes || [])[0] || "")));
     return `<div class="hero-card${st.Metro ? " hero-metro" : " hero-bus"}">`
         + lineBand
         + shortcutButtonsHtml(id)
         + `<div class="hero-title-row">`
         + `${heroModeIcon(st.Metro)}`
         + `<span class="board-stopname">${esc(label)}</span>`
-        + (st.Name ? `<span class="board-stopid">#${esc(id)}</span>` : "")
         + `</div>`
         + `<div class="hero-connections">`
         + `<span class="hero-connections-label">Connections</span>`
-        + `<span class="fav-conns" data-conn="${esc(id)}" data-conn-kind="${st.Metro ? "metro" : "bus"}"></span>`
+        + `<span class="fav-conns" data-conn="${esc(id)}"`
+        + ` data-conn-kind="${st.Metro ? "metro" : "bus"}"`
+        + ` data-conn-route="${esc(heroRoute)}"></span>`
         + `</div>`
         + `<div class="board-next">${nextLine}</div>`
-        + `<button type="button" class="board-share" title="Open in Maps" aria-label="Open in Maps">`
-        + `<i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i></button>`
         + `</div><div class="hero-route-stops" hidden></div>`;
 }
 
@@ -5477,7 +5498,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         nearbyParts.push(`<div class="nearby-stop-card nearby-bus" role="button" tabindex="0" data-nearby="1" data-stop="${esc(id)}">`
             + `<span class="hero-line-band bus-band"${busBandAttr(busRoute)}></span>`
             + `<div class="nearby-card-head"><div class="nearby-card-main">`
-            + `<div class="nearby-card-title">${esc(stopName(name) || "Nearby stop")}</div>`
+            + `<div class="nearby-card-title">${nearbyModeIcon(false)}${esc(stopName(name) || "Nearby stop")}</div>`
             + `<div class="nearby-card-sub">${esc(subBits.join(" · "))}</div>`
             + `</div>`
             + `</div></div>`);

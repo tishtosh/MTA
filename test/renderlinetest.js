@@ -99,7 +99,7 @@ const h1 = sandbox.heroCardHtml(
   { StopID: "1002130", Name: "Park Rd & 19th St NW", Arrivals: [], Error: null },
   [{ min: 14, route: "D72", dir: "North to Van Ness", heads: "North to Van Ness" }]);
 check("header: name", h1.includes("Park Rd &amp; 19th St NW"));
-check("header: stop ID shown after the name", /#1002130/.test(h1));
+check("header: stop reference not shown", !/#1002130/.test(h1));
 check("header: 'Selected boarding stop' removed", !h1.includes("Selected boarding stop"));
 check("header: home/work/favorite shortcuts",
   h1.includes('data-shortcut="home"') && h1.includes('data-shortcut="work"') && h1.includes('data-shortcut="fav"'));
