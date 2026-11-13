@@ -3445,7 +3445,53 @@ function favSelectHtml(kind, id, name, route) {
         + `</button>`;
 }
 
-function favOrderedRow(kind, id, name, route) {
+// Connecting bus routes / metro lines at a stop, cached per page load.
+const stopConnections = new Map();
+
+async function fetchStopConnections(kind, id) {
+    const key = kind + ":" + String(id);
+    if (stopConnections.has(key)) return stopConnections.get(key);
+    const out = { bus: [], metro: [] };
+    try {
+        if (isBoston()) {
+            const { data } = await mbtaGet("/routes", { "filter[stop]": String(id) });
+            for (const r of (data && data.data) || []) {
+                const type = r.attributes.type;
+                if (type === 3) out.bus.push(String(r.attributes.short_name || r.id).toUpperCase());
+                else if (type === 0 || type === 1) out.metro.push(String(r.id));
+            }
+        } else if (kind === "metro") {
+            const st = (metroStationsCache || []).find(s => String(s.Code) === String(id));
+            out.metro = st ? (st.Lines || []).slice() : [];
+        } else {
+            const st = (allStopsCache || []).find(s => String(s.StopID) === String(id));
+            out.bus = ((st && st.Routes) || []).map(r => String(r).toUpperCase());
+        }
+    } catch (e) { /* show no connections on failure */ }
+    out.bus = [...new Set(out.bus)].slice(0, 6);
+    out.metro = [...new Set(out.metro)].slice(0, 6);
+    stopConnections.set(key, out);
+    return out;
+}
+
+function connectionBadgesHtml(conns) {
+    if (!conns) return "";
+    const bus = (conns.bus || []).map(r => favBadgeHtml("bus", r));
+    const metro = (conns.metro || []).map(l => favBadgeHtml("metro", l));
+    return [...bus, ...metro].join(" ");
+}
+
+async function loadStopConnections(rows) {
+    const map = new Map();
+    await Promise.all(rows.map(async s => {
+        const id = String(s.StopID || s.id || "");
+        if (!id) return;
+        map.set(id, await fetchStopConnections(s.kind || "bus", id));
+    }));
+    return map;
+}
+
+function favOrderedRow(kind, id, name, route, conns) {
     return `<div class="fav-stop">${favSelectHtml(kind, id, name, route)}`
         + `${favStarHtml(kind, id, name, route)}`
         + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}</div>`;
@@ -3484,7 +3530,11 @@ async function mbtaTripStops(tripId, useParent) {
 
 function heroRouteListHtml(stops, kind, route, anchor) {
     if (!stops.length) return `<div class="fav-empty">no stops available</div>`;
-    return stops.map(s => {
+    // Only the next stops: start at the selected stop and run toward the
+    // trip's destination.
+    const at = stops.findIndex(s => String(s.StopID || s.id) === String(anchor));
+    const list = at >= 0 ? stops.slice(at) : stops;
+    return list.map(s => {
         const id = String(s.StopID || s.id || "");
         const name = s.Name || s.name || "";
         const mark = id === String(anchor) ? ` <b class="bt-mark">your stop</b>` : "";
