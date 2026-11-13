@@ -36,7 +36,8 @@ let src = [names.map(constBlock).join("\n"),
   extractFn("fmtEta"), extractFn("boardEtasHtml"), extractFn("normHeads"),
   extractFn("scheduleDayKey"), extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
   extractFn("sortRowsBySoonest"),
-  "let selectionVersion = 0, acrossStop = null, boardUserScrolled = false, boardAuto = {};",
+  "let selectionVersion = 0, acrossStop = null, boardUserScrolled = false, boardAuto = {}, favorites = [];",
+  extractFn("isFavorite"), extractFn("favStarHtml"),
   extractFn("noteSelectionChange"),
   extractFn("boardRowHead"), extractFn("boardHtml")].join("\n");
 // const/let bindings stay in the script's lexical scope, not on ctx — expose

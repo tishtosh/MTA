@@ -400,9 +400,12 @@
             color: #343a40; font-variant-numeric: tabular-nums;
         }
         .bt-stoplist .bt-stop-item {
+            display: flex; align-items: center; gap: 4px;
             padding: 2px 6px; margin: 1px 0; border-radius: 4px;
             cursor: pointer;
         }
+        .bt-stoplist .bt-stop-name { flex: 1; min-width: 0; }
+        .bt-stoplist .fav-star { font-size: 12px; }
         .bt-stoplist .bt-stop-item:hover { background: #f1f3f5; }
         .bt-stoplist .bt-stop-item:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .bt-stoplist .bt-mark { font-weight: 700; color: #0056b3; }
@@ -1964,7 +1967,8 @@ function boardHtml(geom, rows) {
                   const mark = s.anchor ? ` <b class="bt-mark">your stop</b>`
                      : s.terminal ? ` <b class="bt-mark">terminal</b>` : "";
                   return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(s.id)}">`
-                      + `${esc(stopName(s.name) || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</li>`;
+                      + `${favStarHtml("bus", s.id, s.name, row.route)}`
+                      + `<span class="bt-stop-name">${esc(stopName(s.name) || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</span></li>`;
                 }).join("") + `</ul>`
             : "";
         const rowClass = row.departed ? " is-departed" : (scheduled ? " is-scheduled" : "");
@@ -2278,11 +2282,13 @@ async function loadMetroStops(ul) {
     ul.innerHTML = `<li class="bt-stop-item">loading stops…</li>`;
     try {
         const path = await fetchMetroPath(from, to);
+        const line = ul.dataset.line || "";
         ul.innerHTML = path.map(p => {
             const mark = p.StationCode === from ? ` <b class="bt-mark">your stop</b>`
                 : p.StationCode === to ? ` <b class="bt-mark">terminal</b>` : "";
             return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(p.StationCode)}">`
-                + `${esc(stopName(p.StationName))} <small>(${esc(p.StationCode)})</small>${mark}</li>`;
+                + `${favStarHtml("metro", p.StationCode, p.StationName, line)}`
+                + `<span class="bt-stop-name">${esc(stopName(p.StationName))} <small>(${esc(p.StationCode)})</small>${mark}</span></li>`;
         }).join("");
     } catch (e) {
         ul.innerHTML = `<li class="bt-stop-item">could not load stops</li>`;
@@ -2323,7 +2329,8 @@ function renderMetro() {
         const open = expandedStops.has(key);
         const list = r.metro && r.toCode
             ? `<ul class="bt-stoplist"${open ? "" : " hidden"}`
-              + ` data-metro-from="${esc(r.fromCode || "")}" data-metro-to="${esc(r.toCode)}">`
+              + ` data-metro-from="${esc(r.fromCode || "")}" data-metro-to="${esc(r.toCode)}"`
+              + ` data-line="${esc(r.route || "")}">`
               + (open ? `<li class="bt-stop-item">loading stops…</li>` : "")
               + `</ul>`
             : "";
@@ -3077,7 +3084,7 @@ function toggleBookmarkList(slot) {
 }
 
 function syncFavStars() {
-    const scope = [gFavPanel, gBmList].filter(Boolean);
+    const scope = [gFavPanel, gBmList, gLinesScroll].filter(Boolean);
     for (const root of scope) root.querySelectorAll(".fav-star").forEach(star => {
         const on = isFavorite(star.dataset.favKind, star.dataset.favId);
         star.classList.toggle("active", on);
@@ -3345,13 +3352,17 @@ gBoardHeader.addEventListener("click", e => {
             : String((st.Routes && st.Routes[0]) || "");
         toggleFavorite(kind, id, st.Name || "", route);
     } else {
-        if (shortcuts[slot] && String(shortcuts[slot].id) === id) delete shortcuts[slot];
-        else shortcuts[slot] = {
-            id, name: st.Name || "",
-            route: kind === "metro"
-                ? String((st.Lines && st.Lines[0]) || "")
-                : String((st.Routes && st.Routes[0]) || "")
-        };
+        const route = kind === "metro"
+            ? String((st.Lines && st.Lines[0]) || "")
+            : String((st.Routes && st.Routes[0]) || "");
+        if (shortcuts[slot] && String(shortcuts[slot].id) === id) {
+            // Clearing Home/Work leaves the master favorites list alone.
+            delete shortcuts[slot];
+        } else {
+            shortcuts[slot] = { id, name: st.Name || "", route };
+            // Saving a Home or Work bookmark also adds the stop to favorites.
+            if (!isFavorite(kind, id)) toggleFavorite(kind, id, st.Name || "", route);
+        }
         writeShortcutCookie();
     }
     gBoardHeader.querySelectorAll(".board-shortcut").forEach(b => {
@@ -3708,6 +3719,18 @@ function selectStop(id, keepPicker) {
 // redraw puts it first, then the view glides up). A stop in the expanded
 // "View all stops" list re-anchors the board on that stop and refreshes it.
 gLinesScroll.addEventListener("click", e => {
+    const star = e.target.closest ? e.target.closest(".fav-star") : null;
+    if (star) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleFavorite(star.dataset.favKind, star.dataset.favId,
+            star.dataset.favName, star.dataset.favRoute);
+        updateShortcutNav();
+        if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+        if (bookmarkSlot === "fav") renderBookmarkList("fav");
+        syncFavStars();
+        return;
+    }
     const item = e.target.closest ? e.target.closest(".bt-stop-item") : null;
     if (item && item.dataset && item.dataset.stop) {
         if (mode === "metro") setMetroAnchor(item.dataset.stop);
@@ -3727,6 +3750,8 @@ gLinesScroll.addEventListener("click", e => {
 });
 gLinesScroll.addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
+    // The star is a real button: let its native activation toggle the favorite.
+    if (e.target.closest && e.target.closest(".fav-star")) return;
     const el = e.target.closest ? e.target.closest(".curb-head, .bt-stop-item") : null;
     if (!el || !el.dataset || !el.dataset.stop) return;
     e.preventDefault();
