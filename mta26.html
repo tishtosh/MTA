@@ -98,6 +98,12 @@
             font: 12px/1.4 system-ui, -apple-system, sans-serif;
         }
         .fav-stop-name { flex: 1; min-width: 0; }
+        button.fav-stop-name {
+            border: 0; background: none; padding: 2px 0; text-align: left;
+            color: #0b5ed7; cursor: pointer; font: inherit;
+        }
+        button.fav-stop-name:hover { text-decoration: underline; }
+        button.fav-stop-name:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .fav-star {
             flex: none; border: 0; background: none; padding: 2px;
             color: #adb5bd; cursor: pointer; font-size: 13px; line-height: 1;
@@ -529,7 +535,7 @@
 <div style="margin-top:100px" class="container">
     <h3><small id="statusmessage" aria-live="polite"></small></h3>
 
-    <div id="acWrap" class="ac-wrap">
+    <div id="acWrap" class="ac-wrap" hidden>
         <button id="busRoutesToggle" class="bus-routes-toggle" type="button" aria-expanded="false">
             <span>Bus routes</span>
             <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
@@ -1982,21 +1988,30 @@ function updateModeIcons() {
     }
 }
 
-function setMode(next) {
-    if (next !== "bus" && next !== "metro") return;
-    if (next === mode) return;
+// Switch mode and update the chrome. Deliberately starts no data flow, so a
+// caller can pick the destination first and then run exactly one flow.
+function applyMode(next) {
+    if (next !== "bus" && next !== "metro") return false;
+    const changed = next !== mode;
     mode = next;
     writeModeCookie();
     shortcuts = readShortcutCookie();
     updateShortcutNav();
     updateModeIcons();
-    if (gAcWrap) gAcWrap.hidden = mode !== "bus";
-    if (gMetroWrap) gMetroWrap.hidden = mode !== "metro";
-    expandedStops.clear();
-    gBoardHeader.innerHTML = "";
-    gLinesScroll.innerHTML = "";
-    gLinesNote.textContent = "";
-    scrollPageTop();
+    if (changed) {
+        expandedStops.clear();
+        gBoardHeader.innerHTML = "";
+        gLinesScroll.innerHTML = "";
+        gLinesNote.textContent = "";
+        scrollPageTop();
+    }
+    return changed;
+}
+
+function setMode(next) {
+    if (next !== "bus" && next !== "metro") return;
+    if (next === mode) return;
+    applyMode(next);
     if (mode === "bus") {
         if (allStopsCache) populateBusRoutes(allStopsCache);
         runFlow();
@@ -2004,7 +2019,6 @@ function setMode(next) {
 }
 
 async function runMetro() {
-    if (gAcWrap) gAcWrap.hidden = true;
     gLinesNote.textContent = "loading Metro stations…";
     try {
         const all = await loadMetroStations();
@@ -2709,6 +2723,13 @@ function loadBusRouteDirectory() {
     return busRouteLoad;
 }
 
+function favGotoHtml(kind, id, name, label) {
+    return `<button type="button" class="fav-stop-name fav-goto"`
+        + ` data-fav-kind="${esc(kind)}" data-fav-id="${esc(id)}"`
+        + ` data-fav-name="${esc(name || "")}"`
+        + ` title="Go to ${esc(label)}">${esc(label)}</button>`;
+}
+
 function favStarHtml(kind, id, name, route) {
     const on = isFavorite(kind, id);
     return `<button type="button" class="fav-star${on ? " active" : ""}"`
@@ -2758,8 +2779,7 @@ async function populateFavStops(container, kind, key) {
                 .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === key))
                 .sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
             container.innerHTML = list.length ? list.map(s =>
-                `<div class="fav-stop"><span class="fav-stop-name">${esc(stopName(s.Name) || "#" + s.StopID)}`
-                + ` <small>#${esc(s.StopID)}</small></span>${favStarHtml("bus", s.StopID, s.Name, key)}</div>`
+                `<div class="fav-stop">${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}${favStarHtml("bus", s.StopID, s.Name, key)}</div>`
             ).join("") : `<div class="fav-empty">no stops for this route</div>`;
         } else {
             const all = await loadMetroStations();
@@ -2767,13 +2787,34 @@ async function populateFavStops(container, kind, key) {
                 .filter(s => s.Lines.includes(key))
                 .sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
             container.innerHTML = list.length ? list.map(s =>
-                `<div class="fav-stop"><span class="fav-stop-name">${esc(stopName(s.Name) || s.Code)}`
-                + ` <small>#${esc(s.Code)}</small></span>${favStarHtml("metro", s.Code, s.Name, key)}</div>`
+                `<div class="fav-stop">${favGotoHtml("metro", s.Code, s.Name, stopName(s.Name) || s.Code)}${favStarHtml("metro", s.Code, s.Name, key)}</div>`
             ).join("") : `<div class="fav-empty">no stations on this line</div>`;
         }
     } catch (e) {
         container.innerHTML = `<div class="fav-empty">could not load stops</div>`;
     }
+}
+
+function closeFavPanel() {
+    if (gFavPanel) gFavPanel.hidden = true;
+    if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "false");
+}
+
+// A favorite name navigates: switch mode first (without starting a competing
+// flow), then anchor exactly once on the chosen stop/station.
+async function gotoFavorite(kind, id, name) {
+    closeFavPanel();
+    if (kind === "metro") {
+        if (mode !== "metro") applyMode("metro");
+        await loadMetroStations();
+        setMetroAnchor(id);
+        return;
+    }
+    if (mode !== "bus") {
+        applyMode("bus");
+        if (!stops.length) await runFlow();
+    }
+    await gotoStop(id, name);
 }
 
 if (gAddFavBtn) gAddFavBtn.addEventListener("click", () => {
@@ -2797,6 +2838,12 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         star.setAttribute("aria-pressed", on ? "true" : "false");
         star.title = on ? "Remove favorite" : "Add favorite";
         star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
+        return;
+    }
+    const go = e.target.closest ? e.target.closest(".fav-goto") : null;
+    if (go && go.dataset.favId) {
+        e.preventDefault();
+        await gotoFavorite(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
         return;
     }
     const route = e.target.closest ? e.target.closest(".fav-route") : null;
@@ -2841,10 +2888,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     header.setAttribute("aria-expanded", open ? "true" : "false");
 });
 document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && gFavPanel && !gFavPanel.hidden) {
-        gFavPanel.hidden = true;
-        if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "false");
-    }
+    if (e.key === "Escape" && gFavPanel && !gFavPanel.hidden) closeFavPanel();
 });
 
 
@@ -2886,8 +2930,6 @@ gBoardHeader.addEventListener("click", e => {
 });
 updateShortcutNav();
 updateModeIcons();
-if (gAcWrap) gAcWrap.hidden = mode !== "bus";
-if (gMetroWrap) gMetroWrap.hidden = mode !== "metro";
 if (gMetroSelect) gMetroSelect.addEventListener("change", () => {
     if (mode === "metro") setMetroAnchor(gMetroSelect.value);
 });
