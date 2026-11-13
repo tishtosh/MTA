@@ -479,10 +479,6 @@
                 <button id="btnMetro" class="navicon mode-icon" title="Metro" aria-label="Show Metro stations" aria-pressed="false">
                     <i class="fa-solid fa-train-subway fa-xl-mta"></i>
                 </button>
-                <div class="d-flex flex-column" style="line-height:1.15">
-                    <span class="navbar-text" id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></span>
-                    <span id="clockMeta" class="clock-meta"></span>
-                </div>
             </div>
             <div class="d-flex align-items-center" style="gap: 12px">
                 <button id="btnHome" class="navicon nav-shortcut" title="Home stop" aria-label="Go to home stop">
@@ -493,7 +489,7 @@
                     <i class="fa-solid fa-briefcase fa-xl-mta"></i>
                     <i class="fa-regular fa-bookmark nav-bookmark" aria-hidden="true"></i>
                 </button>
-                <button id="btnFav" class="navicon nav-shortcut" title="Favorite stop" aria-label="Go to favorite stop">
+                <button id="btnFav" class="navicon nav-shortcut" title="All favorites" aria-label="Show all favorites">
                     <i class="fa-solid fa-star fa-xl-mta"></i>
                     <i class="fa-regular fa-bookmark nav-bookmark" aria-hidden="true"></i>
                 </button>
@@ -506,6 +502,10 @@
                         title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
+                <div class="d-flex flex-column" style="line-height:1.15; text-align:right">
+                    <span class="navbar-text" id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></span>
+                    <span id="clockMeta" class="clock-meta"></span>
+                </div>
             </div>
         </div>
     </nav>
@@ -2012,7 +2012,6 @@ function applyMode(next) {
         gLinesNote.textContent = "";
         scrollPageTop();
     }
-    if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
     return changed;
 }
 
@@ -2601,6 +2600,14 @@ function updateShortcutNav() {
     for (const slot of SHORTCUT_SLOTS) {
         const btn = gShortcutBtns[slot];
         if (!btn) continue;
+        if (slot === "fav") {
+            // The nav star is the master favorites list, not a single slot.
+            const n = favorites.length;
+            btn.classList.toggle("is-set", n > 0);
+            btn.title = n ? `All favorites (${n})` : "All favorites";
+            btn.setAttribute("aria-label", btn.title);
+            continue;
+        }
         const saved = shortcuts[slot];
         const label = shortcutLabel(slot);
         btn.classList.toggle("is-set", !!(saved && saved.id));
@@ -2776,17 +2783,30 @@ function renderFavMetroLines() {
     ).join("");
 }
 
-// Favorites are mode-specific: the current mode's saved stops or stations,
-// refreshed whenever the Bus/Subway mode icons switch.
+// The master favorites list is shared by both modes: bus favorites first,
+// then subway favorites, each group sorted by name. Home and Work are
+// separate special bookmarks and never appear here.
+function favBadgeHtml(kind, route) {
+    const r = String(route || "");
+    if (kind === "metro") {
+        return `<span class="fav-badge line" style="background:${metroLineColor(r)}">`
+            + `${esc(r ? metroLineName(r) : "Metro")}</span>`;
+    }
+    return `<span class="fav-badge" style="background:${routeColor(r)}">`
+        + `${esc(r || "Bus")}</span>`;
+}
+
 function renderFavorites() {
     if (!gFavFavList) return;
-    const kind = mode === "metro" ? "metro" : "bus";
-    const list = favorites
-        .filter(f => f.kind === kind)
-        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    const rank = { bus: 0, metro: 1 };
+    const list = favorites.slice().sort((a, b) =>
+        (rank[a.kind] ?? 2) - (rank[b.kind] ?? 2) ||
+        String(a.name || "").localeCompare(String(b.name || "")));
     gFavFavList.innerHTML = list.length ? list.map(f =>
-        `<div class="fav-stop">${favGotoHtml(kind, f.id, f.name, stopName(f.name) || "#" + f.id)}${favStarHtml(kind, f.id, f.name, f.route)}</div>`
-    ).join("") : `<div class="fav-empty">no ${kind === "metro" ? "subway" : "bus"} favorites yet — tap a star to save one</div>`;
+        `<div class="fav-stop">${favBadgeHtml(f.kind, f.route)}`
+        + `${favGotoHtml(f.kind, f.id, f.name, stopName(f.name) || "#" + f.id)}`
+        + `${favStarHtml(f.kind, f.id, f.name, f.route)}</div>`
+    ).join("") : `<div class="fav-empty">no favorites yet — tap a star to save one</div>`;
 }
 
 async function populateFavStops(container, kind, key) {
@@ -2819,6 +2839,20 @@ async function populateFavStops(container, kind, key) {
 function closeFavPanel() {
     if (gFavPanel) gFavPanel.hidden = true;
     if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "false");
+}
+
+// The nav star opens the master list with the Favorites section expanded.
+// Clicking it again (with that section already open) closes the panel.
+function openFavoritesPanel() {
+    if (!gFavPanel) return;
+    const showing = !gFavPanel.hidden && gFavFavBody && !gFavFavBody.hidden;
+    if (showing) { closeFavPanel(); return; }
+    gFavPanel.hidden = false;
+    if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "true");
+    renderFavorites();
+    if (gFavFavBody) gFavFavBody.hidden = false;
+    const header = gFavPanel.querySelector('.fav-header[data-fav-panel="favorites"]');
+    if (header) header.setAttribute("aria-expanded", "true");
 }
 
 // A favorite name navigates: switch mode first (without starting a competing
@@ -2859,6 +2893,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         star.setAttribute("aria-pressed", on ? "true" : "false");
         star.title = on ? "Remove favorite" : "Add favorite";
         star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
+        updateShortcutNav();
         if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
         return;
     }
@@ -2921,7 +2956,11 @@ gBusBtn.addEventListener("click", () => setMode("bus"));
 gMetroBtn.addEventListener("click", () => setMode("metro"));
 for (const slot of SHORTCUT_SLOTS) {
     const btn = gShortcutBtns[slot];
-    if (btn) btn.addEventListener("click", () => goShortcut(slot));
+    if (!btn) continue;
+    btn.addEventListener("click", () => {
+        if (slot === "fav") openFavoritesPanel();
+        else goShortcut(slot);
+    });
 }
 
 // The header checkboxes save the current stop/station as home/work/favorite
