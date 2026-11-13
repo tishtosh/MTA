@@ -159,6 +159,7 @@
         .bookmark-card .fav-star.active { color: #2e7d32; }
         .bookmark-card.hero-bus .fav-star { color: #6b6b6b; }
         .bookmark-card.hero-bus .fav-star:hover { color: #111; background: rgba(0,0,0,.08); }
+        .bookmark-card.hero-bus .fav-star.active { color: #2e7d32; }
 
         /* clock block: current time over "at … ·refresh in Ns", with
            the auto-refresh toggle beside it. */
@@ -433,7 +434,7 @@
         }
         /* Bus hero strip: red on the left 2/3, medium grey on the right,
            with a 45° transition (the 7 px band height is the offset). */
-        .hero-line-band.bus-band { background: #c62828; }
+        .hero-line-band.bus-band { background: var(--bus-band-color, #c62828); }
         .hero-line-band.bus-band::after {
             content: ""; position: absolute; top: 0; right: 0; bottom: 0;
             left: 66.666%; background: #9e9e9e;
@@ -777,8 +778,8 @@ const CITIES = {
         id: "boston", name: "Boston",
         center: { lat: 42.3601, lon: -71.0589 },
         metroCenter: { lat: 42.3564, lon: -71.0624 },
-        defaultFavorite: { kind: "metro", id: "place-pktrm",
-            name: "Park Street", route: "Red" }
+        defaultFavorite: { kind: "bus", id: "17091",
+            name: "Boston Logan Airport Terminal A", route: "SL1" }
     }
 };
 const CITY_COOKIE = "mta_city";
@@ -874,7 +875,7 @@ let metroLive = {};                 // station Code → live trains
 let metroLiveError = {};            // station Code → error
 let metroSchedule = {};             // station Code → scheduled departures
 let metroRefreshInFlight = false, metroRefreshQueued = false;
-const METRO_NEARBY_FT = 5280 * 1.5;
+const METRO_NEARBY_FT = 1000;
 const metroPathCache = {};
 const metroPathInflight = {};
 
@@ -970,9 +971,14 @@ function favoritesCookieName() {
     return isBoston() ? "mta_favorites_boston" : FAVORITES_COOKIE;
 }
 let favorites = readFavorites();
+if (isBoston() && !favorites.length) {
+    favorites = [defaultFavorite()];
+    writeFavorites();
+}
 let busRouteDirectory = null;
 let busRouteLoad = null;
 let busRouteMbtaIds = {};
+let busRouteColors = {};
 
 function readFavorites() {
     const key = favoritesCookieName();
@@ -1880,7 +1886,7 @@ function confirmAcross(st, have) {
 // everything in the coord source but the anchor itself, nearest first. The
 // nearby-search pool already carries Distance; the directory pool does not,
 // so compute it there (feet, via distance()).
-const NEARBY_MAX_FT = 500;
+const NEARBY_MAX_FT = 1000;
 function nearbyStops(st) {
     if (!st || st.Lat == null || st.Lon == null) return [];
     const aId = String(st.StopID);
@@ -2431,6 +2437,7 @@ function clearCityCaches() {
     busRouteDirectory = null;
     busRouteLoad = null;
     busRouteMbtaIds = {};
+    busRouteColors = {};
     metroStationsCache = null;
     metroStationsLoad = null;
     metroRoutesCache = null;
@@ -2464,6 +2471,10 @@ function setCity(next, opts) {
     city = next;
     writeCityCookie();
     favorites = readFavorites();
+    if (isBoston() && !favorites.length) {
+        favorites = [defaultFavorite()];
+        writeFavorites();
+    }
     shortcuts = readShortcutCookie();
     clearCityCaches();
     if (refreshTimer) clearTimeout(refreshTimer);
@@ -3215,9 +3226,11 @@ function loadBusRouteDirectory() {
                 if (error) throw error;
                 const seen = new Set();
                 busRouteMbtaIds = {};
+                busRouteColors = {};
                 busRouteDirectory = ((data && data.data) || []).map(r => {
                     const id = String(r.attributes.short_name || r.id).toUpperCase();
                     busRouteMbtaIds[id] = r.id;
+                    if (r.attributes.color) busRouteColors[id] = r.attributes.color;
                     return {
                         id,
                         name: r.attributes.long_name || r.id,
@@ -3489,7 +3502,8 @@ function bookmarkCardHtml(row) {
     const band = row.kind === "metro"
         ? `<span class="hero-line-band" data-band="${esc(row.kind)}:${esc(row.id)}"`
           + ` style="background:${metroLineColor(row.route)}"></span>`
-        : `<span class="hero-line-band bus-band"></span>`;
+        : `<span class="hero-line-band bus-band" data-band="${esc(row.kind)}:${esc(row.id)}"`
+          + `${busBandAttr(row.route)}></span>`;
     return `<div class="hero-card bookmark-card hero-${esc(row.kind)}" data-bookmark-kind="${esc(row.kind)}"`
         + ` data-bookmark-id="${esc(row.id)}" data-bookmark-name="${esc(row.name || "")}"`
         + ` role="button" tabindex="0" title="Go to ${esc(label)}">`
@@ -3532,12 +3546,21 @@ async function fillBookmarkArrivals(rows, token) {
             const band = gBookmarkList.querySelector(
                 `.hero-line-band[data-band="${row.kind}:${row.id}"]`);
             if (band) band.style.background = metroLineColor(next.route);
+        } else if (row.kind === "bus" && next) {
+            const band = gBookmarkList.querySelector(
+                `.hero-line-band[data-band="${row.kind}:${row.id}"]`);
+            if (band) band.style.setProperty("--bus-band-color", routeColor(next.route));
         }
     }));
 }
 
 async function renderBookmarkList(slot) {
-    if (isBoston()) await loadMetroRoutes().catch(() => null);
+    if (isBoston()) {
+        await Promise.all([
+            loadMetroRoutes().catch(() => null),
+            loadBusRouteDirectory().catch(() => null)
+        ]);
+    }
     bookmarkSlot = slot;
     const token = ++bookmarkToken;
     const label = slot === "fav" ? "Favorites" : shortcutLabel(slot);
@@ -4042,9 +4065,24 @@ const ROUTE_COLORS = ["#c62828", "#1565c0", "#2e7d32", "#ef6c00", "#6a1b9a", "#0
     "#ad1457", "#5d4037", "#455a64", "#827717", "#37474f", "#9e9d24"];
 
 function routeColor(routeId) {
+    const key = String(routeId || "").toUpperCase();
+    // Boston: MBTA publishes each route's own color; use it when known.
+    if (typeof isBoston === "function" && isBoston()
+        && typeof busRouteColors !== "undefined" && busRouteColors[key]) {
+        return "#" + String(busRouteColors[key]).replace(/^#/, "");
+    }
     let h = 0;
     for (const c of String(routeId)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     return ROUTE_COLORS[h % ROUTE_COLORS.length];
+}
+
+// Bus hero stripe: the route's color on the left, grey on the right, with
+// the shared 45° slice. Boston uses the MBTA route color; DC uses the
+// app's stable route palette.
+function busBandAttr(route) {
+    if (!route || typeof routeColor !== "function") return "";
+    const c = routeColor(route);
+    return c ? ` style="--bus-band-color:${c}"` : "";
 }
 // The hover card: a stop's live arrivals, fetched once per page load and
 // then cached (a hover is a peek — the arrivals table already refreshes the
@@ -4394,7 +4432,7 @@ function heroCardHtml(st, arrivals) {
     }
     const lineBand = st.Metro
         ? `<span class="hero-line-band" style="background:${metroLineColor(next ? next.route : ((st.Lines || [])[0] || ""))}"></span>`
-        : `<span class="hero-line-band bus-band"></span>`;
+        : `<span class="hero-line-band bus-band"${busBandAttr(next && next.route)}></span>`;
     return `<div class="hero-card${st.Metro ? " hero-metro" : " hero-bus"}">`
         + lineBand
         + shortcutButtonsHtml(id)
@@ -4546,8 +4584,10 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
             ? "Across the street"
             : (rec.distFt != null ? `${Math.round(rec.distFt)} ft away` : "");
         const subBits = [where, `#${id}`].filter(Boolean);
+        const busRoute = (rec.Routes && rec.Routes[0]) ||
+            (rec.Arrivals && rec.Arrivals[0] && rec.Arrivals[0].route) || "";
         nearbyParts.push(`<div class="nearby-stop-card nearby-bus" role="button" tabindex="0" data-nearby="1" data-stop="${esc(id)}">`
-            + `<span class="hero-line-band bus-band"></span>`
+            + `<span class="hero-line-band bus-band"${busBandAttr(busRoute)}></span>`
             + `<div class="nearby-card-head"><div class="nearby-card-main">`
             + `<div class="nearby-card-title">${esc(stopName(name) || "Nearby stop")}</div>`
             + `<div class="nearby-card-sub">${esc(subBits.join(" · "))}</div>`
@@ -4597,6 +4637,13 @@ function renderLines() {
         return;
     }
     const anchorId = String(st.StopID);
+    // Boston bus stripes use the MBTA route color; warm the route directory
+    // once, then repaint with the real colors.
+    if (isBoston() && !Object.keys(busRouteColors).length) {
+        loadBusRouteDirectory()
+            .then(() => { if (token === boardToken) renderLines(); })
+            .catch(() => {});
+    }
     // Live arrivals live on the tracked list stop (what refreshPredictions
     // fills); a directory entry — a raw jStops row — never has them. Keep
     // the directory for identity/name/coords, take Arrivals + Error from

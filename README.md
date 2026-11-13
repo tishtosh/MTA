@@ -15,9 +15,9 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 ## What it does
 
 - On load it shows the **Favorites** view: each saved stop/station is a **bookmark card**
-  in the main panel (the default favorite is N10 — Washington Dulles International
-  Airport). Selecting Favorites, Home, or Work always shows that view; the icons are not
-  toggles.
+  in the main panel. Defaults are N10 (Washington Dulles International Airport) for DC and
+  Boston Logan Airport Terminal A (`#17091`) for Boston. Selecting Favorites, Home, or
+  Work always shows that view; the icons are not toggles.
 - The top bar holds **Search**, **Favorites**, **Home**, and **Work**, with the clock at
   the right showing the last data-refresh time. All four icons are always enabled.
 - **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Subway**, and
@@ -61,6 +61,9 @@ The **Settings** section of the search dropdown selects the transport system:
   listing nearby stops and stations.
 - Boston uses the MBTA stop IDs (`place-…` for stations) and line IDs (`Red`, `Orange`,
   `Green-B`, …); DC uses WMATA stop/station codes.
+- Nearby stop cards show stops/stations within **1,000 ft**, nearest first. Bus hero
+  stripes use the bus route color (MBTA route color in Boston; the app palette in DC)
+  sliced at 45° into medium grey.
 
 
 ## URL parameters
