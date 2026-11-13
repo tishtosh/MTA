@@ -123,7 +123,7 @@ const h2 = sandbox.heroCardHtml(
   { StopID: "1002130", Name: null, Arrivals: [], Error: null },
   [{ min: 0, route: "C87", dir: "TENLEYTOWN", heads: "TENLEYTOWN" }]);
 check("header: no name → #id only, no doubled id", (h2.match(/#1002130/g) || []).length === 1);
-check("header: 0 min → Due", /C87<i[^>]*><\/i><\/button> TENLEYTOWN/.test(h2) && h2.includes('bt-next-eta">Due'));
+check("header: 0 min → Due", /C87<i[^>]*><\/i><\/button> TENLEYTOWN/.test(h2) && h2.includes('bt-next-eta soon">Due'));
 
 const h3 = sandbox.heroCardHtml({ StopID: "X", Name: "x", Error: { rateLimited: false }, Arrivals: [] }, []);
 check("header: failed predictions → 'arrivals unavailable'", h3.includes("arrivals unavailable"));

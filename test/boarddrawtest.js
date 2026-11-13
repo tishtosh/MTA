@@ -71,8 +71,9 @@ t("A3b no prediction + schedule → time + not seen", (() => {
 })());
 {
   const h = ctx.boardEtasHtml([3, 14, 40]);
-  t("A4 first emphasized, rest ascending",
-    h.includes('class="board-eta-first">3 min') && h.includes("then 14 min, 40 min"), h.slice(0, 90));
+  t("A4 soon highlight, rest uniform",
+    h.includes('class="board-eta-soon">3 min') && h.includes("then 14 min") &&
+    h.includes("then 40 min"), h.slice(0, 120));
 }
 
 // ── boardHtml: header layout + compact rows + stop list ──────────────
@@ -96,7 +97,7 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   t("D1 no SVG track graphic", !html.includes("board-tracksvg") && !html.includes("<svg"));
   t("D2 badge, destination below it, then ETAs",
     /row-badge[^]*?board-dest[^]*?board-etas/.test(html) &&
-    html.includes('class="board-eta-first">4 min'));
+    html.includes('class="board-eta-soon">4 min'));
   t("D3 destination is the final headsign", html.includes("TerB") && html.includes("TerC"));
   t("D3b service row with no prediction shows schedule + not seen",
     html.includes("not seen") && /\d{1,2}:\d{2}/.test(html) &&

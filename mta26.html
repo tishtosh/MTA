@@ -329,6 +329,13 @@
         .main-board.metro-board .board-row.is-departed {
             background: rgba(0, 0, 0, .035);
         }
+        /* Nearby cards: one light-grey surface with square bottom corners. */
+        .nearby-board {
+            background: #f1f1f1; border-color: #e0e0e0; border-radius: 0;
+        }
+        .nearby-board .board-row { background: transparent; }
+        .nearby-board .board-row.is-scheduled,
+        .nearby-board .board-row.is-departed { background: rgba(0, 0, 0, .035); }
         /* A row with no live prediction: its scheduled fallback sits on a
            quieter surface so it reads as timetable information. */
         .board-row.is-scheduled { background: #f8f9fa; }
@@ -361,10 +368,10 @@
             margin: 14px 2px 0; padding: 10px 16px; border-radius: 10px 10px 0 0;
             border: 1px solid #dee2e6; border-bottom: 0; cursor: pointer;
         }
-        .nearby-stop-card.nearby-bus { background: #ececec; color: #2f2f2f; }
-        .nearby-stop-card.nearby-metro { background: #f5efe4; color: #46301a; }
-        .nearby-stop-card.nearby-bus:hover { background: #e3e3e3; }
-        .nearby-stop-card.nearby-metro:hover { background: #efe7d8; }
+        .nearby-stop-card.nearby-bus,
+        .nearby-stop-card.nearby-metro { background: #f1f1f1; color: #2f2f2f; }
+        .nearby-stop-card.nearby-bus:hover,
+        .nearby-stop-card.nearby-metro:hover { background: #e8e8e8; }
         .nearby-stop-card:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .nearby-card-head { display: flex; align-items: center; gap: 16px; }
         .nearby-card-main { flex: 1 1 auto; min-width: 0; }
@@ -373,7 +380,6 @@
         }
         .nearby-mode-icon { margin-right: 5px; font-size: 13px; color: #495057; }
         .nearby-card-sub { margin: 1px 0 0; font-size: 12px; color: #5f5f5f; }
-        .nearby-stop-card.nearby-metro .nearby-card-sub { color: #7a6a55; }
 
         .board-head {
             display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
@@ -429,8 +435,9 @@
             display: inline-flex; align-items: baseline; gap: 6px;
             font-variant-numeric: tabular-nums;
         }
-        .board-eta-first { font-weight: 700; font-size: 18px; color: #182338; }
-        .board-eta-rest { font-size: 13px; color: #6c757d; }
+        .board-eta { font-size: 15px; color: #343a40; font-variant-numeric: tabular-nums; }
+        .board-eta-soon { font-size: 20px; font-weight: 700; color: #2e7d32; font-variant-numeric: tabular-nums; }
+        .board-eta-note { font-size: 12px; color: #6c757d; font-variant-numeric: tabular-nums; }
 
         .bt-allstops {
             flex: none; padding: 0 7px;
@@ -494,8 +501,6 @@
         }
         .hero-card.hero-bus .board-stopid,
         .hero-card.hero-metro .board-stopid { color: #85706a; }
-        .hero-card.hero-bus .bt-next-eta,
-        .hero-card.hero-metro .bt-next-eta { color: #2e7d32; }
         .hero-card.hero-bus .bt-next-rest,
         .hero-card.hero-metro .bt-next-rest { color: #7d6f65; }
         .hero-card.hero-bus .board-next,
@@ -576,7 +581,8 @@
         .hero-route-stops[hidden] { display: none; }
         .hero-route-stops .fav-stop { padding: 5px 2px; border-bottom: 1px solid #f1f3f5; }
         .hero-route-stops .fav-stop:last-child { border-bottom: 0; }
-        .bt-next-eta { font-weight: 700; font-size: 20px; color: #8ce99a; font-variant-numeric: tabular-nums; }
+        .bt-next-eta { font-weight: 700; font-size: 16px; color: inherit; font-variant-numeric: tabular-nums; }
+        .bt-next-eta.soon { font-size: 20px; color: #2e7d32; }
         .bt-next-rest { font-size: 13px; color: #9fb0c7; font-variant-numeric: tabular-nums; }
 
         /* floating tooltip that follows a hovered stop dot */
@@ -2355,20 +2361,21 @@ function fmtEta(min) {
 function boardEtasHtml(mins, scheduled, departedAt) {
     if (departedAt) {
         const ago = Math.max(0, Math.round((Date.now() - departedAt) / 60000));
-        return `<span class="board-eta-first">Departed</span>`
-            + (ago ? ` <span class="board-eta-rest">${ago} min ago</span>` : "");
+        return `<span class="board-eta">Departed</span>`
+            + (ago ? ` <span class="board-eta-note">${ago} min ago</span>` : "");
     }
     const list = (mins || []).slice(0, 8);
     if (!list.length) {
         if (scheduled)
-            return `<span class="board-eta-first">${esc(fmtScheduleTime(scheduled.at))}</span>`
-                + ` <span class="board-eta-rest">not seen</span>`;
-        return `<span class="board-eta-rest">no arrival or departure</span>`;
+            return `<span class="board-eta">${esc(fmtScheduleTime(scheduled.at))}</span>`
+                + ` <span class="board-eta-note">not seen</span>`;
+        return `<span class="board-eta-note">no arrival or departure</span>`;
     }
-    let h = `<span class="board-eta-first">${esc(fmtEta(list[0]))}</span>`;
-    if (list.length > 1)
-        h += `<span class="board-eta-rest">then ${list.slice(1).map(m => esc(fmtEta(m))).join(", ")}</span>`;
-    return h;
+    return list.map((m, i) => {
+        const soon = Number.isFinite(m) && m <= 5;
+        return `<span class="${soon ? "board-eta-soon" : "board-eta"}">`
+            + `${i ? "then " : ""}${esc(fmtEta(m))}</span>`;
+    }).join(" ");
 }
 
 // Piece 11: which rows the user expanded in the "View all stops" disclosure.
@@ -4216,7 +4223,7 @@ function nextArrivalHtml(kind, next) {
     return `${verb} <span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
         + ` style="background:${color};color:${kind === "metro" ? "#fff" : busTextColor(next.route)}">${esc(label)}</span> `
         + `${esc(next.heads || next.dir || "")}`
-        + ` <span class="bt-next-eta">${esc(fmtEta(next.min))}</span>`;
+        + ` <span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>`;
 }
 
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
@@ -5296,7 +5303,7 @@ function heroCardHtml(st, arrivals) {
             routeBadge,
             esc(next.heads || next.dir || "")
         ].filter(Boolean).join(" ");
-        nextLine = `${bits} <span class="bt-next-eta">${esc(fmtEta(mins[0]))}</span>`;
+        nextLine = `${bits} <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>`;
         if (mins.length > 1)
             nextLine += ` <span class="bt-next-rest">then ${mins.slice(1).map(m => esc(fmtEta(m))).join(", ")}</span>`;
     } else if (st.Error) {
