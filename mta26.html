@@ -1403,8 +1403,8 @@ function allStopsName(id) {
 // are kept (the ETA list stays whole).
 function mbtaPredictionStatus(a, now) {
     const st = String((a && a.status) || "").toLowerCase();
-    if (/all aboard|boarding/.test(st)) return "Boarding";
-    if (/incoming|arriving/.test(st)) return "Arriving";
+    if (/all aboard|boarding|stopped/.test(st)) return "Boarding";
+    if (/incoming|arriving|approaching/.test(st)) return "Arriving";
     const arr = Date.parse((a && a.arrival_time) || "");
     const dep = Date.parse((a && a.departure_time) || "");
     if (Number.isFinite(arr) && Number.isFinite(dep) && arr <= now && now <= dep)
@@ -2948,6 +2948,7 @@ function metroRowsFor(station, skipFirst) {
         if (!r) {
             r = { kind: "compact", route: t.route, dirNum: t.dirNum || "",
                   dest: t.heads, mins: [], first: 0, metro: true,
+                  status: t.status || "",
                   fromCode: station.Code, toCode: metroDestCode(t.heads) };
             groups.set(key, r);
             rows.push(r);
