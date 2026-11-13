@@ -110,6 +110,7 @@
         .fav-star.active { color: #e0a800; }
         .fav-star:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .fav-empty { padding: 4px; color: #6c757d; font-size: 12px; }
+        .fav-dist { flex: none; color: #6c757d; font-size: 11px; white-space: nowrap; }
 
         /* clock block: current time over "at … ·refresh in Ns", with
            the auto-refresh toggle beside it. */
@@ -138,7 +139,6 @@
         }
         .nav-shortcut > i:not(.nav-bookmark) { position: relative; z-index: 1; }
         .nav-shortcut.is-set i { color: #2e7d32; }
-        .nav-current:hover i { color: #495057; }
         .nav-map:hover i { color: #495057; }
 
         .clock-meta {
@@ -493,11 +493,6 @@
                     <i class="fa-solid fa-star fa-xl-mta"></i>
                     <i class="fa-regular fa-bookmark nav-bookmark" aria-hidden="true"></i>
                 </button>
-                <button id="btnCurrent" class="navicon nav-shortcut nav-current"
-                        title="Nearest stop to my current location"
-                        aria-label="Nearest stop to my current location">
-                    <i class="fa-solid fa-location-crosshairs"></i>
-                </button>
                 <button id="btnRefreshToggle" class="navicon clock-refresh nav-refresh" type="button"
                         title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
                     <i class="fa-solid fa-arrows-rotate"></i>
@@ -518,6 +513,13 @@
     </button>
     <div id="favFavBody" class="fav-body" hidden>
         <div id="favFavList" class="fav-list"></div>
+    </div>
+    <button type="button" class="fav-header" data-fav-panel="near" aria-expanded="false">
+        <span>Near me</span>
+        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+    </button>
+    <div id="favNearBody" class="fav-body" hidden>
+        <div id="favNearList" class="fav-list"></div>
     </div>
     <button type="button" class="fav-header" data-fav-panel="bus" aria-expanded="false">
         <span>Bus</span>
@@ -614,8 +616,15 @@ async function unlockAccess(pass) {
 }
 
 function startApp() {
-    if (mode === "metro") runMetro();
-    else runFlow();
+    // Deep links still open their stop/location directly. With no parameters
+    // the launch screen is the favorites list: nothing is fetched and no
+    // stop or station is selected until the user picks one.
+    if (stopListFromURL || urlPoint) {
+        if (mode === "metro") runMetro();
+        else runFlow();
+        return;
+    }
+    openFavoritesPanel();
 }
 
 function showGate() {
@@ -642,7 +651,7 @@ const DC_CENTER = { lat: 38.89790, lon: -77.03661 };
 //   ?lat=38.934&lon=-77.045    search for stops near this point
 //   ?radius=300                search radius in meters
 //   ?refresh=30                prediction refresh interval, seconds (15..600)
-// No params: the default home stop (1002135) above.
+// No params: the favorites panel opens; no stop is fetched until one is picked.
 // Defaults: radius 300 m, refresh 30 s.
 const params = new URLSearchParams(location.search);
 
@@ -808,6 +817,14 @@ function isFavorite(kind, id) {
     return favorites.some(f => f.kind === kind && String(f.id) === String(id));
 }
 
+// Whether the stop/station currently on the board is in the master list.
+function isCurrentFavorite() {
+    if (mode === "metro")
+        return !!(metroAnchor && isFavorite("metro", metroAnchor.Code));
+    const st = anchorStop();
+    return !!(st && isFavorite("bus", st.StopID));
+}
+
 function toggleFavorite(kind, id, name, route) {
     const i = favorites.findIndex(f => f.kind === kind && String(f.id) === String(id));
     if (i >= 0) favorites.splice(i, 1);
@@ -831,11 +848,12 @@ const gMetroWrap = document.getElementById("metroWrap");
 const gMetroSelect = document.getElementById("metroSelect");
 const gBusBtn = document.getElementById("btnBus");
 const gMetroBtn = document.getElementById("btnMetro");
-const gCurrentBtn = document.getElementById("btnCurrent");
 const gAddFavBtn = document.getElementById("btnAddFav");
 const gFavPanel = document.getElementById("favPanel");
 const gFavFavBody = document.getElementById("favFavBody");
 const gFavFavList = document.getElementById("favFavList");
+const gFavNearBody = document.getElementById("favNearBody");
+const gFavNearList = document.getElementById("favNearList");
 const gFavBusBody = document.getElementById("favBusBody");
 const gFavBusFilter = document.getElementById("favBusFilter");
 const gFavBusRoutes = document.getElementById("favBusRoutes");
@@ -2601,10 +2619,14 @@ function updateShortcutNav() {
         const btn = gShortcutBtns[slot];
         if (!btn) continue;
         if (slot === "fav") {
-            // The nav star is the master favorites list, not a single slot.
-            const n = favorites.length;
-            btn.classList.toggle("is-set", n > 0);
-            btn.title = n ? `All favorites (${n})` : "All favorites";
+            // The nav star is the master favorites list and turns green when
+            // the stop/station currently displayed is in that list.
+            const on = isCurrentFavorite();
+            const noun = mode === "metro" ? "station" : "stop";
+            btn.classList.toggle("is-set", on);
+            btn.title = on
+                ? `This ${noun} is a favorite`
+                : favorites.length ? `All favorites (${favorites.length})` : "All favorites";
             btn.setAttribute("aria-label", btn.title);
             continue;
         }
@@ -2678,8 +2700,6 @@ function goCurrentLocation() {
         gStatus.textContent = "Turn on location sharing.";
     }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
 }
-
-if (gCurrentBtn) gCurrentBtn.addEventListener("click", goCurrentLocation);
 
 function openSelectedInMaps() {
     let lat, lon, name;
@@ -2755,13 +2775,36 @@ function favStarHtml(kind, id, name, route) {
         + `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i></button>`;
 }
 
+// Route ids serving any stop whose name matches the query. The directory
+// loads lazily, so callers re-render once it lands.
+function routesServingStopQuery(q) {
+    if (!q || !allStopsCache) return null;
+    const ids = new Set();
+    for (const s of allStopsCache) {
+        if (String(s.Name || "").toLowerCase().includes(q))
+            for (const r of s.Routes || []) ids.add(String(r).toUpperCase());
+    }
+    return ids;
+}
+
 function renderFavBusRoutes(query) {
     if (!gFavBusRoutes) return;
-    const q = String(query || "").trim().toLowerCase();
+    const raw = String(query || "").trim();
+    const q = raw.toLowerCase();
+    if (q && !allStopsCache) {
+        loadStopDirectory()
+            .then(() => {
+                if (gFavBusFilter && gFavBusFilter.value.trim() === raw)
+                    renderFavBusRoutes(raw);
+            })
+            .catch(() => {});
+    }
+    const byStop = routesServingStopQuery(q);
     const routes = (busRouteDirectory || []).filter(r => !q ||
         r.id.toLowerCase().includes(q) ||
         r.desc.toLowerCase().includes(q) ||
-        r.name.toLowerCase().includes(q));
+        r.name.toLowerCase().includes(q) ||
+        !!(byStop && byStop.has(r.id)));
     gFavBusRoutes.innerHTML = routes.length ? routes.map(r =>
         `<button type="button" class="fav-route" data-fav-route="${esc(r.id)}" aria-expanded="false">`
         + `<span class="fav-badge" style="background:${routeColor(r.id)}">${esc(r.id)}</span>`
@@ -2809,6 +2852,67 @@ function renderFavorites() {
     ).join("") : `<div class="fav-empty">no favorites yet — tap a star to save one</div>`;
 }
 
+// "Near me": bus stops and Metro stations within 1,000 ft of the device's
+// current position, nearest first.
+const NEAR_ME_FT = 1000;
+const NEAR_ME_M = 305;           // WMATA jStops radius is meters
+let favNearToken = 0;
+
+function getUserPosition() {
+    return new Promise(resolve => {
+        if (!navigator || !navigator.geolocation) return resolve(null);
+        navigator.geolocation.getCurrentPosition(
+            pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+            () => resolve(null),
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 });
+    });
+}
+
+async function populateNearMe() {
+    if (!gFavNearList) return;
+    const token = ++favNearToken;
+    gFavNearList.innerHTML = `<div class="fav-empty">locating…</div>`;
+    const pos = await getUserPosition();
+    if (token !== favNearToken) return;
+    if (!pos) {
+        gFavNearList.innerHTML = `<div class="fav-empty">location unavailable — allow location access and try again</div>`;
+        return;
+    }
+    try {
+        const [busStops, stations] = await Promise.all([
+            fetchStopsNear(pos.lat, pos.lon, NEAR_ME_M),
+            loadMetroStations()
+        ]);
+        if (token !== favNearToken) return;
+        const rows = [];
+        for (const s of busStops || []) {
+            const d = distance(pos.lat, pos.lon, s.Lat, s.Lon, "f");
+            if (d > NEAR_ME_FT) continue;
+            rows.push({
+                kind: "bus", id: s.StopID, name: s.Name,
+                route: (s.Routes || [])[0] || "", dist: d
+            });
+        }
+        for (const s of stations || []) {
+            const d = distance(pos.lat, pos.lon, s.Lat, s.Lon, "f");
+            if (d > NEAR_ME_FT) continue;
+            rows.push({
+                kind: "metro", id: s.Code, name: s.Name,
+                route: (s.Lines || [])[0] || "", dist: d
+            });
+        }
+        rows.sort((a, b) => a.dist - b.dist);
+        gFavNearList.innerHTML = rows.length ? rows.map(r =>
+            `<div class="fav-stop">${favBadgeHtml(r.kind, r.route)}`
+            + `${favGotoHtml(r.kind, r.id, r.name, stopName(r.name) || "#" + r.id)}`
+            + `<small class="fav-dist">${Math.round(r.dist)} ft</small>`
+            + `${favStarHtml(r.kind, r.id, r.name, r.route)}</div>`
+        ).join("") : `<div class="fav-empty">nothing within 1,000 ft</div>`;
+    } catch (e) {
+        gFavNearList.innerHTML = `<div class="fav-empty">could not load nearby stops</div>`;
+    }
+}
+
 async function populateFavStops(container, kind, key) {
     if (container.dataset.loaded) return;
     container.dataset.loaded = "1";
@@ -2841,12 +2945,11 @@ function closeFavPanel() {
     if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "false");
 }
 
-// The nav star opens the master list with the Favorites section expanded.
-// Clicking it again (with that section already open) closes the panel.
+// The nav star opens the master list in the panel with the Favorites
+// section expanded. Repeated clicks keep it open and re-list everything;
+// close via the search icon, the section header, or Escape.
 function openFavoritesPanel() {
     if (!gFavPanel) return;
-    const showing = !gFavPanel.hidden && gFavFavBody && !gFavFavBody.hidden;
-    if (showing) { closeFavPanel(); return; }
     gFavPanel.hidden = false;
     if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "true");
     renderFavorites();
@@ -2865,10 +2968,8 @@ async function gotoFavorite(kind, id, name) {
         setMetroAnchor(id);
         return;
     }
-    if (mode !== "bus") {
-        applyMode("bus");
-        if (!stops.length) await runFlow();
-    }
+    if (mode !== "bus") applyMode("bus");
+    if (!stops.length) await runFlow();
     await gotoStop(id, name);
 }
 
@@ -2924,15 +3025,26 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     if (!header) return;
     const which = header.dataset.favPanel;
     const body = which === "favorites" ? gFavFavBody
+        : which === "near" ? gFavNearBody
         : which === "bus" ? gFavBusBody : gFavMetroBody;
     const open = body.hidden;
     if (open) {
         try {
             if (which === "favorites") {
                 renderFavorites();
+            } else if (which === "near") {
+                populateNearMe();
             } else if (which === "bus") {
                 await loadBusRouteDirectory();
                 renderFavBusRoutes(gFavBusFilter ? gFavBusFilter.value : "");
+                // Stop names are part of the filter; warm the directory so
+                // the first stop-name query matches without a pause.
+                loadStopDirectory()
+                    .then(() => {
+                        if (gFavBusBody && !gFavBusBody.hidden)
+                            renderFavBusRoutes(gFavBusFilter ? gFavBusFilter.value : "");
+                    })
+                    .catch(() => {});
             } else {
                 await loadMetroStations();
                 renderFavMetroLines();
@@ -2963,8 +3075,9 @@ for (const slot of SHORTCUT_SLOTS) {
     });
 }
 
-// The header checkboxes save the current stop/station as home/work/favorite
-// (and clear it when the same item is clicked again).
+// Home and Work save/clear their single special bookmark in the header. The
+// star toggles membership in the master favorites list, so it matches the
+// star's color everywhere else.
 gBoardHeader.addEventListener("click", e => {
     const share = e.target.closest ? e.target.closest(".board-share") : null;
     if (share) { openSelectedInMaps(); return; }
@@ -2972,22 +3085,36 @@ gBoardHeader.addEventListener("click", e => {
     if (!btn || !btn.dataset) return;
     const slot = btn.dataset.shortcut;
     if (!SHORTCUT_SLOTS.includes(slot)) return;
-    const st = mode === "metro" ? metroAnchor : anchorStop();
-    const id = st ? String(mode === "metro" ? st.Code : st.StopID) : "";
+    const kind = mode === "metro" ? "metro" : "bus";
+    const st = kind === "metro" ? metroAnchor : anchorStop();
+    const id = st ? String(kind === "metro" ? st.Code : st.StopID) : "";
     if (!id) return;
-    if (shortcuts[slot] && String(shortcuts[slot].id) === id) delete shortcuts[slot];
-    else shortcuts[slot] = { id, name: st.Name || "" };
-    writeShortcutCookie();
-    const current = mode === "metro"
-        ? String((metroAnchor || {}).Code || "")
-        : String((anchorStop() || {}).StopID || "");
+    if (slot === "fav") {
+        const route = kind === "metro"
+            ? String((st.Lines && st.Lines[0]) || "")
+            : String((st.Routes && st.Routes[0]) || "");
+        toggleFavorite(kind, id, st.Name || "", route);
+    } else {
+        if (shortcuts[slot] && String(shortcuts[slot].id) === id) delete shortcuts[slot];
+        else shortcuts[slot] = { id, name: st.Name || "" };
+        writeShortcutCookie();
+    }
     gBoardHeader.querySelectorAll(".board-shortcut").forEach(b => {
         const s = b.dataset && b.dataset.shortcut;
-        const on = !!(s && shortcuts[s] && String(shortcuts[s].id) === current);
+        if (s === "fav") {
+            const on = isFavorite(kind, id);
+            const text = on ? "Remove favorite" : "Add to favorites";
+            b.classList.toggle("active", on);
+            b.setAttribute("aria-pressed", on ? "true" : "false");
+            b.title = text;
+            b.setAttribute("aria-label", text);
+            return;
+        }
+        const on = !!(s && shortcuts[s] && String(shortcuts[s].id) === id);
         const label = shortcutLabel(s);
         b.classList.toggle("active", on);
         b.setAttribute("aria-pressed", on ? "true" : "false");
-        b.title = on ? `Saved as ${label} — click to clear` : `Save this ${mode === "metro" ? "station" : "stop"} as ${label}`;
+        b.title = on ? `Saved as ${label} — click to clear` : `Save this ${kind === "metro" ? "station" : "stop"} as ${label}`;
         b.setAttribute("aria-label", b.title);
     });
     updateShortcutNav();
@@ -3386,10 +3513,20 @@ function anchorStop() {
     return shownStops().find(s => String(s.StopID) === want) || null;
 }
 
-// The home / work / favorite checkboxes in the stop header. Clicking one
-// saves this stop in that slot (cookie) and lights the icon up.
+// The home / work / favorite buttons in the stop header. Home and Work are
+// single special bookmarks; the star toggles the master favorites list.
 function shortcutButtonsHtml(id) {
+    const kind = mode === "metro" ? "metro" : "bus";
     return `<div class="board-shortcuts">` + SHORTCUT_SLOTS.map(slot => {
+        if (slot === "fav") {
+            const on = isFavorite(kind, id);
+            const text = on ? "Remove favorite" : "Add to favorites";
+            return `<button type="button" class="board-shortcut${on ? " active" : ""}"`
+                + ` data-shortcut="fav" aria-pressed="${on ? "true" : "false"}"`
+                + ` title="${text}" aria-label="${text}">`
+                + `<i class="fa-solid fa-star" aria-hidden="true"></i>`
+                + `</button>`;
+        }
         const saved = shortcuts[slot];
         const on = !!(saved && String(saved.id) === String(id));
         const label = shortcutLabel(slot);

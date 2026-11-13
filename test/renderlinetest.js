@@ -40,11 +40,13 @@ sandbox.allStopsCache = null;
 sandbox.stopListFromURL = null;
 sandbox.forceNearby = false;
 sandbox.DEFAULT_STOP_ID = "1002135";
+sandbox.mode = "bus";
+sandbox.favorites = [];
 vm.createContext(sandbox);
 vm.runInContext(
   [extractConst("ROUTE_COLORS"), "const stopScheduleCache = {};", "let shortcuts = {};",
    'const SHORTCUT_SLOTS = ["home", "work", "fav"];',
-   extractFn("shortcutLabel"), extractFn("shortcutButtonsHtml"),
+   extractFn("shortcutLabel"), extractFn("isFavorite"), extractFn("shortcutButtonsHtml"),
    extractFn("routeColor"), extractFn("esc"), extractFn("stopName"),
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
@@ -106,6 +108,12 @@ const hActive = sandbox.boardHeaderHtml(
 delete sandbox.__shortcuts.home;
 check("header: saved shortcut shows checked",
   /data-shortcut="home"[^>]*aria-pressed="true"/.test(hActive));
+sandbox.favorites = [{ kind: "bus", id: "1002130", name: "Park Rd & 19th St NW" }];
+const hFav = sandbox.boardHeaderHtml(
+  { StopID: "1002130", Name: "Park Rd & 19th St NW", Arrivals: [], Error: null }, []);
+sandbox.favorites = [];
+check("header: favorite star shows selected",
+  /data-shortcut="fav"[^>]*aria-pressed="true"/.test(hFav));
 check("header: next bus route + headsign", /Next bus .*D72<\/span> North to Van Ness/.test(h1));
 check("header: ETA 14 min", h1.includes(">14 min<"));
 check("header: first ETA uses bt-next-eta", h1.includes("bt-next-eta"));
