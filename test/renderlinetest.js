@@ -51,7 +51,7 @@ vm.runInContext(
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),
-   extractFn("heroVerbHtml"), extractFn("heroModeIcon"), extractFn("statusChipHtml"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
+   extractFn("heroVerbHtml"), extractFn("heroModeIcon"), extractFn("statusChipHtml"), extractFn("statusReplacesDue"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
    extractFn("busTextColor"), extractFn("heroCardHtml")].join("\n")
    + "\nglobalThis.__stopScheduleCache = stopScheduleCache;"
    + "\nglobalThis.__shortcuts = shortcuts;",
@@ -123,7 +123,9 @@ const h2 = sandbox.heroCardHtml(
   { StopID: "1002130", Name: null, Arrivals: [], Error: null },
   [{ min: 0, route: "C87", dir: "TENLEYTOWN", heads: "TENLEYTOWN" }]);
 check("header: no name → #id only, no doubled id", (h2.match(/#1002130/g) || []).length === 1);
-check("header: 0 min → Due", /C87<i[^>]*><\/i><\/button>[^]*?>TENLEYTOWN<\/span>/.test(h2) && h2.includes('bt-next-eta soon">Due'));
+check("header: 0 min → Arriving, no Due",
+  /C87<i[^>]*><\/i><\/button>[^]*?>TENLEYTOWN<\/span>/.test(h2) &&
+  h2.includes("status-arriving") && !h2.includes(">Due<"));
 
 const h3 = sandbox.heroCardHtml({ StopID: "X", Name: "x", Error: { rateLimited: false }, Arrivals: [] }, []);
 check("header: failed predictions → 'arrivals unavailable'", h3.includes("arrivals unavailable"));

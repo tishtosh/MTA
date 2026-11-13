@@ -443,9 +443,9 @@
         .board-eta-soon { font-size: 20px; font-weight: 700; color: #2e7d32; font-variant-numeric: tabular-nums; }
         .board-eta-note { font-size: 12px; color: #6c757d; font-variant-numeric: tabular-nums; }
         .status-chip {
-            display: inline-block; margin-left: 6px; padding: 0 6px;
-            border-radius: 9px; vertical-align: middle;
-            font: 700 9px/1.6 system-ui, -apple-system, sans-serif;
+            display: inline-block; margin-left: 6px; padding: 0 7px;
+            border-radius: 10px; vertical-align: middle;
+            font: 700 11px/1.6 system-ui, -apple-system, sans-serif;
             letter-spacing: .05em; text-transform: uppercase;
         }
         .status-arriving { color: #1b5e20; background: #c8e6c9; }
@@ -571,7 +571,8 @@
         .board-shortcut.active { color: #8ce99a; }
         .board-stopname { margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.25; }
         .board-stopid { margin-left: 8px; font: 500 12px/1.4 system-ui, -apple-system, sans-serif; color: #9fb0c7; }
-        .board-next { margin: 8px 0 0; font: 14px/1.4 system-ui, -apple-system, sans-serif; color: #cfd8e3; }
+        .board-next { margin: 8px 0 0; font: 14px/1.4 system-ui, -apple-system, sans-serif; color: #2b2b2b; }
+        .board-next .bt-next-rest { color: #5f5f5f; }
         .hero-verb { display: inline-flex; align-items: center; margin-right: 3px; }
         .hero-verb i { font-size: 18px; }
         .hero-connections {
@@ -2392,14 +2393,20 @@ function statusChipHtml(status) {
     return ` <span class="status-chip status-${esc(cls)}">${esc(status)}</span>`;
 }
 
-function boardEtasHtml(mins, scheduled, departedAt) {
+function statusReplacesDue(status) {
+    return /arriving|boarding/i.test(String(status || ""));
+}
+
+function boardEtasHtml(mins, scheduled, departedAt, status) {
     if (departedAt) {
         const ago = Math.max(0, Math.round((Date.now() - departedAt) / 60000));
         return `<span class="board-eta">Departed</span>`
             + (ago ? ` <span class="board-eta-note">${ago} min ago</span>` : "");
     }
-    const list = (mins || []).slice(0, 8);
+    let list = (mins || []).slice(0, 8);
+    if (list.length && list[0] === 0 && statusReplacesDue(status)) list = list.slice(1);
     if (!list.length) {
+        if (statusReplacesDue(status)) return "";
         if (scheduled)
             return `<span class="board-eta">${esc(fmtScheduleTime(scheduled.at))}</span>`
                 + ` <span class="board-eta-note">not seen</span>`;
@@ -2459,7 +2466,7 @@ function boardRowHead(row, color, g, k, scheduled) {
         + statusIcon
         + `</div>`
         + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled || departed
-            ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled, row.departedAt)}</span>` : "")
+            ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled, row.departedAt, row.status)}</span>` : "")
         + (!departed ? statusChipHtml(row.status) : "")
         + `</div>`;
 }
@@ -4258,11 +4265,13 @@ function nextArrivalHtml(kind, next) {
     if (!next) return `${verb} <span class="text-muted">no arrival or departure</span>`;
     const color = kind === "metro" ? metroLineColor(next.route) : routeColor(next.route);
     const label = kind === "metro" ? metroLineName(next.route) : next.route;
+    const status = next.status || (next.min === 0 ? "Arriving" : "");
+    const showEta = !(next.min === 0 && statusReplacesDue(status));
     return `${verb} <span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
         + ` style="background:${color};color:${kind === "metro" ? "#fff" : busTextColor(next.route)}">${esc(label)}</span> `
         + `${esc(next.heads || next.dir || "")}`
-        + ` <span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>`
-        + statusChipHtml(next.status || (next.min === 0 ? "Arriving" : ""));
+        + (showEta ? ` <span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>` : "")
+        + statusChipHtml(status);
 }
 
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
@@ -5343,8 +5352,11 @@ function heroCardHtml(st, arrivals) {
             next.heads || next.dir
                 ? `<span class="board-dest">${esc(next.heads || next.dir)}</span>` : ""
         ].filter(Boolean).join(" ");
-        nextLine = `${bits} <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>`
-            + statusChipHtml(next.status || (next.min === 0 ? "Arriving" : ""));
+        const heroStatus = next.status || (next.min === 0 ? "Arriving" : "");
+        const showEta = !(mins[0] === 0 && statusReplacesDue(heroStatus));
+        nextLine = `${bits}`
+            + (showEta ? ` <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>` : "")
+            + statusChipHtml(heroStatus);
         if (mins.length > 1)
             nextLine += ` <span class="bt-next-rest">then ${mins.slice(1).map(m => esc(fmtEta(m))).join(", ")}</span>`;
     } else if (st.Error) {
