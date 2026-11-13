@@ -331,7 +331,7 @@
         }
         /* Nearby cards: one light-grey surface with square bottom corners. */
         .nearby-board {
-            background: #f1f1f1; border-color: #e0e0e0; border-radius: 0;
+            background: #e7e7e7; border-color: #d8d8d8; border-radius: 0;
         }
         .nearby-board .board-row { background: transparent; }
         .nearby-board .board-row.is-scheduled,
@@ -348,12 +348,15 @@
             display: flex; flex-direction: column; gap: 2px;
             background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
             padding: 8px 12px; margin: 6px 0;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 14px; line-height: 1.4;
         }
         /* Inside a stop group every route is the same stacked row: square
            edges, no side borders, single separators. The group itself
            supplies the rounded bottom. */
         .main-board .board-row, .nearby-board .board-row {
             margin: 0; border-radius: 0;
+            padding-left: 16px; padding-right: 16px;
             border-left: 0; border-right: 0; border-bottom: 0;
         }
         .main-board .board-row + .board-row,
@@ -369,9 +372,9 @@
             border: 1px solid #dee2e6; border-bottom: 0; cursor: pointer;
         }
         .nearby-stop-card.nearby-bus,
-        .nearby-stop-card.nearby-metro { background: #f1f1f1; color: #2f2f2f; }
+        .nearby-stop-card.nearby-metro { background: #e7e7e7; color: #2f2f2f; }
         .nearby-stop-card.nearby-bus:hover,
-        .nearby-stop-card.nearby-metro:hover { background: #e8e8e8; }
+        .nearby-stop-card.nearby-metro:hover { background: #dedede; }
         .nearby-stop-card:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .nearby-card-head { display: flex; align-items: center; gap: 16px; }
         .nearby-card-main { flex: 1 1 auto; min-width: 0; }
@@ -426,6 +429,7 @@
         /* Final destination: bold and set on a quiet grey highlight, sitting
            immediately after the badge. */
         .board-dest {
+            font-family: system-ui, -apple-system, sans-serif;
             font-weight: 700; color: #182338;
             background: #e9ecef; padding: 1px 6px; border-radius: 3px;
         }
@@ -476,7 +480,7 @@
            corners are square so it merges with the main-board group below. */
         .hero-card {
             position: relative;
-            margin: 8px 2px 0; padding: 10px 120px 34px 16px;
+            margin: 8px 2px 0; padding: 10px 120px 14px 16px;
             background: #182338; color: #fff;
             border-radius: 10px 10px 0 0;
         }
@@ -558,7 +562,7 @@
         .board-shortcut.active { color: #8ce99a; }
         .board-stopname { margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.25; }
         .board-stopid { margin-left: 8px; font: 500 12px/1.4 system-ui, -apple-system, sans-serif; color: #9fb0c7; }
-        .board-next { margin: 6px 0 0; font-size: 14px; color: #cfd8e3; }
+        .board-next { margin: 8px 0 0; font: 14px/1.4 system-ui, -apple-system, sans-serif; color: #cfd8e3; }
         .hero-verb { display: inline-flex; align-items: center; margin-right: 3px; }
         .hero-verb i { font-size: 18px; }
         .hero-connections {
@@ -5301,7 +5305,8 @@ function heroCardHtml(st, arrivals) {
             + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`;
         const bits = [
             routeBadge,
-            esc(next.heads || next.dir || "")
+            next.heads || next.dir
+                ? `<span class="board-dest">${esc(next.heads || next.dir)}</span>` : ""
         ].filter(Boolean).join(" ");
         nextLine = `${bits} <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>`;
         if (mins.length > 1)
@@ -5315,7 +5320,8 @@ function heroCardHtml(st, arrivals) {
         if (sched) {
             const schedBits = [
                 `<span class="row-badge${st.Metro ? " metro-line" : busBadgeClass()}" style="background:${badgeColor(sched.route)};color:${st.Metro ? "#fff" : busTextColor(sched.route)}">${esc(badgeLabel(sched.route))}</span>`,
-                esc(sched.heads || sched.dirText || "")
+                sched.heads || sched.dirText
+                    ? `<span class="board-dest">${esc(sched.heads || sched.dirText)}</span>` : ""
             ].filter(Boolean).join(" ");
             nextLine = `${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
                 + ` <span class="bt-next-rest">not seen</span>`;
