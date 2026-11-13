@@ -90,7 +90,7 @@
         }
         .fav-badge.boston-bus { width: 65px; min-width: 65px; }
         .fav-badge.line { width: 74px; min-width: 74px; }
-        .fav-conns { display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: 4px; }
+        .fav-conns { display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: auto; }
         .fav-conns .fav-badge,
         .fav-conns .fav-badge.line,
         .fav-conns .fav-badge.boston-bus {
@@ -102,10 +102,14 @@
         .fav-stops { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px 14px; }
         .fav-stops[hidden] { display: none; }
         .fav-stop {
-            display: flex; align-items: center; gap: 6px;
+            display: flex; align-items: center; flex-wrap: wrap; row-gap: 2px;
+            gap: 6px; width: 100%; min-width: 100%; box-sizing: border-box;
             font: 12px/1.4 system-ui, -apple-system, sans-serif;
         }
-        .fav-stop-name { flex: 1; min-width: 0; }
+        .fav-stop-name {
+            flex: 1 1 auto; min-width: var(--stop-name-width, 96px);
+            margin-right: auto;
+        }
         button.fav-stop-name {
             border: 0; background: none; padding: 2px 0; text-align: left;
             color: #0b5ed7; cursor: pointer; font: inherit;
@@ -429,22 +433,17 @@
             color: #343a40; font-variant-numeric: tabular-nums;
         }
         .bt-stoplist .bt-stop-item {
-            display: flex; align-items: center; gap: 4px;
+            display: flex; align-items: center; flex-wrap: wrap; row-gap: 2px; gap: 4px;
+            width: 100%; min-width: 100%; box-sizing: border-box;
             padding: 2px 6px; margin: 1px 0; border-radius: 4px;
             cursor: pointer;
         }
-        .bt-stoplist .bt-stop-name { flex: 1; min-width: 0; }
+        .bt-stoplist .bt-stop-name {
+            flex: 1 1 auto; min-width: var(--stop-name-width, 96px);
+            margin-right: auto;
+        }
+        .bt-stoplist .fav-conns { margin-left: auto; }
         .bt-stoplist .fav-star { font-size: 12px; }
-        .board-connections {
-            display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-            margin: 8px 2px 0; padding: 6px 10px;
-            background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
-        }
-        .board-connections-label {
-            flex: none; font: 600 10px/1.4 system-ui, -apple-system, sans-serif;
-            letter-spacing: .05em; text-transform: uppercase; color: #6c757d;
-        }
-        .board-connections .fav-conns { margin-left: 0; }
         .bt-stoplist .bt-stop-item:hover { background: #f1f3f5; }
         .bt-stoplist .bt-stop-item:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .bt-stoplist .bt-mark { font-weight: 700; color: #0056b3; }
@@ -531,6 +530,16 @@
         .board-next { margin: 6px 0 0; font-size: 14px; color: #cfd8e3; }
         .hero-verb { display: inline-flex; align-items: center; margin-right: 3px; }
         .hero-verb i { font-size: 18px; }
+        .hero-connections {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+            margin-top: 5px; font: 11px/1.35 system-ui, -apple-system, sans-serif;
+        }
+        .hero-connections-label {
+            flex: none; font: 600 10px/1.4 system-ui, -apple-system, sans-serif;
+            letter-spacing: .05em; text-transform: uppercase;
+            color: inherit; opacity: .65;
+        }
+        .hero-connections .fav-conns { margin-left: 0; }
         .hero-route-toggle { border: 0; cursor: pointer; font: inherit; }
         .hero-route-toggle .bt-chevron { font-size: 9px; margin-left: 4px; transition: transform .15s ease; }
         .hero-route-toggle[aria-expanded="true"] .bt-chevron { transform: rotate(180deg); }
@@ -2841,18 +2850,13 @@ async function loadMbtaRowStops(ul) {
     } catch (e) {
         ul.innerHTML = `<li class="bt-stop-item">could not load stops</li>`;
     }
-}
-
-function boardConnectionsHtml(kind, id) {
-    if (!id) return "";
-    return `<div class="board-connections">`
-        + `<span class="board-connections-label">Connections</span>`
-        + `<span class="fav-conns" data-conn="${esc(id)}" data-conn-kind="${esc(kind)}"></span>`
-        + `</div>`;
+    applyStopNameWidth(ul);
 }
 
 async function refreshBoardStopConnections() {
-    const nodes = [...gLinesScroll.querySelectorAll(".fav-conns[data-conn]")];
+    const roots = [gBoardHeader, gLinesScroll].filter(Boolean);
+    const nodes = roots.flatMap(root =>
+        [...root.querySelectorAll(".fav-conns[data-conn]")]);
     await Promise.all(nodes.map(async el => {
         const conns = await fetchStopConnections(
             el.dataset.connKind || "bus", el.dataset.conn);
@@ -2886,6 +2890,7 @@ async function loadMetroStops(ul) {
     } catch (e) {
         ul.innerHTML = `<li class="bt-stop-item">could not load stops</li>`;
     }
+    applyStopNameWidth(ul);
 }
 
 function metroHeadsMatch(a, b) {
@@ -2951,7 +2956,7 @@ function renderMetro() {
         if (rows.length)
             nearbyHtml += `<div class="nearby-board"><div class="board">${rowsHtml(rows)}</div></div>`;
     }
-    gLinesScroll.innerHTML = boardConnectionsHtml("metro", station.Code) + mainHtml + nearbyHtml;
+    gLinesScroll.innerHTML = mainHtml + nearbyHtml;
     gLinesNote.textContent = "";
     if (gLinesScroll.querySelectorAll) {
         gLinesScroll.querySelectorAll(".bt-stoplist[data-metro-from]").forEach(ul => {
@@ -3622,6 +3627,22 @@ async function loadStopConnections(rows) {
     return map;
 }
 
+function applyStopNameWidth(root) {
+    if (!root) return;
+    const names = [...root.querySelectorAll(".fav-stop-name, .bt-stop-name")];
+    if (!names.length) return;
+    const ctx = applyStopNameWidth._ctx ||
+        (applyStopNameWidth._ctx = document.createElement("canvas").getContext("2d"));
+    let max = 0;
+    for (const el of names) {
+        const s = getComputedStyle(el);
+        ctx.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+        max = Math.max(max, ctx.measureText((el.textContent || "").trim()).width);
+    }
+    root.style.setProperty("--stop-name-width",
+        Math.max(96, Math.ceil(max) + 10) + "px");
+}
+
 function favOrderedRow(kind, id, name, route, conns) {
     const badges = conns ? connectionBadgesHtml(conns, kind, route) : "";
     return `<div class="fav-stop">${favSelectedMark(kind, id)}`
@@ -3738,6 +3759,7 @@ async function toggleHeroRouteStops(btn) {
     } catch (e) { /* no badges */ }
     box.innerHTML = heroRouteListHtml(shown, kind, btn.dataset.heroRoute,
         anchor, conns);
+    applyStopNameWidth(box);
 }
 
 async function fetchMbtaRouteStops(routeKey, useParent) {
@@ -3825,6 +3847,7 @@ async function renderFavBusRoutesMbta(raw) {
             + (expanded ? matches.map(s => favBusStopRow(s, r.id)).join("") : "")
             + `</div>`;
     }).join("") : `<div class="fav-empty">no matching bus routes</div>`;
+    applyStopNameWidth(gFavBusRoutes);
 }
 
 function renderFavBusRoutes(query) {
@@ -3860,6 +3883,7 @@ function renderFavBusRoutes(query) {
             + (expanded ? matches.map(s => favBusStopRow(s, r.id)).join("") : "")
             + `</div>`;
     }).join("") : `<div class="fav-empty">no matching bus routes</div>`;
+    applyStopNameWidth(gFavBusRoutes);
 }
 
 async function renderFavMetroLines() {
@@ -4241,6 +4265,7 @@ async function populateFavStops(container, kind, key) {
     } catch (e) {
         container.innerHTML = `<div class="fav-empty">could not load stops</div>`;
     }
+    applyStopNameWidth(container);
 }
 
 function closeFavPanel() {
@@ -5238,7 +5263,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     const mainHtml = mainRows.length
         ? `<div class="main-board">${boardHtml(geo, mainRows)}</div>`
         : "";
-    gLinesScroll.innerHTML = boardConnectionsHtml("bus", anchorId) +
+    gLinesScroll.innerHTML =
         ((mainRows.length || nearbyRows.length) ? mainHtml + nearbyHtml : "");
     centerBoard();   // piece 12: boarding guide centered on narrow screens
     gLinesNote.textContent = "";   // no legend line: the board is self-describing
