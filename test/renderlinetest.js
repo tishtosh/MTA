@@ -51,7 +51,7 @@ vm.runInContext(
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),
-   extractFn("heroVerbHtml"), extractFn("heroModeIcon"), extractFn("statusChipHtml"), extractFn("statusReplacesDue"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
+   extractFn("heroVerbHtml"), extractFn("heroModeIcon"), extractFn("statusChipHtml"), extractFn("statusReplacesDue"), extractFn("etaToken"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
    extractFn("busTextColor"), extractFn("heroCardHtml")].join("\n")
    + "\nglobalThis.__stopScheduleCache = stopScheduleCache;"
    + "\nglobalThis.__shortcuts = shortcuts;",

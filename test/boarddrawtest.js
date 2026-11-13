@@ -41,7 +41,7 @@ let src = [names.map(constBlock).join("\n"),
   extractFn("noteSelectionChange"),
   extractFn("boardRowHead"), extractFn("boardHtml"),
   extractFn("busBadgeClass"), extractFn("busTextColor"),
-  extractFn("statusReplacesDue"), extractFn("statusChipHtml")].join("\n");
+  extractFn("statusReplacesDue"), extractFn("etaToken"), extractFn("statusChipHtml")].join("\n");
 // const/let bindings stay in the script's lexical scope, not on ctx — expose
 // the two piece-11 ones so the tests can poke them.
 src += "\nglobalThis.__expandedStops = expandedStops;\nglobalThis.__rowKey = rowKey;\nglobalThis.__stopScheduleCache = stopScheduleCache;";
@@ -73,8 +73,8 @@ t("A3b no prediction + schedule → time + not seen", (() => {
 {
   const h = ctx.boardEtasHtml([3, 14, 40]);
   t("A4 soon highlight, rest uniform",
-    h.includes('class="board-eta-soon">3 min') && h.includes("then 14 min") &&
-    h.includes("then 40 min"), h.slice(0, 120));
+    h.includes('class="board-eta-soon">3 min') &&
+    h.includes("and then 14, 40 min"), h.slice(0, 120));
 }
 
 // ── boardHtml: header layout + compact rows + stop list ──────────────
@@ -138,13 +138,11 @@ t("A3b no prediction + schedule → time + not seen", (() => {
       pattern: pat, anchorIdx: 0, anchorPatStop: pat.stops[0] },
   ];
   const html = ctx.boardHtml(ctx.boardGeometry(rows), rows);
-  t("E1 departed row: hollow badge, departed icon, Departed label",
-    html.includes('row-badge hollow') && html.includes("bus-status departed") &&
-    html.indexOf("board-dest") < html.indexOf("bus-status departed") &&
+  t("E1 departed row: hollow badge and Departed label",
+    html.includes('row-badge hollow') &&
     html.includes(">Departed<") && html.includes("min ago"));
-  t("E2 arriving row (0 min): arriving icon after the destination",
-    html.includes("bus-status arriving") &&
-    html.indexOf("board-dest") < html.indexOf("bus-status arriving"));
+  t("E2 arriving row (0 min): Due ETA, no status icon",
+    html.includes('board-eta-soon">Due') && !html.includes("bus-status arriving"));
   t("E3 departed row sorts/keys separately", html.includes("is-departed") &&
     html.includes(encodeURIComponent("M5\u0000\u0000Departed End\u0000departed")));
 }

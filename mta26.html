@@ -443,13 +443,14 @@
         .board-eta-soon { font-size: 20px; font-weight: 700; color: #2e7d32; font-variant-numeric: tabular-nums; }
         .board-eta-note { font-size: 12px; color: #6c757d; font-variant-numeric: tabular-nums; }
         .status-chip {
-            display: inline-block; margin-left: 6px; padding: 0 7px;
+            display: inline-block; margin-right: 6px; padding: 0 7px;
             border-radius: 10px; vertical-align: middle;
             font: 700 11px/1.6 system-ui, -apple-system, sans-serif;
             letter-spacing: .05em; text-transform: uppercase;
         }
         .status-arriving { color: #1b5e20; background: #c8e6c9; }
         .status-boarding { color: #0d47a1; background: #bbdefb; }
+        .status-departing { color: #8a4b00; background: #ffe0b2; }
         .status-departed { color: #495057; background: #e0e0e0; }
 
         .bt-allstops {
@@ -1403,12 +1404,14 @@ function allStopsName(id) {
 // are kept (the ETA list stays whole).
 function mbtaPredictionStatus(a, now) {
     const st = String((a && a.status) || "").toLowerCase();
+    if (/departing|leaving/.test(st)) return "Departing";
     if (/all aboard|boarding|stopped/.test(st)) return "Boarding";
     if (/incoming|arriving|approaching/.test(st)) return "Arriving";
     const arr = Date.parse((a && a.arrival_time) || "");
     const dep = Date.parse((a && a.departure_time) || "");
     if (Number.isFinite(arr) && Number.isFinite(dep) && arr <= now && now <= dep)
         return "Boarding";
+    if (Number.isFinite(dep) && dep <= now) return "Departing";
     if (Number.isFinite(arr) && arr <= now) return "Arriving";
     return "";
 }
@@ -2393,8 +2396,12 @@ function statusChipHtml(status) {
     return ` <span class="status-chip status-${esc(cls)}">${esc(status)}</span>`;
 }
 
+function etaToken(m) {
+    return m === 0 ? "Due" : String(m);
+}
+
 function statusReplacesDue(status) {
-    return /arriving|boarding/i.test(String(status || ""));
+    return /arriving|boarding|departing/i.test(String(status || ""));
 }
 
 function boardEtasHtml(mins, scheduled, departedAt, status) {
@@ -2412,11 +2419,14 @@ function boardEtasHtml(mins, scheduled, departedAt, status) {
                 + ` <span class="board-eta-note">not seen</span>`;
         return `<span class="board-eta-note">no arrival or departure</span>`;
     }
-    return list.map((m, i) => {
-        const soon = Number.isFinite(m) && m <= 5;
-        return `<span class="${soon ? "board-eta-soon" : "board-eta"}">`
-            + `${i ? "then " : ""}${esc(fmtEta(m))}</span>`;
-    }).join(" ");
+    const first = list[0];
+    const soon = Number.isFinite(first) && first <= 5;
+    let h = `<span class="${soon ? "board-eta-soon" : "board-eta"}">${esc(fmtEta(first))}</span>`;
+    if (list.length > 1) {
+        h += ` <span class="board-eta">and then `
+            + `${list.slice(1).map(etaToken).join(", ")} min</span>`;
+    }
+    return h;
 }
 
 // Piece 11: which rows the user expanded in the "View all stops" disclosure.
@@ -2432,14 +2442,6 @@ function boardRowHead(row, color, g, k, scheduled) {
         ? (row.dest ? esc(row.dest) : "")
         : esc(row.dest || row.dir || "");
     const departed = !!row.departed;
-    const arriving = !departed && row.mins && row.mins.length && row.mins[0] <= 1;
-    const arrivingIcon = row.metro ? "fa-train" : "fa-bus";
-    const arrivingStyle = ` style="color:${color}"`;
-    const statusIcon = departed
-        ? `<i class="fa-solid fa-arrow-right-from-bracket bus-status departed" title="Departed" aria-label="Departed"></i>`
-        : arriving
-            ? `<i class="fa-solid ${arrivingIcon} bus-status arriving"${arrivingStyle} title="Arriving" aria-label="Arriving"></i>`
-            : "";
     const badgeText = row.metro ? metroLineName(row.route) : row.route;
     const hasMbtaTrip = typeof isBoston === "function" && isBoston() &&
         !row.metro && row.rep && row.rep.trip;
@@ -2463,11 +2465,10 @@ function boardRowHead(row, color, g, k, scheduled) {
         + `<span class="row-badge-wrap">${badge}</span>`
         + `<div class="row-mainline">`
         + (dest ? `<span class="board-dest">${dest}</span>` : `<span class="board-dest">Destination unavailable</span>`)
-        + statusIcon
         + `</div>`
+        + (departed ? "" : statusChipHtml(row.status))
         + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled || departed
             ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled, row.departedAt, row.status)}</span>` : "")
-        + (!departed ? statusChipHtml(row.status) : "")
         + `</div>`;
 }
 
@@ -4271,8 +4272,8 @@ function nextArrivalHtml(kind, next) {
     return `${verb} <span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
         + ` style="background:${color};color:${kind === "metro" ? "#fff" : busTextColor(next.route)}">${esc(label)}</span> `
         + `${esc(next.heads || next.dir || "")}`
-        + (showEta ? ` <span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>` : "")
-        + statusChipHtml(status);
+        + statusChipHtml(status)
+        + (showEta ? ` <span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>` : "");
 }
 
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
@@ -5356,10 +5357,10 @@ function heroCardHtml(st, arrivals) {
         const heroStatus = next.status || (next.min === 0 ? "Arriving" : "");
         const showEta = !(mins[0] === 0 && statusReplacesDue(heroStatus));
         nextLine = `${bits}`
-            + (showEta ? ` <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>` : "")
-            + statusChipHtml(heroStatus);
+            + statusChipHtml(heroStatus)
+            + (showEta ? ` <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>` : "");
         if (mins.length > 1)
-            nextLine += ` <span class="bt-next-rest">then ${mins.slice(1).map(m => esc(fmtEta(m))).join(", ")}</span>`;
+            nextLine += ` <span class="bt-next-rest">and then ${mins.slice(1).map(etaToken).join(", ")} min</span>`;
     } else if (st.Error) {
         nextLine = `<span class="text-muted">arrivals unavailable — retrying</span>`;
     } else {
