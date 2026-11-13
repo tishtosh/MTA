@@ -689,6 +689,14 @@
                 <option value="boston">Boston</option>
             </select>
         </div>
+        <div class="fav-setting fav-setting-static">
+            <i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>
+            <label class="fav-setting-name" for="mapsSelect">Maps app</label>
+            <select id="mapsSelect" class="form-select form-select-sm fav-city-select" aria-label="Maps app">
+                <option value="apple">Apple Maps</option>
+                <option value="google">Google Maps</option>
+            </select>
+        </div>
         <button id="btnRefreshToggle" class="fav-setting" type="button"
                 title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
             <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
@@ -841,6 +849,26 @@ const CITIES = {
     }
 };
 const CITY_COOKIE = "mta_city";
+const MAPS_COOKIE = "mta_maps";
+
+function readMapsProvider() {
+    try {
+        const hit = String(document.cookie || "").split("; ")
+            .find(p => p.startsWith(MAPS_COOKIE + "="));
+        const v = hit ? decodeURIComponent(hit.slice(MAPS_COOKIE.length + 1)) : "";
+        if (v === "apple" || v === "google") return v;
+    } catch (e) { /* fall through */ }
+    return /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent || "")
+        ? "apple" : "google";
+}
+
+function writeMapsProvider() {
+    try {
+        document.cookie = `${MAPS_COOKIE}=${mapsProvider}; max-age=31536000; path=/; SameSite=Lax`;
+    } catch (e) { /* session-only */ }
+}
+
+let mapsProvider = readMapsProvider();
 
 function readCityCookie() {
     try {
@@ -1149,6 +1177,7 @@ const gFavSettingsBody = document.getElementById("favSettingsBody");
 const gRefreshState = document.getElementById("refreshState");
 const gClearFavorites = document.getElementById("btnClearFavorites");
 const gCitySelect = document.getElementById("citySelect");
+const gMapsSelect = document.getElementById("mapsSelect");
 const gFavBusBody = document.getElementById("favBusBody");
 const gFavBusFilter = document.getElementById("favBusFilter");
 const gFavBusRoutes = document.getElementById("favBusRoutes");
@@ -3407,17 +3436,13 @@ function openSelectedInMaps() {
         }
         lat = st.Lat; lon = st.Lon; name = st.Name;
     }
-    const ua = navigator.userAgent || "";
+    const label = stopName(name) || `${lat},${lon}`;
     const coords = `${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
-    const label = encodeURIComponent(stopName(name) || `${lat},${lon}`);
-    if (/Android/.test(ua)) {
-        // geo: lets Android open the user's default maps app (Maps, Waze, etc.).
-        window.location.href = `geo:${coords}?q=${coords}(${label})`;
-        return;
-    }
-    const url = /iPhone|iPad|iPod|Macintosh/.test(ua)
-        ? `https://maps.apple.com/?ll=${coords}&q=${label}`
-        : `https://www.google.com/maps/search/?api=1&query=${coords}`;
+    const url = mapsProvider === "apple"
+        ? `https://maps.apple.com/?ll=${coords}&q=${encodeURIComponent(label)}`
+        : (label && label !== `${lat},${lon}`
+            ? `https://www.google.com/maps/place/${encodeURIComponent(label)}/@${lat},${lon},17z`
+            : `https://www.google.com/maps/search/?api=1&query=${coords}`);
     window.open(url, "_blank", "noopener");
 }
 
@@ -5434,6 +5459,13 @@ if (gClearFavorites) gClearFavorites.addEventListener("click", resetFavorites);
 if (gCitySelect) {
     gCitySelect.value = city;
     gCitySelect.addEventListener("change", () => setCity(gCitySelect.value));
+}
+if (gMapsSelect) {
+    gMapsSelect.value = mapsProvider;
+    gMapsSelect.addEventListener("change", () => {
+        mapsProvider = gMapsSelect.value === "apple" ? "apple" : "google";
+        writeMapsProvider();
+    });
 }
 
 // Access gate: check the password, decode the API key, then start the app.
