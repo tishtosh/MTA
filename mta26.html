@@ -48,6 +48,63 @@
         }
         .mode-icon i { color: #adb5bd; }
         .mode-icon.active i { color: #2e7d32; }
+        .add-fav-btn { margin-right: 2px; }
+        .add-fav-btn i { font-size: 1.6em; width: 36px; color: #2e7d32; }
+
+        /* Add-favorite picker */
+        .fav-panel {
+            position: fixed; top: 64px; left: 12px; z-index: 4000;
+            width: min(92vw, 460px); max-height: 72vh; overflow-y: auto;
+            padding: 10px 10px 12px; background: #fff;
+            border: 1px solid #ced4da; border-radius: 10px;
+            box-shadow: 0 12px 30px rgba(0,0,0,.22);
+        }
+        .fav-panel[hidden] { display: none; }
+        .fav-panel-title { font: 700 15px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
+        .fav-header {
+            display: flex; align-items: center; justify-content: space-between;
+            width: 100%; margin-top: 8px; padding: 8px 10px;
+            border: 1px solid #dee2e6; border-radius: 6px;
+            background: #f8f9fa; color: #212529; cursor: pointer;
+            font: 700 13px/1.4 system-ui, -apple-system, sans-serif;
+        }
+        .fav-header:hover { background: #f1f3f5; }
+        .fav-header:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .fav-header .bt-chevron { font-size: 9px; transition: transform .15s ease; }
+        .fav-header[aria-expanded="true"] .bt-chevron { transform: rotate(180deg); }
+        .fav-body { padding: 6px 0 2px; }
+        .fav-body[hidden] { display: none; }
+        .fav-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+        .fav-route {
+            display: flex; align-items: center; gap: 8px; width: 100%;
+            padding: 5px 6px; border: 1px solid #e9ecef; border-radius: 6px;
+            background: #fff; color: #343a40; cursor: pointer; text-align: left;
+            font: 13px/1.4 system-ui, -apple-system, sans-serif;
+        }
+        .fav-route:hover { background: #f8f9fa; }
+        .fav-route:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .fav-route .bt-chevron { flex: none; margin-left: auto; font-size: 9px; transition: transform .15s ease; }
+        .fav-route[aria-expanded="true"] .bt-chevron { transform: rotate(180deg); }
+        .fav-badge {
+            flex: none; min-width: 52px; padding: 2px 8px; border-radius: 5px;
+            color: #fff; font-weight: 700; font-size: 12px; text-align: center;
+        }
+        .fav-badge.line { min-width: 74px; }
+        .fav-desc { flex: 1; min-width: 0; }
+        .fav-stops { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px 14px; }
+        .fav-stops[hidden] { display: none; }
+        .fav-stop {
+            display: flex; align-items: center; gap: 6px;
+            font: 12px/1.4 system-ui, -apple-system, sans-serif;
+        }
+        .fav-stop-name { flex: 1; min-width: 0; }
+        .fav-star {
+            flex: none; border: 0; background: none; padding: 2px;
+            color: #adb5bd; cursor: pointer; font-size: 13px; line-height: 1;
+        }
+        .fav-star.active { color: #e0a800; }
+        .fav-star:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .fav-empty { padding: 4px; color: #6c757d; font-size: 12px; }
 
         /* clock block: current time over "at … ·refresh in Ns", with
            the auto-refresh toggle beside it. */
@@ -365,6 +422,7 @@
             .nav-shortcut i { font-size: 1.4em; width: 30px; }
             .nav-shortcut .nav-bookmark { font-size: 0.35em; }
             .nav-refresh i { font-size: 1.2em; }
+            .add-fav-btn i { font-size: 1.3em; width: 30px; }
             #clock { font-size: 22px !important; }
             .clock-meta { font-size: 9px; }
             .navbar .container > div:last-child { gap: 4px !important; }
@@ -377,12 +435,14 @@
             .nav-shortcut i { font-size: 1.2em; width: 26px; }
             .nav-shortcut .nav-bookmark { font-size: 0.3em; }
             .nav-refresh i { font-size: 1.05em; }
+            .add-fav-btn i { font-size: 1.1em; width: 26px; }
             #clock { font-size: 18px !important; }
         }
         @media (max-width: 360px) {
             .fa-xl-mta { font-size: 1.5em; width: 32px; }
             .nav-shortcut i { font-size: 1.1em; width: 24px; }
             .nav-refresh i { font-size: 1em; }
+            .add-fav-btn i { font-size: 1em; width: 24px; }
             #clock { font-size: 16px !important; }
             .navbar .container > div:last-child { gap: 2px !important; }
         }
@@ -405,6 +465,9 @@
     <nav class="navbar fixed-top navbar-light bg-light">
         <div class="container d-flex align-items-center">
             <div class="d-flex align-items-center">
+                <button id="btnAddFav" class="navicon add-fav-btn" title="Add favorite" aria-label="Add favorite" aria-expanded="false" aria-controls="favPanel">
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                </button>
                 <button id="btnBus" class="navicon mode-icon" title="Bus" aria-label="Show bus stops" aria-pressed="true">
                     <i class="fa-solid fa-bus fa-xl-mta"></i>
                 </button>
@@ -441,6 +504,26 @@
             </div>
         </div>
     </nav>
+</div>
+
+<div id="favPanel" class="fav-panel" hidden>
+    <div class="fav-panel-title">Add favorite</div>
+    <button type="button" class="fav-header" data-fav-panel="bus" aria-expanded="false">
+        <span>Bus</span>
+        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+    </button>
+    <div id="favBusBody" class="fav-body" hidden>
+        <input id="favBusFilter" class="form-control form-control-sm" type="text"
+               placeholder="Filter bus routes…" autocomplete="off" aria-label="Filter bus routes">
+        <div id="favBusRoutes" class="fav-list"></div>
+    </div>
+    <button type="button" class="fav-header" data-fav-panel="metro" aria-expanded="false">
+        <span>Subway</span>
+        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+    </button>
+    <div id="favMetroBody" class="fav-body" hidden>
+        <div id="favMetroLines" class="fav-list"></div>
+    </div>
 </div>
 
 <div style="margin-top:100px" class="container">
@@ -673,6 +756,54 @@ function shortcutLabel(slot) {
     return slot === "home" ? "Home" : slot === "work" ? "Work" : "Favorite";
 }
 
+// ── Multi-favorites from the Add Favorite panel ───────────────────────
+const FAVORITES_COOKIE = "mta_favorites";
+let favorites = readFavorites();
+let busRouteDirectory = null;
+let busRouteLoad = null;
+
+function readFavorites() {
+    try {
+        if (typeof localStorage !== "undefined") {
+            const raw = localStorage.getItem(FAVORITES_COOKIE);
+            if (raw) {
+                const list = JSON.parse(raw);
+                if (Array.isArray(list)) return list;
+            }
+        }
+    } catch (e) { /* fall through to cookie */ }
+    try {
+        const hit = String(document.cookie || "").split("; ")
+            .find(p => p.startsWith(FAVORITES_COOKIE + "="));
+        if (!hit) return [];
+        const at = hit.indexOf("=");
+        const list = JSON.parse(decodeURIComponent(hit.slice(at + 1)));
+        return Array.isArray(list) ? list : [];
+    } catch (e) { return []; }
+}
+
+function writeFavorites() {
+    try {
+        if (typeof localStorage !== "undefined")
+            localStorage.setItem(FAVORITES_COOKIE, JSON.stringify(favorites));
+    } catch (e) { /* ignore storage failures */ }
+    try {
+        document.cookie = `${FAVORITES_COOKIE}=${encodeURIComponent(JSON.stringify(favorites))}`
+            + "; max-age=31536000; path=/; SameSite=Lax";
+    } catch (e) { /* session-only fallback */ }
+}
+
+function isFavorite(kind, id) {
+    return favorites.some(f => f.kind === kind && String(f.id) === String(id));
+}
+
+function toggleFavorite(kind, id, name, route) {
+    const i = favorites.findIndex(f => f.kind === kind && String(f.id) === String(id));
+    if (i >= 0) favorites.splice(i, 1);
+    else favorites.push({ kind, id: String(id), name: name || "", route: route || "" });
+    writeFavorites();
+}
+
 const gStatus = document.getElementById("statusmessage");
 const gClock = document.getElementById("clock");
 const gClockMeta = document.getElementById("clockMeta");
@@ -690,6 +821,13 @@ const gMetroSelect = document.getElementById("metroSelect");
 const gBusBtn = document.getElementById("btnBus");
 const gMetroBtn = document.getElementById("btnMetro");
 const gCurrentBtn = document.getElementById("btnCurrent");
+const gAddFavBtn = document.getElementById("btnAddFav");
+const gFavPanel = document.getElementById("favPanel");
+const gFavBusBody = document.getElementById("favBusBody");
+const gFavBusFilter = document.getElementById("favBusFilter");
+const gFavBusRoutes = document.getElementById("favBusRoutes");
+const gFavMetroBody = document.getElementById("favMetroBody");
+const gFavMetroLines = document.getElementById("favMetroLines");
 const gShortcutBtns = {
     home: document.getElementById("btnHome"),
     work: document.getElementById("btnWork"),
@@ -2540,6 +2678,174 @@ function openSelectedInMaps() {
         : `https://www.google.com/maps/search/?api=1&query=${coords}`;
     window.open(url, "_blank", "noopener");
 }
+
+// ── Add Favorite picker ──────────────────────────────────────────────
+function loadBusRouteDirectory() {
+    if (busRouteDirectory) return Promise.resolve(busRouteDirectory);
+    if (busRouteLoad) return busRouteLoad;
+    busRouteLoad = apiGet("/Bus.svc/json/jRoutes", {})
+        .then(({ data, error }) => {
+            if (error) throw error;
+            busRouteDirectory = ((data && data.Routes) || [])
+                .map(r => ({ id: String(r.RouteID || "").toUpperCase(),
+                             name: r.Name || "",
+                             desc: r.LineDescription || r.Name || "" }))
+                .filter(r => r.id)
+                .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+            return busRouteDirectory;
+        })
+        .catch(() => {
+            const m = new Map();
+            for (const s of allStopsCache || [])
+                for (const r of s.Routes || []) {
+                    const id = String(r || "").toUpperCase();
+                    if (id && !m.has(id)) m.set(id, { id, name: id, desc: "" });
+                }
+            busRouteDirectory = [...m.values()]
+                .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+            return busRouteDirectory;
+        })
+        .finally(() => { busRouteLoad = null; });
+    return busRouteLoad;
+}
+
+function favStarHtml(kind, id, name, route) {
+    const on = isFavorite(kind, id);
+    return `<button type="button" class="fav-star${on ? " active" : ""}"`
+        + ` data-fav-kind="${esc(kind)}" data-fav-id="${esc(id)}"`
+        + ` data-fav-name="${esc(name || "")}" data-fav-route="${esc(route || "")}"`
+        + ` aria-pressed="${on ? "true" : "false"}"`
+        + ` title="${on ? "Remove favorite" : "Add favorite"}">`
+        + `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i></button>`;
+}
+
+function renderFavBusRoutes(query) {
+    if (!gFavBusRoutes) return;
+    const q = String(query || "").trim().toLowerCase();
+    const routes = (busRouteDirectory || []).filter(r => !q ||
+        r.id.toLowerCase().includes(q) ||
+        r.desc.toLowerCase().includes(q) ||
+        r.name.toLowerCase().includes(q));
+    gFavBusRoutes.innerHTML = routes.length ? routes.map(r =>
+        `<button type="button" class="fav-route" data-fav-route="${esc(r.id)}" aria-expanded="false">`
+        + `<span class="fav-badge" style="background:${routeColor(r.id)}">${esc(r.id)}</span>`
+        + `<span class="fav-desc">${esc(r.desc || "Bus route")}</span>`
+        + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
+        + `<div class="fav-stops" data-fav-stops="bus" data-route="${esc(r.id)}" hidden></div>`
+    ).join("") : `<div class="fav-empty">no matching bus routes</div>`;
+}
+
+function renderFavMetroLines() {
+    if (!gFavMetroLines) return;
+    const lines = ["RD", "GR", "YL", "BL", "OR", "SV"];
+    gFavMetroLines.innerHTML = lines.map(line =>
+        `<button type="button" class="fav-route" data-fav-line="${line}" aria-expanded="false">`
+        + `<span class="fav-badge line" style="background:${metroLineColor(line)}">${esc(metroLineName(line))}</span>`
+        + `<span class="fav-desc">${esc(metroLineName(line))} Line</span>`
+        + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
+        + `<div class="fav-stops" data-fav-stops="metro" data-line="${line}" hidden></div>`
+    ).join("");
+}
+
+async function populateFavStops(container, kind, key) {
+    if (container.dataset.loaded) return;
+    container.dataset.loaded = "1";
+    container.innerHTML = `<div class="fav-empty">loading stops…</div>`;
+    try {
+        if (kind === "bus") {
+            const all = await loadStopDirectory();
+            const list = (all || [])
+                .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === key))
+                .sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
+            container.innerHTML = list.length ? list.map(s =>
+                `<div class="fav-stop"><span class="fav-stop-name">${esc(stopName(s.Name) || "#" + s.StopID)}`
+                + ` <small>#${esc(s.StopID)}</small></span>${favStarHtml("bus", s.StopID, s.Name, key)}</div>`
+            ).join("") : `<div class="fav-empty">no stops for this route</div>`;
+        } else {
+            const all = await loadMetroStations();
+            const list = (all || [])
+                .filter(s => s.Lines.includes(key))
+                .sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
+            container.innerHTML = list.length ? list.map(s =>
+                `<div class="fav-stop"><span class="fav-stop-name">${esc(stopName(s.Name) || s.Code)}`
+                + ` <small>#${esc(s.Code)}</small></span>${favStarHtml("metro", s.Code, s.Name, key)}</div>`
+            ).join("") : `<div class="fav-empty">no stations on this line</div>`;
+        }
+    } catch (e) {
+        container.innerHTML = `<div class="fav-empty">could not load stops</div>`;
+    }
+}
+
+if (gAddFavBtn) gAddFavBtn.addEventListener("click", () => {
+    const open = gFavPanel.hidden;
+    gFavPanel.hidden = !open;
+    gAddFavBtn.setAttribute("aria-expanded", open ? "true" : "false");
+});
+if (gFavBusFilter) gFavBusFilter.addEventListener("input", () => {
+    renderFavBusRoutes(gFavBusFilter.value);
+});
+if (gFavPanel) gFavPanel.addEventListener("click", async e => {
+    const star = e.target.closest ? e.target.closest(".fav-star") : null;
+    if (star) {
+        e.preventDefault();
+        e.stopPropagation();
+        const kind = star.dataset.favKind;
+        const id = star.dataset.favId;
+        toggleFavorite(kind, id, star.dataset.favName, star.dataset.favRoute);
+        const on = isFavorite(kind, id);
+        star.classList.toggle("active", on);
+        star.setAttribute("aria-pressed", on ? "true" : "false");
+        star.title = on ? "Remove favorite" : "Add favorite";
+        star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
+        return;
+    }
+    const route = e.target.closest ? e.target.closest(".fav-route") : null;
+    if (route) {
+        const stops = route.nextElementSibling;
+        if (!stops || !stops.classList.contains("fav-stops")) return;
+        const open = stops.hidden;
+        if (open) {
+            if (route.dataset.favRoute)
+                await populateFavStops(stops, "bus", route.dataset.favRoute);
+            else if (route.dataset.favLine)
+                await populateFavStops(stops, "metro", route.dataset.favLine);
+            stops.hidden = false;
+        } else {
+            stops.hidden = true;
+        }
+        route.setAttribute("aria-expanded", open ? "true" : "false");
+        return;
+    }
+    const header = e.target.closest ? e.target.closest(".fav-header") : null;
+    if (!header) return;
+    const which = header.dataset.favPanel;
+    const body = which === "bus" ? gFavBusBody : gFavMetroBody;
+    const open = body.hidden;
+    if (open) {
+        try {
+            if (which === "bus") {
+                await loadBusRouteDirectory();
+                renderFavBusRoutes(gFavBusFilter ? gFavBusFilter.value : "");
+            } else {
+                await loadMetroStations();
+                renderFavMetroLines();
+            }
+            body.hidden = false;
+        } catch (err) {
+            body.innerHTML = `<div class="fav-empty">could not load</div>`;
+            body.hidden = false;
+        }
+    } else {
+        body.hidden = true;
+    }
+    header.setAttribute("aria-expanded", open ? "true" : "false");
+});
+document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && gFavPanel && !gFavPanel.hidden) {
+        gFavPanel.hidden = true;
+        if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "false");
+    }
+});
 
 
 gBusBtn.addEventListener("click", () => setMode("bus"));
