@@ -129,6 +129,17 @@
         }
         .fav-setting[aria-pressed="true"] .fav-setting-state { color: #2e7d32; }
 
+        /* Main-panel bookmark list (Home / Work / Favorites) */
+        .bm-view {
+            margin: 8px 0 18px; padding: 12px 14px;
+            background: #fff; border: 1px solid #dee2e6; border-radius: 10px;
+        }
+        .bm-view[hidden] { display: none; }
+        .bm-title { margin: 0 0 8px; font: 700 18px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
+        .bm-list .fav-stop { padding: 8px 2px; border-bottom: 1px solid #f1f3f5; }
+        .bm-list .fav-stop:last-child { border-bottom: 0; }
+        .bm-list .fav-stop-name { font-size: 14px; }
+
         /* clock block: current time over "at … ·refresh in Ns", with
            the auto-refresh toggle beside it. */
         /* full-page access gate */
@@ -520,13 +531,6 @@
 </div>
 
 <div id="favPanel" class="fav-panel" hidden>
-    <button type="button" class="fav-header" id="favSlotHeader" data-fav-panel="slot" aria-expanded="false" hidden>
-        <span id="favSlotTitle">Home</span>
-        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
-    </button>
-    <div id="favSlotBody" class="fav-body" hidden>
-        <div id="favSlotList" class="fav-list"></div>
-    </div>
     <button type="button" class="fav-header" data-fav-panel="favorites" aria-expanded="false">
         <span>Favorites</span>
         <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
@@ -586,6 +590,12 @@
     </div>
     <div id="metroWrap" class="ac-wrap" hidden>
         <select id="metroSelect" class="form-select form-select-lg" aria-label="Metro station"></select>
+    </div>
+
+    <!-- Bookmark views (Home / Work / Favorites) replace the board area. -->
+    <div id="bmView" class="bm-view" hidden>
+        <h4 id="bmTitle" class="bm-title"></h4>
+        <div id="bmList" class="fav-list bm-list"></div>
     </div>
 
     <!-- v5: route picture first — the stop (name + ID) and its next bus
@@ -656,7 +666,7 @@ function startApp() {
         else runFlow();
         return;
     }
-    openFavoritesPanel();
+    renderBookmarkList("fav");
 }
 
 function showGate() {
@@ -879,6 +889,10 @@ const gBusStopSelect = document.getElementById("busStopSelect");
 const gLinesNote = document.getElementById("linesNote");
 const gBoardHeader = document.getElementById("boardHeader");
 const gLinesScroll = document.getElementById("linesScroll");
+const gViewArrivals = document.getElementById("viewArrivals");
+const gBmView = document.getElementById("bmView");
+const gBmTitle = document.getElementById("bmTitle");
+const gBmList = document.getElementById("bmList");
 const gHoverTip = document.getElementById("hovertip");
 const gAcWrap = document.getElementById("acWrap");
 const gMetroWrap = document.getElementById("metroWrap");
@@ -887,10 +901,6 @@ const gBusBtn = document.getElementById("btnBus");
 const gMetroBtn = document.getElementById("btnMetro");
 const gAddFavBtn = document.getElementById("btnAddFav");
 const gFavPanel = document.getElementById("favPanel");
-const gFavSlotHeader = document.getElementById("favSlotHeader");
-const gFavSlotTitle = document.getElementById("favSlotTitle");
-const gFavSlotBody = document.getElementById("favSlotBody");
-const gFavSlotList = document.getElementById("favSlotList");
 const gFavFavBody = document.getElementById("favFavBody");
 const gFavFavList = document.getElementById("favFavList");
 const gFavNearBody = document.getElementById("favNearBody");
@@ -2071,6 +2081,7 @@ function applyMode(next) {
         gBoardHeader.innerHTML = "";
         gLinesScroll.innerHTML = "";
         gLinesNote.textContent = "";
+        showBoardView();
         scrollPageTop();
     }
     return changed;
@@ -2110,6 +2121,7 @@ function setMetroAnchor(code) {
     const all = metroStationsCache || [];
     const anchor = all.find(s => s.Code === String(code));
     if (!anchor) return;
+    showBoardView();
     metroAnchorCode = anchor.Code;
     metroAnchor = Object.assign({}, anchor, { distFt: 0 });
     if (gMetroSelect) gMetroSelect.value = anchor.Code;
@@ -2882,22 +2894,27 @@ function favBadgeHtml(kind, route) {
         + `${esc(r || "Bus")}</span>`;
 }
 
-function renderFavorites() {
-    if (!gFavFavList) return;
-    const rank = { bus: 0, metro: 1 };
-    const list = favorites.slice().sort((a, b) =>
-        (rank[a.kind] ?? 2) - (rank[b.kind] ?? 2) ||
-        String(a.name || "").localeCompare(String(b.name || "")));
-    gFavFavList.innerHTML = list.length ? list.map(f =>
-        `<div class="fav-stop">${favBadgeHtml(f.kind, f.route)}`
+function favRowHtml(f) {
+    return `<div class="fav-stop">${favBadgeHtml(f.kind, f.route)}`
         + `${favGotoHtml(f.kind, f.id, f.name, stopName(f.name) || "#" + f.id)}`
-        + `${favStarHtml(f.kind, f.id, f.name, f.route)}</div>`
-    ).join("") : `<div class="fav-empty">no favorites yet — tap a star to save one</div>`;
+        + `${favStarHtml(f.kind, f.id, f.name, f.route)}</div>`;
 }
 
-// ── Home / Work bookmarks (one bus stop + one Metro station each) ─────
-let favSlotKind = "home";
+function sortedFavorites() {
+    const rank = { bus: 0, metro: 1 };
+    return favorites.slice().sort((a, b) =>
+        (rank[a.kind] ?? 2) - (rank[b.kind] ?? 2) ||
+        String(a.name || "").localeCompare(String(b.name || "")));
+}
 
+function renderFavorites() {
+    if (!gFavFavList) return;
+    const list = sortedFavorites();
+    gFavFavList.innerHTML = list.length ? list.map(favRowHtml).join("")
+        : `<div class="fav-empty">no favorites yet — tap a star to save one</div>`;
+}
+
+// ── Main-panel bookmark list (Home / Work / Favorites) ───────────────
 function shortcutRoute(kind, id) {
     if (kind === "metro") {
         const st = (metroStationsCache || []).find(s => String(s.Code) === String(id));
@@ -2907,11 +2924,13 @@ function shortcutRoute(kind, id) {
     return st ? (st.Routes || [])[0] || "" : "";
 }
 
-function renderShortcutSlot(slot) {
-    if (!gFavSlotList) return;
-    favSlotKind = slot;
-    const label = shortcutLabel(slot);
-    if (gFavSlotTitle) gFavSlotTitle.textContent = label;
+// Home/Work: that slot's bus stop and Metro station (both modes). Favorites:
+// the master list. Bus entries always come before Metro.
+function bookmarkRows(slot) {
+    if (slot === "fav") {
+        return sortedFavorites().map(f =>
+            ({ kind: f.kind, id: String(f.id), name: f.name || "", route: f.route || "" }));
+    }
     const rows = [];
     for (const kind of ["bus", "metro"]) {
         const saved = readShortcutsFor(kind)[slot];
@@ -2919,33 +2938,41 @@ function renderShortcutSlot(slot) {
         const id = String(saved.id);
         rows.push({ kind, id, name: saved.name || "", route: shortcutRoute(kind, id) });
     }
-    gFavSlotList.innerHTML = rows.length ? rows.map(r =>
-        `<div class="fav-stop">${favBadgeHtml(r.kind, r.route)}`
-        + `${favGotoHtml(r.kind, r.id, r.name, stopName(r.name) || "#" + r.id)}`
-        + `${favStarHtml(r.kind, r.id, r.name, r.route)}</div>`
-    ).join("") : `<div class="fav-empty">no ${label.toLowerCase()} bookmark saved for a bus stop or Metro station</div>`;
+    return rows;
 }
 
-// Home/Work open the panel focused on that slot's bus + Metro bookmarks.
-function openShortcutSlot(slot) {
-    if (!gFavPanel) return;
-    gFavPanel.hidden = false;
-    if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "true");
-    if (gFavSlotHeader) gFavSlotHeader.hidden = false;
-    renderShortcutSlot(slot);
-    gFavPanel.querySelectorAll(".fav-body").forEach(b => {
-        if (b !== gFavSlotBody) b.hidden = true;
-    });
-    gFavPanel.querySelectorAll(".fav-header").forEach(h => {
-        if (h !== gFavSlotHeader) h.setAttribute("aria-expanded", "false");
-    });
-    if (gFavSlotBody) gFavSlotBody.hidden = false;
-    if (gFavSlotHeader) gFavSlotHeader.setAttribute("aria-expanded", "true");
+let bookmarkSlot = null;
+
+function renderBookmarkList(slot) {
+    bookmarkSlot = slot;
+    const label = slot === "fav" ? "Favorites" : shortcutLabel(slot);
+    if (gBmTitle) gBmTitle.textContent = label;
+    const rows = bookmarkRows(slot);
+    if (gBmList) {
+        gBmList.innerHTML = rows.length ? rows.map(favRowHtml).join("")
+            : `<div class="fav-empty">no ${slot === "fav" ? "favorites" : label.toLowerCase() + " bookmark"} saved yet</div>`;
+    }
+    if (gBmView) gBmView.hidden = false;
+    if (gViewArrivals) gViewArrivals.hidden = true;
+    scrollPageTop();
+}
+
+function showBoardView() {
+    bookmarkSlot = null;
+    if (gBmView) gBmView.hidden = true;
+    if (gViewArrivals) gViewArrivals.hidden = false;
+}
+
+// The three bookmark icons replace the board with their list; selecting the
+// same icon again (or navigating from the list) returns to the board.
+function toggleBookmarkList(slot) {
+    if (bookmarkSlot === slot && gBmView && !gBmView.hidden) showBoardView();
+    else renderBookmarkList(slot);
 }
 
 function syncFavStars() {
-    if (!gFavPanel) return;
-    gFavPanel.querySelectorAll(".fav-star").forEach(star => {
+    const scope = [gFavPanel, gBmList].filter(Boolean);
+    for (const root of scope) root.querySelectorAll(".fav-star").forEach(star => {
         const on = isFavorite(star.dataset.favKind, star.dataset.favId);
         star.classList.toggle("active", on);
         star.setAttribute("aria-pressed", on ? "true" : "false");
@@ -2953,6 +2980,7 @@ function syncFavStars() {
         star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
     });
 }
+// "Near me": bus stops and Metro stations within 1,000 ft of the device's
 // current position, nearest first.
 const NEAR_ME_FT = 1000;
 const NEAR_ME_M = 305;           // WMATA jStops radius is meters
@@ -3046,30 +3074,15 @@ function closeFavPanel() {
         gFavPanel.querySelectorAll(".fav-body, .fav-stops").forEach(b => { b.hidden = true; });
         gFavPanel.querySelectorAll(".fav-header, .fav-route").forEach(h =>
             h.setAttribute("aria-expanded", "false"));
-        if (gFavSlotHeader) gFavSlotHeader.hidden = true;
     }
     if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "false");
-}
-
-// The nav star opens the master list in the panel with the Favorites
-// section expanded. Repeated clicks keep it open and re-list everything;
-// close via the search icon, the section header, or Escape.
-function openFavoritesPanel() {
-    if (!gFavPanel) return;
-    gFavPanel.hidden = false;
-    if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "true");
-    if (gFavSlotHeader) gFavSlotHeader.hidden = true;
-    if (gFavSlotBody) gFavSlotBody.hidden = true;
-    renderFavorites();
-    if (gFavFavBody) gFavFavBody.hidden = false;
-    const header = gFavPanel.querySelector('.fav-header[data-fav-panel="favorites"]');
-    if (header) header.setAttribute("aria-expanded", "true");
 }
 
 // A favorite name navigates: switch mode first (without starting a competing
 // flow), then anchor exactly once on the chosen stop/station.
 async function gotoFavorite(kind, id, name) {
     closeFavPanel();
+    showBoardView();
     if (kind === "metro") {
         if (mode !== "metro") applyMode("metro");
         await loadMetroStations();
@@ -3104,6 +3117,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
         updateShortcutNav();
         if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+        if (bookmarkSlot === "fav") renderBookmarkList("fav");
         syncFavStars();
         return;
     }
@@ -3133,8 +3147,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     const header = e.target.closest ? e.target.closest(".fav-header") : null;
     if (!header) return;
     const which = header.dataset.favPanel;
-    const body = which === "slot" ? gFavSlotBody
-        : which === "favorites" ? gFavFavBody
+    const body = which === "favorites" ? gFavFavBody
         : which === "near" ? gFavNearBody
         : which === "bus" ? gFavBusBody
         : which === "metro" ? gFavMetroBody : gFavSettingsBody;
@@ -3143,8 +3156,6 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         try {
             if (which === "favorites") {
                 renderFavorites();
-            } else if (which === "slot") {
-                renderShortcutSlot(favSlotKind);
             } else if (which === "near") {
                 populateNearMe();
             } else if (which === "bus") {
@@ -3172,6 +3183,24 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     }
     header.setAttribute("aria-expanded", open ? "true" : "false");
 });
+if (gBmList) gBmList.addEventListener("click", async e => {
+    const star = e.target.closest ? e.target.closest(".fav-star") : null;
+    if (star) {
+        e.preventDefault();
+        toggleFavorite(star.dataset.favKind, star.dataset.favId,
+            star.dataset.favName, star.dataset.favRoute);
+        updateShortcutNav();
+        if (bookmarkSlot === "fav") renderBookmarkList("fav");
+        if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+        syncFavStars();
+        return;
+    }
+    const go = e.target.closest ? e.target.closest(".fav-goto") : null;
+    if (go && go.dataset.favId) {
+        e.preventDefault();
+        await gotoFavorite(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
+    }
+});
 document.addEventListener("keydown", e => {
     if (e.key === "Escape" && gFavPanel && !gFavPanel.hidden) closeFavPanel();
 });
@@ -3182,10 +3211,7 @@ gMetroBtn.addEventListener("click", () => setMode("metro"));
 for (const slot of SHORTCUT_SLOTS) {
     const btn = gShortcutBtns[slot];
     if (!btn) continue;
-    btn.addEventListener("click", () => {
-        if (slot === "fav") openFavoritesPanel();
-        else openShortcutSlot(slot);
-    });
+    btn.addEventListener("click", () => toggleBookmarkList(slot));
 }
 
 // Home and Work save/clear their single special bookmark in the header. The
@@ -3232,6 +3258,7 @@ gBoardHeader.addEventListener("click", e => {
     });
     updateShortcutNav();
     if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+    if (bookmarkSlot === "fav") renderBookmarkList("fav");
     syncFavStars();
 });
 updateShortcutNav();
@@ -3548,6 +3575,7 @@ function scrollPageTop() {
 function selectStop(id, keepPicker) {
     id = String(id || "");
     if (!id) return false;
+    showBoardView();
     if (!keepPicker) resetBusPickers();
     if (String(pickedStop) === id) { refreshPredictions(); return true; }  // already the anchor
     pickedStop = id;
