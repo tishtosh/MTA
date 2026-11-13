@@ -515,6 +515,16 @@
         .board-next { margin: 6px 0 0; font-size: 14px; color: #cfd8e3; }
         .hero-verb { display: inline-flex; align-items: center; margin-right: 3px; }
         .hero-verb i { font-size: 18px; }
+        .hero-route-toggle { border: 0; cursor: pointer; font: inherit; }
+        .hero-route-toggle .bt-chevron { font-size: 9px; margin-left: 4px; transition: transform .15s ease; }
+        .hero-route-toggle[aria-expanded="true"] .bt-chevron { transform: rotate(180deg); }
+        .hero-route-stops {
+            margin: 4px 2px 10px; padding: 8px 10px;
+            background: #fff; border: 1px solid #dee2e6; border-radius: 10px;
+        }
+        .hero-route-stops[hidden] { display: none; }
+        .hero-route-stops .fav-stop { padding: 5px 2px; border-bottom: 1px solid #f1f3f5; }
+        .hero-route-stops .fav-stop:last-child { border-bottom: 0; }
         .bt-next-eta { font-weight: 700; font-size: 20px; color: #8ce99a; font-variant-numeric: tabular-nums; }
         .bt-next-rest { font-size: 13px; color: #9fb0c7; font-variant-numeric: tabular-nums; }
 
@@ -2716,14 +2726,18 @@ function metroDestCode(name) {
     return hit ? hit.Code : "";
 }
 
-async function fetchMetroPath(from, to) {
-    const key = from + "|" + to;
+async function fetchMetroPath(from, to, line) {
+    const key = from + "|" + to + "|" + (line || "");
     if (metroPathCache[key]) return metroPathCache[key];
     if (metroPathInflight[key]) return metroPathInflight[key];
-    const p = apiGet("/Rail.svc/json/jPath", { FromStationCode: from, ToStationCode: to })
-        .then(({ data, error }) => {
-            if (error) throw error;
-            const path = (data && data.Path) || [];
+    const p = (isBoston()
+        ? fetchMbtaMetroPath(from, to, line)
+        : apiGet("/Rail.svc/json/jPath", { FromStationCode: from, ToStationCode: to })
+            .then(({ data, error }) => {
+                if (error) throw error;
+                return (data && data.Path) || [];
+            }))
+        .then(path => {
             metroPathCache[key] = path;
             return path;
         })
@@ -2732,14 +2746,54 @@ async function fetchMetroPath(from, to) {
     return p;
 }
 
+// Boston: use a representative trip for the line/direction whose ordered
+// stops contain both the boarding station and the destination.
+async function fetchMbtaMetroPath(from, to, line) {
+    const { data: rp, error } = await mbtaGet("/route_patterns", {
+        "filter[route]": line
+    });
+    if (error) throw error;
+    for (const p of (rp && rp.data) || []) {
+        const tripId = p.relationships && p.relationships.representative_trip &&
+            p.relationships.representative_trip.data.id;
+        if (!tripId) continue;
+        const { data: tr, error: e2 } = await mbtaGet(`/trips/${tripId}`, {
+            include: "stops"
+        });
+        if (e2 || !tr) continue;
+        const inc = new Map(((tr.included) || [])
+            .filter(i => i.type === "stop").map(s => [s.id, s]));
+        const rel = tr.data.relationships && tr.data.relationships.stops;
+        const ids = [];
+        for (const x of ((rel && rel.data) || [])) {
+            const s = inc.get(x.id);
+            const p = s && s.relationships && s.relationships.parent_station
+                && s.relationships.parent_station.data;
+            const id = p ? p.id : x.id;
+            if (ids[ids.length - 1] !== id) ids.push(id);
+        }
+        const a = ids.indexOf(from), b = ids.indexOf(to);
+        if (a < 0 || b < 0) continue;
+        const slice = a <= b ? ids.slice(a, b + 1) : ids.slice(b, a + 1).reverse();
+        return slice.map(id => {
+            const st = (metroStationsCache || []).find(s => s.Code === id);
+            return {
+                StationCode: id,
+                StationName: (st && st.Name) || allStopsName(id) || id
+            };
+        });
+    }
+    return [];
+}
+
 async function loadMetroStops(ul) {
     const from = ul.dataset.metroFrom, to = ul.dataset.metroTo;
     if (!from || !to) { ul.innerHTML = ""; return; }
     ul.dataset.loaded = "1";
     ul.innerHTML = `<li class="bt-stop-item">loading stops…</li>`;
     try {
-        const path = await fetchMetroPath(from, to);
         const line = ul.dataset.line || "";
+        const path = await fetchMetroPath(from, to, line);
         ul.innerHTML = path.map(p => {
             const mark = p.StationCode === from ? ` <b class="bt-mark">your stop</b>`
                 : p.StationCode === to ? ` <b class="bt-mark">terminal</b>` : "";
@@ -3391,15 +3445,105 @@ function favSelectHtml(kind, id, name, route) {
         + `</button>`;
 }
 
+function favOrderedRow(kind, id, name, route) {
+    return `<div class="fav-stop">${favSelectHtml(kind, id, name, route)}`
+        + `${favStarHtml(kind, id, name, route)}`
+        + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}</div>`;
+}
+
 function favOrderedBusRow(s, route) {
-    return `<div class="fav-stop">${favSelectHtml("bus", s.StopID, s.Name, route)}`
-        + `${favStarHtml("bus", s.StopID, s.Name, route)}`
-        + `${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}</div>`;
+    return favOrderedRow("bus", s.StopID, s.Name, route);
 }
 
 // Ordered stops for a Boston route: one representative trip per direction,
 // read from the trip's ordered `stops` relationship.
-async function fetchMbtaRouteStops(routeKey) {
+async function mbtaTripStops(tripId, useParent) {
+    if (!tripId) return [];
+    const { data: tr, error } = await mbtaGet(`/trips/${tripId}`, { include: "stops" });
+    if (error || !tr) return [];
+    const inc = new Map(((tr.included) || [])
+        .filter(i => i.type === "stop").map(s => [s.id, s]));
+    const rel = tr.data.relationships && tr.data.relationships.stops;
+    const out = [], seen = new Set();
+    for (const x of ((rel && rel.data) || [])) {
+        const s = inc.get(x.id);
+        const p = useParent && s && s.relationships && s.relationships.parent_station
+            && s.relationships.parent_station.data;
+        const id = p ? p.id : x.id;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const station = useParent && (metroStationsCache || []).find(st => st.Code === id);
+        out.push({
+            StopID: id,
+            Name: (station && station.Name) ||
+                (s && s.attributes && s.attributes.name) || allStopsName(id) || id
+        });
+    }
+    return out;
+}
+
+function heroRouteListHtml(stops, kind, route, anchor) {
+    if (!stops.length) return `<div class="fav-empty">no stops available</div>`;
+    return stops.map(s => {
+        const id = String(s.StopID || s.id || "");
+        const name = s.Name || s.name || "";
+        const mark = id === String(anchor) ? ` <b class="bt-mark">your stop</b>` : "";
+        return `<div class="fav-stop">${favSelectHtml(kind, id, name, route)}`
+            + `${favStarHtml(kind, id, name, route)}`
+            + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}${mark}</div>`;
+    }).join("");
+}
+
+async function loadHeroRouteStops(btn) {
+    const ds = btn.dataset || {};
+    const route = ds.heroRoute || "";
+    const anchor = ds.heroAnchor || "";
+    if (isBoston()) {
+        if (ds.heroTrip) {
+            const stops = await mbtaTripStops(ds.heroTrip, ds.heroKind === "metro");
+            if (stops.length) return stops;
+        }
+        const groups = await fetchMbtaRouteStops(route, ds.heroKind === "metro");
+        if (!groups.length) return [];
+        const heads = normHeads(ds.heroHeads || "");
+        const g = groups.find(x => {
+            const n = normHeads(x.name || "");
+            return n && (n.includes(heads) || heads.includes(n));
+        }) || groups[0];
+        return (g.stops || []).map(s => ({ StopID: s.StopID, Name: s.Name }));
+    }
+    if (ds.heroKind === "metro") {
+        if (!ds.heroTo) return [];
+        const path = await fetchMetroPath(anchor, ds.heroTo, "");
+        return path.map(p => ({ StopID: p.StationCode, Name: p.StationName }));
+    }
+    const details = await fetchRouteDetails(route);
+    const dirs = (details && details.directions) || [];
+    const heads = normHeads(ds.heroHeads || "");
+    const dir = dirs.find(d => d.byId && d.byId[String(anchor)] && normHeads(d.heads) === heads)
+        || dirs.find(d => d.byId && d.byId[String(anchor)])
+        || dirs[0];
+    return ((dir && dir.stops) || []).map(s => ({ StopID: s.id, Name: s.name }));
+}
+
+async function toggleHeroRouteStops(btn) {
+    const card = btn.closest ? btn.closest(".hero-card") : null;
+    const box = card && card.nextElementSibling;
+    if (!box || !box.classList || !box.classList.contains("hero-route-stops")) return;
+    const open = box.hidden;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open) { box.hidden = true; return; }
+    box.hidden = false;
+    if (box.dataset.loaded) return;
+    box.dataset.loaded = "1";
+    box.innerHTML = `<div class="fav-empty">loading stops…</div>`;
+    let stops = [];
+    try { stops = await loadHeroRouteStops(btn); } catch (e) { stops = []; }
+    box.innerHTML = heroRouteListHtml(stops, btn.dataset.heroKind, btn.dataset.heroRoute,
+        btn.dataset.heroAnchor);
+}
+
+async function fetchMbtaRouteStops(routeKey, useParent) {
     const routeId = busRouteMbtaIds[routeKey] || routeKey;
     const { data: rp, error } = await mbtaGet("/route_patterns", {
         "filter[route]": routeId
@@ -3420,18 +3564,7 @@ async function fetchMbtaRouteStops(routeKey) {
         const tripId = p.relationships.representative_trip &&
             p.relationships.representative_trip.data.id;
         if (!tripId) continue;
-        const { data: tr, error: e2 } = await mbtaGet(`/trips/${tripId}`, {
-            include: "stops"
-        });
-        if (e2 || !tr) continue;
-        const inc = new Map(((tr.included) || [])
-            .filter(i => i.type === "stop")
-            .map(s => [s.id, s]));
-        const rel = tr.data.relationships && tr.data.relationships.stops;
-        const stops = ((rel && rel.data) || []).map(x => {
-            const s = inc.get(x.id);
-            return s ? { StopID: s.id, Name: s.attributes.name || "" } : null;
-        }).filter(Boolean);
+        const stops = await mbtaTripStops(tripId, !!useParent);
         if (stops.length)
             groups.push({ dir, name: p.attributes.name || "", stops });
     }
@@ -3797,7 +3930,7 @@ function showBookmarkList(slot) {
 }
 
 function syncFavStars() {
-    const scope = [gFavPanel, gBookmarkList, gLinesScroll].filter(Boolean);
+    const scope = [gFavPanel, gBookmarkList, gLinesScroll, gBoardHeader].filter(Boolean);
     for (const root of scope) root.querySelectorAll(".fav-star").forEach(star => {
         const on = isFavorite(star.dataset.favKind, star.dataset.favId);
         star.classList.toggle("active", on);
@@ -4111,6 +4244,34 @@ function syncHeaderShortcuts() {
 // star toggles membership in the master favorites list, so it matches the
 // star's color everywhere else.
 gBoardHeader.addEventListener("click", e => {
+    const routeBtn = e.target.closest ? e.target.closest(".hero-route-toggle") : null;
+    if (routeBtn) {
+        e.preventDefault();
+        toggleHeroRouteStops(routeBtn);
+        return;
+    }
+    const pick = e.target.closest ? e.target.closest(".fav-select") : null;
+    if (pick && pick.dataset.favId) {
+        e.preventDefault();
+        gotoFavorite(pick.dataset.favKind, pick.dataset.favId, pick.dataset.favName);
+        return;
+    }
+    const favStar = e.target.closest ? e.target.closest(".fav-star") : null;
+    if (favStar) {
+        e.preventDefault();
+        toggleFavorite(favStar.dataset.favKind, favStar.dataset.favId,
+            favStar.dataset.favName, favStar.dataset.favRoute);
+        updateShortcutNav();
+        if (bookmarkSlot === "fav") renderBookmarkList("fav");
+        syncFavStars();
+        return;
+    }
+    const go = e.target.closest ? e.target.closest(".fav-goto") : null;
+    if (go && go.dataset.favId) {
+        e.preventDefault();
+        gotoFavorite(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
+        return;
+    }
     const share = e.target.closest ? e.target.closest(".board-share") : null;
     if (share) { openSelectedInMaps(); return; }
     const btn = e.target.closest ? e.target.closest(".board-shortcut") : null;
@@ -4645,8 +4806,20 @@ function heroCardHtml(st, arrivals) {
             : (a) => `${a.route}|${a.dirNum || a.heads || a.dir || ""}`;
         const mins = list.filter(a => svc(a) === svc(next)).map(a => a.min);
         const badgeCls = `row-badge${st.Metro ? " metro-line" : busBadgeClass()}`;
+        const routeBadge = `<button type="button" class="${badgeCls} hero-route-toggle"`
+            + ` aria-expanded="false" title="Show stops on this route"`
+            + ` data-hero-kind="${st.Metro ? "metro" : "bus"}"`
+            + ` data-hero-route="${esc(next.route)}"`
+            + ` data-hero-trip="${esc(next.trip || "")}"`
+            + ` data-hero-heads="${esc(next.heads || next.dir || "")}"`
+            + ` data-hero-dir="${esc(next.dirNum == null ? "" : next.dirNum)}"`
+            + ` data-hero-anchor="${esc(id)}"`
+            + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir) : "")}"`
+            + ` style="background:${badgeColor(next.route)};color:${st.Metro ? "#fff" : busTextColor(next.route)}">`
+            + `${esc(badgeLabel(next.route))}`
+            + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`;
         const bits = [
-            `<span class="${badgeCls}" style="background:${badgeColor(next.route)};color:${st.Metro ? "#fff" : busTextColor(next.route)}">${esc(badgeLabel(next.route))}</span>`,
+            routeBadge,
             esc(next.heads || next.dir || "")
         ].filter(Boolean).join(" ");
         nextLine = `${verb} ${bits} <span class="bt-next-eta">${esc(fmtEta(mins[0]))}</span>`;
@@ -4681,7 +4854,7 @@ function heroCardHtml(st, arrivals) {
         + `<div class="board-next">${nextLine}</div>`
         + `<button type="button" class="board-share" title="Open in Maps" aria-label="Open in Maps">`
         + `<i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i></button>`
-        + `</div>`;
+        + `</div><div class="hero-route-stops" hidden></div>`;
 }
 
 // Piece 8: turn a row's predictions into track markers. Each prediction
