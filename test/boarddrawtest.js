@@ -40,7 +40,8 @@ let src = [names.map(constBlock).join("\n"),
   extractFn("isFavorite"), extractFn("favStarHtml"),
   extractFn("noteSelectionChange"),
   extractFn("boardRowHead"), extractFn("boardHtml"),
-  extractFn("busBadgeClass"), extractFn("busTextColor")].join("\n");
+  extractFn("busBadgeClass"), extractFn("busTextColor"),
+  extractFn("statusChipHtml")].join("\n");
 // const/let bindings stay in the script's lexical scope, not on ctx — expose
 // the two piece-11 ones so the tests can poke them.
 src += "\nglobalThis.__expandedStops = expandedStops;\nglobalThis.__rowKey = rowKey;\nglobalThis.__stopScheduleCache = stopScheduleCache;";

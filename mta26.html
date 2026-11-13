@@ -442,6 +442,15 @@
         .board-eta { font-size: 15px; color: #343a40; font-variant-numeric: tabular-nums; }
         .board-eta-soon { font-size: 20px; font-weight: 700; color: #2e7d32; font-variant-numeric: tabular-nums; }
         .board-eta-note { font-size: 12px; color: #6c757d; font-variant-numeric: tabular-nums; }
+        .status-chip {
+            display: inline-block; margin-left: 6px; padding: 0 6px;
+            border-radius: 9px; vertical-align: middle;
+            font: 700 9px/1.6 system-ui, -apple-system, sans-serif;
+            letter-spacing: .05em; text-transform: uppercase;
+        }
+        .status-arriving { color: #1b5e20; background: #c8e6c9; }
+        .status-boarding { color: #0d47a1; background: #bbdefb; }
+        .status-departed { color: #495057; background: #e0e0e0; }
 
         .bt-allstops {
             flex: none; padding: 0 7px;
@@ -1391,6 +1400,18 @@ function allStopsName(id) {
 // the row. Rows are deduped per stop+trip, falling back to
 // vehicle+route+direction when the trip is missing; rows with neither ID
 // are kept (the ETA list stays whole).
+function mbtaPredictionStatus(a, now) {
+    const st = String((a && a.status) || "").toLowerCase();
+    if (/all aboard|boarding/.test(st)) return "Boarding";
+    if (/incoming|arriving/.test(st)) return "Arriving";
+    const arr = Date.parse((a && a.arrival_time) || "");
+    const dep = Date.parse((a && a.departure_time) || "");
+    if (Number.isFinite(arr) && Number.isFinite(dep) && arr <= now && now <= dep)
+        return "Boarding";
+    if (Number.isFinite(arr) && arr <= now) return "Arriving";
+    return "";
+}
+
 async function fetchMbtaPredictions(stopId) {
     const { data, error } = await mbtaGet("/predictions", {
         "filter[stop]": stopId,
@@ -1420,7 +1441,8 @@ async function fetchMbtaPredictions(stopId) {
             route: mbtaRouteShort(route).toUpperCase(),
             dir, dirNum: String(dir), heads, dirText: heads,
             vehicle: null,
-            trip: (tripRel && tripRel.id) || null
+            trip: (tripRel && tripRel.id) || null,
+            status: mbtaPredictionStatus(a, now)
         });
     }
     preds.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
@@ -1452,7 +1474,8 @@ async function fetchPredictions(stopId) {
             seen.add(key);
         }
         preds.push({ min, route, dir, dirNum, heads: String(p.TripHeadsign || "") || dir,
-                     vehicle: vehicle || null, trip: trip || null });
+                     vehicle: vehicle || null, trip: trip || null,
+                     status: min === 0 ? "Arriving" : "" });
     }
     preds.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
     return { name, predictions: preds };
@@ -1737,6 +1760,7 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
         let v = variants.get(key);
         if (!v) {
             v = { route: p.route, dirNum, heads: p.heads || "", mins: [], vehicles: [], preds: [],
+                  status: p.status || (p.min === 0 ? "Arriving" : ""),
                   rep: { route: p.route, dirNum, heads: p.heads || "",
                          trip: p.trip || "", vehicle: p.vehicle || "" } };
             variants.set(key, v);
@@ -2362,6 +2386,12 @@ function fmtEta(min) {
 // The first ETA emphasized, the later ones muted after it
 // ("6 min then 14 min, 29 min"). With no prediction but a scheduled arrival,
 // show that clock time with a "not seen" suffix instead.
+function statusChipHtml(status) {
+    if (!status) return "";
+    const cls = status.toLowerCase().replace(/\s+/g, "-");
+    return ` <span class="status-chip status-${esc(cls)}">${esc(status)}</span>`;
+}
+
 function boardEtasHtml(mins, scheduled, departedAt) {
     if (departedAt) {
         const ago = Math.max(0, Math.round((Date.now() - departedAt) / 60000));
@@ -2430,6 +2460,7 @@ function boardRowHead(row, color, g, k, scheduled) {
         + `</div>`
         + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled || departed
             ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled, row.departedAt)}</span>` : "")
+        + (!departed ? statusChipHtml(row.status) : "")
         + `</div>`;
 }
 
@@ -2859,7 +2890,8 @@ async function fetchMbtaMetroLive(codes) {
             min: Math.max(0, Math.round((at - Date.now()) / 60000)),
             route: (routeRel && routeRel.id) || "",
             dir: heads, heads, dirNum: String(a.direction_id == null ? "" : a.direction_id),
-            vehicle: null, trip: (tripRel && tripRel.id) || null
+            vehicle: null, trip: (tripRel && tripRel.id) || null,
+            status: mbtaPredictionStatus(a, Date.now())
         });
     }
     for (const c of codes) by[c].sort((a, b) => a.min - b.min);
@@ -2874,6 +2906,8 @@ async function fetchMetroLive(codes) {
     const by = {};
     for (const t of (data && data.Trains) || []) {
         const min = metroMin(t.Min);
+        const rawMin = String(t.Min || "").trim().toUpperCase();
+        const status = rawMin === "BRD" ? "Boarding" : rawMin === "ARR" ? "Arriving" : "";
         const code = String(t.LocationCode || "");
         const line = String(t.Line || "").toUpperCase();
         const dest = t.DestinationName || t.Destination || "";
@@ -2883,7 +2917,7 @@ async function fetchMetroLive(codes) {
             min, route: line,
             dir: dest, heads: dest,
             dirNum: t.Group != null ? String(t.Group) : "",
-            vehicle: null, trip: null
+            vehicle: null, trip: null, status
         });
     }
     for (const code of Object.keys(by)) by[code].sort((a, b) => a.min - b.min);
@@ -4227,7 +4261,8 @@ function nextArrivalHtml(kind, next) {
     return `${verb} <span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
         + ` style="background:${color};color:${kind === "metro" ? "#fff" : busTextColor(next.route)}">${esc(label)}</span> `
         + `${esc(next.heads || next.dir || "")}`
-        + ` <span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>`;
+        + ` <span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>`
+        + statusChipHtml(next.status || (next.min === 0 ? "Arriving" : ""));
 }
 
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
@@ -5308,7 +5343,8 @@ function heroCardHtml(st, arrivals) {
             next.heads || next.dir
                 ? `<span class="board-dest">${esc(next.heads || next.dir)}</span>` : ""
         ].filter(Boolean).join(" ");
-        nextLine = `${bits} <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>`;
+        nextLine = `${bits} <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>`
+            + statusChipHtml(next.status || (next.min === 0 ? "Arriving" : ""));
         if (mins.length > 1)
             nextLine += ` <span class="bt-next-rest">then ${mins.slice(1).map(m => esc(fmtEta(m))).join(", ")}</span>`;
     } else if (st.Error) {
