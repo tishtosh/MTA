@@ -144,7 +144,7 @@
         .bookmark-title { margin: 0 0 8px; font: 700 18px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
         .bookmark-list { gap: 8px; }
         .hero-card.bookmark-card {
-            margin: 0; padding: 10px 44px 12px 16px; border-radius: 10px;
+            margin: 0; padding: 10px 84px 12px 16px; border-radius: 10px;
             cursor: pointer;
         }
         .hero-card.bookmark-card.hero-bus:hover { background: #cbcbcb; }
@@ -182,6 +182,10 @@
         .nav-shortcut i { font-size: 2em; width: 46px; color: #3f2b1e; }
         .nav-shortcut { position: relative; }
         .nav-shortcut:hover i, .add-fav-btn:hover i { color: #241710; }
+        .nav-back i { font-size: 1.5em; width: 34px; color: #3f2b1e; }
+        .nav-back:hover:not(:disabled) i { color: #241710; }
+        .nav-back:disabled i { color: #cdbfb2; }
+        .nav-back:disabled { cursor: default; }
         .nav-map:hover i { color: #495057; }
 
         .clock-meta {
@@ -523,6 +527,7 @@
             .nav-shortcut i { font-size: 1.4em; width: 30px; }
             .nav-refresh i { font-size: 1.2em; }
             .add-fav-btn i { font-size: 1.3em; width: 30px; }
+            .nav-back i { font-size: 1.25em; width: 30px; }
             #clock { font-size: 22px !important; }
             .clock-meta { font-size: 9px; }
             .navbar .container > div:last-child { gap: 4px !important; }
@@ -535,6 +540,7 @@
             .nav-shortcut i { font-size: 1.2em; width: 26px; }
             .nav-refresh i { font-size: 1.05em; }
             .add-fav-btn i { font-size: 1.1em; width: 26px; }
+            .nav-back i { font-size: 1.1em; width: 26px; }
             #clock { font-size: 18px !important; }
         }
         @media (max-width: 360px) {
@@ -542,6 +548,7 @@
             .nav-shortcut i { font-size: 1.1em; width: 24px; }
             .nav-refresh i { font-size: 1em; }
             .add-fav-btn i { font-size: 1em; width: 24px; }
+            .nav-back i { font-size: 1em; width: 24px; }
             #clock { font-size: 16px !important; }
             .navbar .container > div:last-child { gap: 2px !important; }
         }
@@ -564,6 +571,9 @@
     <nav class="navbar fixed-top navbar-light bg-light">
         <div class="container d-flex align-items-center">
             <div class="d-flex align-items-center" style="gap: 6px">
+                <button id="btnBack" class="navicon nav-back" title="Back" aria-label="Back" disabled>
+                    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                </button>
                 <button id="btnAddFav" class="navicon add-fav-btn" title="Find stops and favorites" aria-label="Find stops and favorites" aria-expanded="false" aria-controls="favPanel">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 </button>
@@ -961,6 +971,32 @@ function writeShortcutCookie() {
     } catch (e) { /* cookies unavailable: shortcuts last for the session */ }
 }
 
+function writeShortcutsFor(kind, obj) {
+    try {
+        document.cookie = `${shortcutCookieName(kind)}=${encodeURIComponent(JSON.stringify(obj))}`
+            + "; max-age=31536000; path=/; SameSite=Lax";
+    } catch (e) { /* session-only */ }
+    if (kind === mode) shortcuts = obj;
+}
+
+// Save/clear Home or Work from a summary card. Per-city, per-mode cookie.
+function toggleBookmarkCardSlot(kind, id, name, route, slot) {
+    if (slot !== "home" && slot !== "work") return;
+    const cur = readShortcutsFor(kind);
+    const same = cur[slot] && String(cur[slot].id) === String(id);
+    if (same) {
+        delete cur[slot];
+    } else {
+        cur[slot] = { id: String(id), name: name || "", route: route || "" };
+        if (!isFavorite(kind, id)) toggleFavorite(kind, id, name, route);
+    }
+    writeShortcutsFor(kind, cur);
+    updateShortcutNav();
+    if (bookmarkSlot) renderBookmarkList(bookmarkSlot);
+    if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+    syncFavStars();
+}
+
 function shortcutLabel(slot) {
     return slot === "home" ? "Home" : slot === "work" ? "Work" : "Favorite";
 }
@@ -1055,6 +1091,7 @@ const gAcWrap = document.getElementById("acWrap");
 const gMetroWrap = document.getElementById("metroWrap");
 const gMetroSelect = document.getElementById("metroSelect");
 const gAddFavBtn = document.getElementById("btnAddFav");
+const gBackBtn = document.getElementById("btnBack");
 const gFavPanel = document.getElementById("favPanel");
 const gFavFavBody = document.getElementById("favFavBody");
 const gFavFavList = document.getElementById("favFavList");
@@ -2477,6 +2514,10 @@ function setCity(next, opts) {
     }
     shortcuts = readShortcutCookie();
     clearCityCaches();
+    screenHistory = [];
+    currentScreen = null;
+    historyGuard = false;
+    updateBackButton();
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = null;
     nextRefreshAt = 0;
@@ -2520,6 +2561,7 @@ function setMetroAnchor(code) {
     showBoardView();
     metroAnchorCode = anchor.Code;
     metroAnchor = Object.assign({}, anchor, { distFt: 0 });
+    enterScreen({ type: "board", mode: "metro", id: anchor.Code, name: anchor.Name || "" });
     if (gMetroSelect) gMetroSelect.value = anchor.Code;
     expandedStops.clear();
     scrollPageTop();
@@ -3503,6 +3545,22 @@ function nextArrivalHtml(kind, next) {
 }
 
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
+// Home / Work buttons shown beside the favorite star on every summary card.
+function bmSlotHtml(row, slot) {
+    const saved = readShortcutsFor(row.kind)[slot];
+    const on = !!(saved && String(saved.id) === String(row.id));
+    const label = shortcutLabel(slot);
+    const text = on ? `Clear ${label} bookmark` : `Save as ${label}`;
+    const icon = slot === "home" ? "house" : "briefcase";
+    return `<button type="button" class="board-shortcut bm-slot${on ? " active" : ""}"`
+        + ` data-bookmark-slot="${slot}" data-fav-kind="${esc(row.kind)}"`
+        + ` data-fav-id="${esc(row.id)}" data-fav-name="${esc(row.name || "")}"`
+        + ` data-fav-route="${esc(row.route || "")}"`
+        + ` aria-pressed="${on ? "true" : "false"}" title="${text}" aria-label="${text}">`
+        + `<i class="fa-solid fa-${icon}" aria-hidden="true"></i>`
+        + `</button>`;
+}
+
 function bookmarkCardHtml(row) {
     const label = stopName(row.name) || "#" + row.id;
     const band = row.kind === "metro"
@@ -3512,9 +3570,11 @@ function bookmarkCardHtml(row) {
           + `${busBandAttr(row.route)}></span>`;
     return `<div class="hero-card bookmark-card hero-${esc(row.kind)}" data-bookmark-kind="${esc(row.kind)}"`
         + ` data-bookmark-id="${esc(row.id)}" data-bookmark-name="${esc(row.name || "")}"`
+        + ` data-bookmark-route="${esc(row.route || "")}"`
         + ` role="button" tabindex="0" title="Go to ${esc(label)}">`
         + band
         + `<div class="board-shortcuts">`
+        + `${bmSlotHtml(row, "home")}${bmSlotHtml(row, "work")}`
         + `${favStarHtml(row.kind, row.id, row.name, row.route)}</div>`
         + `<div><span class="board-stopname">${esc(label)}</span>`
         + (row.name ? `<span class="board-stopid">#${esc(row.id)}</span>` : "")
@@ -3560,6 +3620,66 @@ async function fillBookmarkArrivals(rows, token) {
     }));
 }
 
+// ── Screen history (last 10 views) ───────────────────────────────────
+const SCREEN_HISTORY_MAX = 10;
+let screenHistory = [];
+let currentScreen = null;
+let historyGuard = false;
+
+function screenKey(s) {
+    if (!s) return "";
+    return [s.type, s.slot || "", s.mode || "", s.id || ""].join(":");
+}
+
+function screenLabel(s) {
+    if (!s) return "previous screen";
+    if (s.type === "bookmarks")
+        return s.slot === "fav" ? "Favorites" : shortcutLabel(s.slot);
+    return s.name || (s.id ? `#${s.id}` : "previous stop");
+}
+
+function updateBackButton() {
+    if (!gBackBtn) return;
+    const prev = screenHistory[screenHistory.length - 1];
+    gBackBtn.disabled = !prev;
+    const label = prev ? `Back to ${screenLabel(prev)}` : "Back";
+    gBackBtn.title = label;
+    gBackBtn.setAttribute("aria-label", label);
+}
+
+function enterScreen(screen) {
+    if (historyGuard || !screen) return;
+    if (currentScreen && screenKey(currentScreen) === screenKey(screen)) {
+        currentScreen = screen;
+        updateBackButton();
+        return;
+    }
+    if (currentScreen) {
+        screenHistory.push(currentScreen);
+        if (screenHistory.length > SCREEN_HISTORY_MAX) screenHistory.shift();
+    }
+    currentScreen = screen;
+    updateBackButton();
+}
+
+async function goBack() {
+    if (!screenHistory.length) return;
+    const prev = screenHistory.pop();
+    historyGuard = true;
+    try {
+        if (prev.type === "bookmarks") {
+            closeFavPanel();
+            await renderBookmarkList(prev.slot);
+        } else if (prev.type === "board") {
+            await gotoFavorite(prev.mode, prev.id, prev.name || "");
+        }
+        currentScreen = prev;
+    } finally {
+        historyGuard = false;
+        updateBackButton();
+    }
+}
+
 async function renderBookmarkList(slot) {
     if (isBoston()) {
         await Promise.all([
@@ -3568,6 +3688,7 @@ async function renderBookmarkList(slot) {
         ]);
     }
     bookmarkSlot = slot;
+    enterScreen({ type: "bookmarks", slot });
     const token = ++bookmarkToken;
     const label = slot === "fav" ? "Favorites" : shortcutLabel(slot);
     if (gBookmarkTitle) gBookmarkTitle.textContent = label;
@@ -3829,6 +3950,15 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     header.setAttribute("aria-expanded", open ? "true" : "false");
 });
 if (gBookmarkList) gBookmarkList.addEventListener("click", async e => {
+    const slotBtn = e.target.closest ? e.target.closest(".bm-slot") : null;
+    if (slotBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleBookmarkCardSlot(slotBtn.dataset.favKind, slotBtn.dataset.favId,
+            slotBtn.dataset.favName, slotBtn.dataset.favRoute,
+            slotBtn.dataset.bookmarkSlot);
+        return;
+    }
     const star = e.target.closest ? e.target.closest(".fav-star") : null;
     if (star) {
         e.preventDefault();
@@ -3848,6 +3978,7 @@ if (gBookmarkList) gBookmarkList.addEventListener("click", async e => {
 });
 if (gBookmarkList) gBookmarkList.addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
+    if (e.target.closest && e.target.closest(".bm-slot, .fav-star")) return;
     const card = e.target.closest ? e.target.closest(".bookmark-card") : null;
     if (!card || !card.dataset.bookmarkId) return;
     e.preventDefault();
@@ -3863,6 +3994,8 @@ for (const slot of SHORTCUT_SLOTS) {
     if (!btn) continue;
     btn.addEventListener("click", () => showBookmarkList(slot));
 }
+
+if (gBackBtn) gBackBtn.addEventListener("click", goBack);
 
 // Repaint the hero card's Home / Work / Favorite buttons from saved state.
 function syncHeaderShortcuts() {
@@ -4269,6 +4402,8 @@ function selectStop(id, keepPicker) {
     const inList = stops.find(s => String(s.StopID) === id) || nearbyStopObjs.get(id);
     pickedStopObj = inList || (allStopsCache || []).find(s => String(s.StopID) === id)
         || makeStop(id, null, null, null);
+    enterScreen({ type: "board", mode: "bus", id,
+        name: pickedStopObj.Name || allStopsName(id) || "" });
     scrollPageTop();
     noteSelectionChange();     // void the old counterpart before its refresh
     renderLines();             // re-anchors the board: this section lands first…
@@ -4655,6 +4790,14 @@ function renderLines() {
         return;
     }
     const anchorId = String(st.StopID);
+    if (currentScreen && currentScreen.type === "board" &&
+        currentScreen.mode === "bus" && !currentScreen.name) {
+        const known = st.Name || allStopsName(anchorId);
+        if (known) {
+            currentScreen.name = known;
+            updateBackButton();
+        }
+    }
     // Boston bus stripes use the MBTA route color; warm the route directory
     // once, then repaint with the real colors.
     if (isBoston() && !Object.keys(busRouteColors).length) {
