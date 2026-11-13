@@ -136,9 +136,20 @@
         }
         .bm-view[hidden] { display: none; }
         .bm-title { margin: 0 0 8px; font: 700 18px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
-        .bm-list .fav-stop { padding: 8px 2px; border-bottom: 1px solid #f1f3f5; }
-        .bm-list .fav-stop:last-child { border-bottom: 0; }
-        .bm-list .fav-stop-name { font-size: 14px; }
+        .bm-list { gap: 8px; }
+        .bm-card {
+            display: flex; align-items: flex-start; gap: 8px;
+            padding: 10px; border: 1px solid #e9ecef; border-radius: 8px;
+            background: #fff; cursor: pointer;
+        }
+        .bm-card:hover { background: #f8f9fa; }
+        .bm-card:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .bm-card .fav-badge { margin-top: 1px; }
+        .bm-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        .bm-card-name { font-weight: 700; font-size: 14px; color: #182338; }
+        .bm-card-id { font-size: 11px; color: #6c757d; }
+        .bm-card-next { margin-top: 3px; font-size: 12px; color: #495057; }
+        .bm-card .fav-star { font-size: 15px; }
 
         /* clock block: current time over "at … ·refresh in Ns", with
            the auto-refresh toggle beside it. */
@@ -497,18 +508,10 @@
 <div class="container">
     <nav class="navbar fixed-top navbar-light bg-light">
         <div class="container d-flex align-items-center">
-            <div class="d-flex align-items-center">
+            <div class="d-flex align-items-center" style="gap: 6px">
                 <button id="btnAddFav" class="navicon add-fav-btn" title="Find stops and favorites" aria-label="Find stops and favorites" aria-expanded="false" aria-controls="favPanel">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 </button>
-                <button id="btnBus" class="navicon mode-icon" title="Bus" aria-label="Show bus stops" aria-pressed="true">
-                    <i class="fa-solid fa-bus fa-xl-mta"></i>
-                </button>
-                <button id="btnMetro" class="navicon mode-icon" title="Metro" aria-label="Show Metro stations" aria-pressed="false">
-                    <i class="fa-solid fa-train-subway fa-xl-mta"></i>
-                </button>
-            </div>
-            <div class="d-flex align-items-center" style="gap: 12px">
                 <button id="btnHome" class="navicon nav-shortcut" title="Home stop" aria-label="Go to home stop">
                     <i class="fa-solid fa-house fa-xl-mta"></i>
                     <i class="fa-regular fa-bookmark nav-bookmark" aria-hidden="true"></i>
@@ -521,6 +524,8 @@
                     <i class="fa-solid fa-star fa-xl-mta"></i>
                     <i class="fa-regular fa-bookmark nav-bookmark" aria-hidden="true"></i>
                 </button>
+            </div>
+            <div class="d-flex align-items-center">
                 <div class="d-flex flex-column" style="line-height:1.15; text-align:right">
                     <span class="navbar-text" id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></span>
                     <span id="clockMeta" class="clock-meta"></span>
@@ -897,8 +902,6 @@ const gHoverTip = document.getElementById("hovertip");
 const gAcWrap = document.getElementById("acWrap");
 const gMetroWrap = document.getElementById("metroWrap");
 const gMetroSelect = document.getElementById("metroSelect");
-const gBusBtn = document.getElementById("btnBus");
-const gMetroBtn = document.getElementById("btnMetro");
 const gAddFavBtn = document.getElementById("btnAddFav");
 const gFavPanel = document.getElementById("favPanel");
 const gFavFavBody = document.getElementById("favFavBody");
@@ -2055,17 +2058,6 @@ function populateMetroSelect(stations) {
     if (metroAnchor) gMetroSelect.value = metroAnchor.Code;
 }
 
-function updateModeIcons() {
-    if (gBusBtn) {
-        gBusBtn.classList.toggle("active", mode === "bus");
-        gBusBtn.setAttribute("aria-pressed", mode === "bus" ? "true" : "false");
-    }
-    if (gMetroBtn) {
-        gMetroBtn.classList.toggle("active", mode === "metro");
-        gMetroBtn.setAttribute("aria-pressed", mode === "metro" ? "true" : "false");
-    }
-}
-
 // Switch mode and update the chrome. Deliberately starts no data flow, so a
 // caller can pick the destination first and then run exactly one flow.
 function applyMode(next) {
@@ -2075,7 +2067,6 @@ function applyMode(next) {
     writeModeCookie();
     shortcuts = readShortcutCookie();
     updateShortcutNav();
-    updateModeIcons();
     if (changed) {
         expandedStops.clear();
         gBoardHeader.innerHTML = "";
@@ -2936,29 +2927,79 @@ function bookmarkRows(slot) {
         const saved = readShortcutsFor(kind)[slot];
         if (!saved || !saved.id) continue;
         const id = String(saved.id);
-        rows.push({ kind, id, name: saved.name || "", route: shortcutRoute(kind, id) });
+        rows.push({ kind, id, name: saved.name || "",
+                    route: saved.route || shortcutRoute(kind, id) });
     }
     return rows;
 }
 
+function nextArrivalHtml(kind, next) {
+    if (!next) return `<span class="text-muted">no upcoming arrival</span>`;
+    return `${favBadgeHtml(kind, next.route)} `
+        + `${esc(next.heads || next.dir || "")}`
+        + ` <span class="bt-next-eta">${esc(fmtEta(next.min))}</span>`;
+}
+
+function bmCardHtml(row) {
+    const label = stopName(row.name) || "#" + row.id;
+    return `<article class="fav-stop bm-card" data-bm-kind="${esc(row.kind)}"`
+        + ` data-bm-id="${esc(row.id)}" data-bm-name="${esc(row.name || "")}"`
+        + ` role="button" tabindex="0" title="Go to ${esc(label)}">`
+        + favBadgeHtml(row.kind, row.route)
+        + `<span class="bm-card-text">`
+        + `<span class="bm-card-name">${esc(label)}</span>`
+        + `<span class="bm-card-id">#${esc(row.id)}</span>`
+        + `<span class="bm-card-next" data-for="${esc(row.kind)}:${esc(row.id)}">loading arrivals…</span>`
+        + `</span>`
+        + favStarHtml(row.kind, row.id, row.name, row.route)
+        + `</article>`;
+}
+
 let bookmarkSlot = null;
+let bmToken = 0;
+
+async function fillBookmarkArrivals(rows, token) {
+    await Promise.all(rows.map(async row => {
+        let html;
+        try {
+            if (row.kind === "metro") {
+                const by = await fetchMetroLive([row.id]);
+                const list = (by[row.id] || []).slice().sort((a, b) => a.min - b.min);
+                html = nextArrivalHtml(row.kind, list[0]);
+            } else {
+                const { predictions } = await fetchPredictions(row.id);
+                const list = (predictions || []).slice().sort((a, b) => a.min - b.min);
+                html = nextArrivalHtml(row.kind, list[0]);
+            }
+        } catch (e) {
+            html = `<span class="text-muted">arrivals unavailable</span>`;
+        }
+        if (token !== bmToken || !gBmList) return;
+        const el = gBmList.querySelector(
+            `.bm-card-next[data-for="${row.kind}:${row.id}"]`);
+        if (el) el.innerHTML = html;
+    }));
+}
 
 function renderBookmarkList(slot) {
     bookmarkSlot = slot;
+    const token = ++bmToken;
     const label = slot === "fav" ? "Favorites" : shortcutLabel(slot);
     if (gBmTitle) gBmTitle.textContent = label;
     const rows = bookmarkRows(slot);
     if (gBmList) {
-        gBmList.innerHTML = rows.length ? rows.map(favRowHtml).join("")
+        gBmList.innerHTML = rows.length ? rows.map(bmCardHtml).join("")
             : `<div class="fav-empty">no ${slot === "fav" ? "favorites" : label.toLowerCase() + " bookmark"} saved yet</div>`;
     }
     if (gBmView) gBmView.hidden = false;
     if (gViewArrivals) gViewArrivals.hidden = true;
     scrollPageTop();
+    if (rows.length) fillBookmarkArrivals(rows, token);
 }
 
 function showBoardView() {
     bookmarkSlot = null;
+    bmToken++;
     if (gBmView) gBmView.hidden = true;
     if (gViewArrivals) gViewArrivals.hidden = false;
 }
@@ -3195,19 +3236,24 @@ if (gBmList) gBmList.addEventListener("click", async e => {
         syncFavStars();
         return;
     }
-    const go = e.target.closest ? e.target.closest(".fav-goto") : null;
-    if (go && go.dataset.favId) {
+    const go = e.target.closest ? e.target.closest(".bm-card") : null;
+    if (go && go.dataset.bmId) {
         e.preventDefault();
-        await gotoFavorite(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
+        await gotoFavorite(go.dataset.bmKind, go.dataset.bmId, go.dataset.bmName);
     }
+});
+if (gBmList) gBmList.addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const card = e.target.closest ? e.target.closest(".bm-card") : null;
+    if (!card || !card.dataset.bmId) return;
+    e.preventDefault();
+    card.click();
 });
 document.addEventListener("keydown", e => {
     if (e.key === "Escape" && gFavPanel && !gFavPanel.hidden) closeFavPanel();
 });
 
 
-gBusBtn.addEventListener("click", () => setMode("bus"));
-gMetroBtn.addEventListener("click", () => setMode("metro"));
 for (const slot of SHORTCUT_SLOTS) {
     const btn = gShortcutBtns[slot];
     if (!btn) continue;
@@ -3235,7 +3281,12 @@ gBoardHeader.addEventListener("click", e => {
         toggleFavorite(kind, id, st.Name || "", route);
     } else {
         if (shortcuts[slot] && String(shortcuts[slot].id) === id) delete shortcuts[slot];
-        else shortcuts[slot] = { id, name: st.Name || "" };
+        else shortcuts[slot] = {
+            id, name: st.Name || "",
+            route: kind === "metro"
+                ? String((st.Lines && st.Lines[0]) || "")
+                : String((st.Routes && st.Routes[0]) || "")
+        };
         writeShortcutCookie();
     }
     gBoardHeader.querySelectorAll(".board-shortcut").forEach(b => {
@@ -3262,7 +3313,6 @@ gBoardHeader.addEventListener("click", e => {
     syncFavStars();
 });
 updateShortcutNav();
-updateModeIcons();
 if (gMetroSelect) gMetroSelect.addEventListener("change", () => {
     if (mode === "metro") setMetroAnchor(gMetroSelect.value);
 });
