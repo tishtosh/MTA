@@ -313,6 +313,17 @@
             border-radius: 0 0 10px 10px; background: #fff;
         }
         .main-board .board, .nearby-board .board { margin: 0; }
+        /* The main departures live inside the hero card's colored bounds. */
+        .main-board.bus-board { background: #d8d8d8; border-color: #c9c9c9; }
+        .main-board.metro-board { background: #ece1cd; border-color: #dccdb6; }
+        .main-board.bus-board .board-row,
+        .main-board.metro-board .board-row { background: transparent; }
+        .main-board.bus-board .board-row.is-scheduled,
+        .main-board.bus-board .board-row.is-departed,
+        .main-board.metro-board .board-row.is-scheduled,
+        .main-board.metro-board .board-row.is-departed {
+            background: rgba(0, 0, 0, .035);
+        }
         /* A row with no live prediction: its scheduled fallback sits on a
            quieter surface so it reads as timetable information. */
         .board-row.is-scheduled { background: #f8f9fa; }
@@ -459,6 +470,9 @@
         /* Hero tint by mode: bus = medium-light grey, Metro = light brown. */
         .hero-card.hero-bus { background: #d8d8d8; color: #2f2f2f; }
         .hero-card.hero-metro { background: #ece1cd; color: #46301a; }
+        .hero-title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .hero-mode-icon { flex: none; display: inline-flex; align-items: center; }
+        .hero-mode-icon i { font-size: 17px; }
         .hero-line-band {
             position: absolute; top: 0; left: 0; right: 0; height: 7px;
             border-radius: 10px 10px 0 0; pointer-events: none;
@@ -3081,7 +3095,7 @@ function renderMetro() {
     }).join("");
     const mainRows = metroRowsFor(station, true);
     const mainHtml = mainRows.length
-        ? `<div class="main-board"><div class="board">${rowsHtml(mainRows)}</div></div>`
+        ? `<div class="main-board metro-board"><div class="board">${rowsHtml(mainRows)}</div></div>`
         : "";
     let nearbyHtml = "";
     const sections = [];
@@ -5211,6 +5225,13 @@ function shortcutButtonsHtml(id) {
     }).join("") + `</div>`;
 }
 
+// Bus/train icon for the hero title row.
+function heroModeIcon(metro) {
+    const label = metro ? "Train" : "Bus";
+    return `<span class="hero-mode-icon" role="img" aria-label="${label}" title="${label}">`
+        + `<i class="fa-solid ${metro ? "fa-train-subway" : "fa-bus"}" aria-hidden="true"></i></span>`;
+}
+
 // "Next bus" / "Next train" is represented by the mode icon; the label is
 // kept for assistive technology and the hover tooltip.
 function heroVerbHtml(metro) {
@@ -5229,7 +5250,6 @@ function heroCardHtml(st, arrivals) {
     const label = st.Name ? stopName(st.Name) : `#${id}`;
     const list = (arrivals || []).slice().sort((a, b) => a.min - b.min);
     const next = list[0] || null;
-    const verb = heroVerbHtml(st.Metro);
     const badgeColor = (route) => st.Metro ? metroLineColor(route) : routeColor(route);
     const badgeLabel = (route) => st.Metro ? metroLineName(route) : route;
     let nextLine;
@@ -5256,11 +5276,11 @@ function heroCardHtml(st, arrivals) {
             routeBadge,
             esc(next.heads || next.dir || "")
         ].filter(Boolean).join(" ");
-        nextLine = `${verb} ${bits} <span class="bt-next-eta">${esc(fmtEta(mins[0]))}</span>`;
+        nextLine = `${bits} <span class="bt-next-eta">${esc(fmtEta(mins[0]))}</span>`;
         if (mins.length > 1)
             nextLine += ` <span class="bt-next-rest">then ${mins.slice(1).map(m => esc(fmtEta(m))).join(", ")}</span>`;
     } else if (st.Error) {
-        nextLine = `${verb} <span class="text-muted">arrivals unavailable — retrying</span>`;
+        nextLine = `<span class="text-muted">arrivals unavailable — retrying</span>`;
     } else {
         // No live prediction: test the schedule and show the next scheduled
         // arrival explicitly as "not seen".
@@ -5270,10 +5290,10 @@ function heroCardHtml(st, arrivals) {
                 `<span class="row-badge${st.Metro ? " metro-line" : busBadgeClass()}" style="background:${badgeColor(sched.route)};color:${st.Metro ? "#fff" : busTextColor(sched.route)}">${esc(badgeLabel(sched.route))}</span>`,
                 esc(sched.heads || sched.dirText || "")
             ].filter(Boolean).join(" ");
-            nextLine = `${verb} ${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
+            nextLine = `${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
                 + ` <span class="bt-next-rest">not seen</span>`;
         } else {
-            nextLine = `${verb} <span class="text-muted">no arrival or departure</span>`;
+            nextLine = `<span class="text-muted">no arrival or departure</span>`;
         }
     }
     const lineBand = st.Metro
@@ -5282,7 +5302,9 @@ function heroCardHtml(st, arrivals) {
     return `<div class="hero-card${st.Metro ? " hero-metro" : " hero-bus"}">`
         + lineBand
         + shortcutButtonsHtml(id)
-        + `<div><span class="board-stopname">${esc(label)}</span>`
+        + `<div class="hero-title-row">`
+        + `${heroModeIcon(st.Metro)}`
+        + `<span class="board-stopname">${esc(label)}</span>`
         + (st.Name ? `<span class="board-stopid">#${esc(id)}</span>` : "")
         + `</div>`
         + `<div class="hero-connections">`
@@ -5491,7 +5513,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     sections.sort((a, b) => a.dist - b.dist);
     nearbyHtml = sections.map(s => s.html).join("");
     const mainHtml = mainRows.length
-        ? `<div class="main-board">${boardHtml(geo, mainRows)}</div>`
+        ? `<div class="main-board bus-board">${boardHtml(geo, mainRows)}</div>`
         : "";
     gLinesScroll.innerHTML =
         ((mainRows.length || nearbyRows.length) ? mainHtml + nearbyHtml : "");

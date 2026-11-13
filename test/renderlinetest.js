@@ -51,7 +51,7 @@ vm.runInContext(
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),
-   extractFn("heroVerbHtml"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
+   extractFn("heroVerbHtml"), extractFn("heroModeIcon"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
    extractFn("busTextColor"), extractFn("heroCardHtml")].join("\n")
    + "\nglobalThis.__stopScheduleCache = stopScheduleCache;"
    + "\nglobalThis.__shortcuts = shortcuts;",
@@ -115,7 +115,7 @@ const hFav = sandbox.heroCardHtml(
 sandbox.favorites = [];
 check("header: favorite star shows selected",
   /data-shortcut="fav"[^>]*aria-pressed="true"/.test(hFav));
-check("header: next bus route + headsign", /aria-label="Next bus"[^]*?D72<i class="fa-solid fa-chevron-down[^]*?North to Van Ness/.test(h1));
+check("header: next bus route + headsign", /aria-label="Bus"[^]*?D72<i class="fa-solid fa-chevron-down[^]*?North to Van Ness/.test(h1));
 check("header: ETA 14 min", h1.includes(">14 min<"));
 check("header: first ETA uses bt-next-eta", h1.includes("bt-next-eta"));
 
@@ -162,7 +162,7 @@ if (preds.length) {
     { StopID: "1002130", Name: raw.StopName || null, Error: null, Arrivals: preds }, preds);
   const first = preds[0];
   check(`live header: earliest ${first.route} @ ${first.min} min leads the Next bus line`,
-    new RegExp('aria-label="Next bus"[^]*?' + first.route).test(h5) && h5.includes(`>${first.min === 0 ? "Due" : first.min + " min"}<`));
+    new RegExp('aria-label="Bus"[^]*?' + first.route).test(h5) && h5.includes(`>${first.min === 0 ? "Due" : first.min + " min"}<`));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

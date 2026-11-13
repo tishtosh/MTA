@@ -145,7 +145,7 @@ const board = () => els.linesScroll.innerHTML;
   check("board header painted", h !== "");
   check("header: stop ID shown", h.includes("#" + ANCHOR));
   check("header: canonical directory name", h.includes("Park Rd NW and 19 St NW"));
-  check("header: Next bus icon", h.includes('aria-label="Next bus"'));
+  check("header: Next bus icon", h.includes('aria-label="Bus"'));
   check("header: 'Selected boarding stop' removed", !h.includes("Selected boarding stop"));
   check("header: home/work/favorite shortcut icons",
     h.includes('data-shortcut="home"') && h.includes('data-shortcut="work"') && h.includes('data-shortcut="fav"'));
@@ -170,7 +170,7 @@ const board = () => els.linesScroll.innerHTML;
     check("across: both C87 patterns listed", (b.match(/row-badge[^>]*>C87/g) || []).length === 2);
     check("across: C87 dir0 still the main service row", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
   } else if (ANCHOR === "1002130") {
-    check("130: next bus D72 @14 min", h.includes('aria-label="Next bus"') && h.includes("D72") && h.includes("14 min"));
+    check("130: next bus D72 @14 min", h.includes('aria-label="Bus"') && h.includes("D72") && h.includes("14 min"));
     check("130: D72 compact row hides the route-details note", !b.includes("route details unavailable"));
     check("130: hero keeps its live headsign", h.includes("North to Van Ness"));
     check("130: C87 service row toward TENLEYTOWN", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
@@ -179,7 +179,7 @@ const board = () => els.linesScroll.innerHTML;
     check("130: no live prediction → next scheduled, not seen",
       b.includes("not seen") && /\d{1,2}:\d{2}\s?[AP]M/.test(b));
   } else {
-    check("135: next bus D72 @2 min", h.includes('aria-label="Next bus"') && h.includes("D72") && h.includes("2 min"));
+    check("135: next bus D72 @2 min", h.includes('aria-label="Bus"') && h.includes("D72") && h.includes("2 min"));
     check("135: D72 row compact, no route-details note",
       b.includes("D72") && !b.includes("route details unavailable"));
     // The nearby section (within 500 ft) carries the C87 stop on the other
