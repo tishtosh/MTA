@@ -60,7 +60,6 @@
             box-shadow: 0 12px 30px rgba(0,0,0,.22);
         }
         .fav-panel[hidden] { display: none; }
-        .fav-panel-title { font: 700 15px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
         .fav-header {
             display: flex; align-items: center; justify-content: space-between;
             width: 100%; margin-top: 8px; padding: 8px 10px;
@@ -471,8 +470,8 @@
     <nav class="navbar fixed-top navbar-light bg-light">
         <div class="container d-flex align-items-center">
             <div class="d-flex align-items-center">
-                <button id="btnAddFav" class="navicon add-fav-btn" title="Add favorite" aria-label="Add favorite" aria-expanded="false" aria-controls="favPanel">
-                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                <button id="btnAddFav" class="navicon add-fav-btn" title="Find stops and favorites" aria-label="Find stops and favorites" aria-expanded="false" aria-controls="favPanel">
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 </button>
                 <button id="btnBus" class="navicon mode-icon" title="Bus" aria-label="Show bus stops" aria-pressed="true">
                     <i class="fa-solid fa-bus fa-xl-mta"></i>
@@ -513,7 +512,13 @@
 </div>
 
 <div id="favPanel" class="fav-panel" hidden>
-    <div class="fav-panel-title">Add favorite</div>
+    <button type="button" class="fav-header" data-fav-panel="favorites" aria-expanded="false">
+        <span>Favorites</span>
+        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+    </button>
+    <div id="favFavBody" class="fav-body" hidden>
+        <div id="favFavList" class="fav-list"></div>
+    </div>
     <button type="button" class="fav-header" data-fav-panel="bus" aria-expanded="false">
         <span>Bus</span>
         <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
@@ -829,6 +834,8 @@ const gMetroBtn = document.getElementById("btnMetro");
 const gCurrentBtn = document.getElementById("btnCurrent");
 const gAddFavBtn = document.getElementById("btnAddFav");
 const gFavPanel = document.getElementById("favPanel");
+const gFavFavBody = document.getElementById("favFavBody");
+const gFavFavList = document.getElementById("favFavList");
 const gFavBusBody = document.getElementById("favBusBody");
 const gFavBusFilter = document.getElementById("favBusFilter");
 const gFavBusRoutes = document.getElementById("favBusRoutes");
@@ -2005,6 +2012,7 @@ function applyMode(next) {
         gLinesNote.textContent = "";
         scrollPageTop();
     }
+    if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
     return changed;
 }
 
@@ -2768,6 +2776,19 @@ function renderFavMetroLines() {
     ).join("");
 }
 
+// Favorites are mode-specific: the current mode's saved stops or stations,
+// refreshed whenever the Bus/Subway mode icons switch.
+function renderFavorites() {
+    if (!gFavFavList) return;
+    const kind = mode === "metro" ? "metro" : "bus";
+    const list = favorites
+        .filter(f => f.kind === kind)
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    gFavFavList.innerHTML = list.length ? list.map(f =>
+        `<div class="fav-stop">${favGotoHtml(kind, f.id, f.name, stopName(f.name) || "#" + f.id)}${favStarHtml(kind, f.id, f.name, f.route)}</div>`
+    ).join("") : `<div class="fav-empty">no ${kind === "metro" ? "subway" : "bus"} favorites yet — tap a star to save one</div>`;
+}
+
 async function populateFavStops(container, kind, key) {
     if (container.dataset.loaded) return;
     container.dataset.loaded = "1";
@@ -2838,6 +2859,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         star.setAttribute("aria-pressed", on ? "true" : "false");
         star.title = on ? "Remove favorite" : "Add favorite";
         star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
+        if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
         return;
     }
     const go = e.target.closest ? e.target.closest(".fav-goto") : null;
@@ -2866,11 +2888,14 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     const header = e.target.closest ? e.target.closest(".fav-header") : null;
     if (!header) return;
     const which = header.dataset.favPanel;
-    const body = which === "bus" ? gFavBusBody : gFavMetroBody;
+    const body = which === "favorites" ? gFavFavBody
+        : which === "bus" ? gFavBusBody : gFavMetroBody;
     const open = body.hidden;
     if (open) {
         try {
-            if (which === "bus") {
+            if (which === "favorites") {
+                renderFavorites();
+            } else if (which === "bus") {
                 await loadBusRouteDirectory();
                 renderFavBusRoutes(gFavBusFilter ? gFavBusFilter.value : "");
             } else {
