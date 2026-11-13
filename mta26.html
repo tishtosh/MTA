@@ -434,6 +434,16 @@
         }
         .bt-stoplist .bt-stop-name { flex: 1; min-width: 0; }
         .bt-stoplist .fav-star { font-size: 12px; }
+        .board-connections {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+            margin: 8px 2px 0; padding: 6px 10px;
+            background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
+        }
+        .board-connections-label {
+            flex: none; font: 600 10px/1.4 system-ui, -apple-system, sans-serif;
+            letter-spacing: .05em; text-transform: uppercase; color: #6c757d;
+        }
+        .board-connections .fav-conns { margin-left: 0; }
         .bt-stoplist .bt-stop-item:hover { background: #f1f3f5; }
         .bt-stoplist .bt-stop-item:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .bt-stoplist .bt-mark { font-weight: 700; color: #0056b3; }
@@ -2832,6 +2842,14 @@ async function loadMbtaRowStops(ul) {
     }
 }
 
+function boardConnectionsHtml(kind, id) {
+    if (!id) return "";
+    return `<div class="board-connections">`
+        + `<span class="board-connections-label">Connections</span>`
+        + `<span class="fav-conns" data-conn="${esc(id)}" data-conn-kind="${esc(kind)}"></span>`
+        + `</div>`;
+}
+
 async function refreshBoardStopConnections() {
     const nodes = [...gLinesScroll.querySelectorAll(".fav-conns[data-conn]")];
     await Promise.all(nodes.map(async el => {
@@ -2932,13 +2950,14 @@ function renderMetro() {
         if (rows.length)
             nearbyHtml += `<div class="nearby-board"><div class="board">${rowsHtml(rows)}</div></div>`;
     }
-    gLinesScroll.innerHTML = mainHtml + nearbyHtml;
+    gLinesScroll.innerHTML = boardConnectionsHtml("metro", station.Code) + mainHtml + nearbyHtml;
     gLinesNote.textContent = "";
     if (gLinesScroll.querySelectorAll) {
         gLinesScroll.querySelectorAll(".bt-stoplist[data-metro-from]").forEach(ul => {
             if (!ul.hidden && !ul.dataset.loaded) loadMetroStops(ul);
         });
     }
+    refreshBoardStopConnections();
 }
 
 async function refreshMetro() {
@@ -5173,9 +5192,8 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     const mainHtml = mainRows.length
         ? `<div class="main-board">${boardHtml(geo, mainRows)}</div>`
         : "";
-    gLinesScroll.innerHTML = (mainRows.length || nearbyRows.length)
-        ? mainHtml + nearbyHtml
-        : "";
+    gLinesScroll.innerHTML = boardConnectionsHtml("bus", anchorId) +
+        ((mainRows.length || nearbyRows.length) ? mainHtml + nearbyHtml : "");
     centerBoard();   // piece 12: boarding guide centered on narrow screens
     gLinesNote.textContent = "";   // no legend line: the board is self-describing
     gLinesScroll.querySelectorAll(".bt-stoplist[data-trip]").forEach(ul => {
