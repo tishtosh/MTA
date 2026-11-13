@@ -20,6 +20,7 @@ const sandbox = { console, Date, Number, String, Math, Object, Array, Set, Map }
 vm.createContext(sandbox);
 vm.runInContext([
   "var metroLive = {}; var metroSchedule = {}; var metroStationsCache = [];",
+  "var city = 'dc'; var metroRoutesCache = null; function isBoston() { return city === 'boston'; }",
   "var METRO_LINE_NAMES = {RD:'Red',BL:'Blue',OR:'Orange',SV:'Silver',GR:'Green',YL:'Yellow'};",
   "function nextScheduledFor() { return null; }",
   extractFn("normHeads"),

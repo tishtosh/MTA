@@ -129,6 +129,9 @@
         }
         .fav-setting[aria-pressed="true"] .fav-setting-state { color: #2e7d32; }
         .fav-setting + .fav-setting { margin-top: 6px; }
+        .fav-setting-static { cursor: default; }
+        .fav-setting-static:hover { background: #fff; }
+        .fav-city-select { width: auto; max-width: 150px; font-size: 12px; }
         .fav-setting-danger i { color: #c92a2a; }
         .fav-setting-danger:hover { background: #fff5f5; }
 
@@ -619,6 +622,14 @@
         <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
     </button>
     <div id="favSettingsBody" class="fav-body" hidden>
+        <div class="fav-setting fav-setting-static">
+            <i class="fa-solid fa-city" aria-hidden="true"></i>
+            <label class="fav-setting-name" for="citySelect">City</label>
+            <select id="citySelect" class="form-select form-select-sm fav-city-select" aria-label="City">
+                <option value="dc">Washington DC</option>
+                <option value="boston">Boston</option>
+            </select>
+        </div>
         <button id="btnRefreshToggle" class="fav-setting" type="button"
                 title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
             <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
@@ -686,6 +697,11 @@ let API_KEY = "";
 // Portal / docs / key registration: https://developer.wmata.com
 const WMATA_API = "https://api.wmata.com";
 
+// MBTA v3 API — Boston's bus, subway, and light rail.
+// Portal / docs / key registration: https://www.mbta.com/developers/v3-api
+const MBTA_API = "https://api-v3.mbta.com";
+const MBTA_KEY = "f0c9d27eb6774459b9ad9c009fa5457a";
+
 function b64Bytes(b64) {
     return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
@@ -743,9 +759,60 @@ function showGate() {
 // if the IDs change again; see README → "Maintenance".
 //
 
-// Park Rd NW, Cleveland Park (20010) — the "home" corner
+// Park Rd NW, Cleveland Park (20010) — the DC "home" corner
 const HOME = { lat: 38.93468, lon: -77.04512 };
 const DC_CENTER = { lat: 38.89790, lon: -77.03661 };
+
+// ── Cities ───────────────────────────────────────────────────────────
+// Each city has its own transport data source and its own favorites and
+// Home/Work bookmarks. "Near me" auto-selects the city from geolocation.
+const CITIES = {
+    dc: {
+        id: "dc", name: "Washington DC",
+        center: HOME, metroCenter: DC_CENTER,
+        defaultFavorite: { kind: "metro", id: "N10",
+            name: "Washington Dulles International Airport", route: "SV" }
+    },
+    boston: {
+        id: "boston", name: "Boston",
+        center: { lat: 42.3601, lon: -71.0589 },
+        metroCenter: { lat: 42.3564, lon: -71.0624 },
+        defaultFavorite: { kind: "metro", id: "place-pktrm",
+            name: "Park Street", route: "Red" }
+    }
+};
+const CITY_COOKIE = "mta_city";
+
+function readCityCookie() {
+    try {
+        const hit = String(document.cookie || "").split("; ")
+            .find(p => p.startsWith(CITY_COOKIE + "="));
+        const v = hit ? decodeURIComponent(hit.slice(CITY_COOKIE.length + 1)) : "";
+        return v === "boston" ? "boston" : "dc";
+    } catch (e) { return "dc"; }
+}
+
+function writeCityCookie() {
+    try {
+        document.cookie = `${CITY_COOKIE}=${city}; max-age=31536000; path=/; SameSite=Lax`;
+    } catch (e) { /* session-only */ }
+}
+
+let city = readCityCookie();
+function cityCfg() { return CITIES[city] || CITIES.dc; }
+function isBoston() { return city === "boston"; }
+function cityHome() { return cityCfg().center; }
+function defaultFavorite() { return Object.assign({}, cityCfg().defaultFavorite); }
+
+function nearestCity(lat, lon) {
+    let best = "dc", bestD = Infinity;
+    for (const key of Object.keys(CITIES)) {
+        const c = CITIES[key].center;
+        const d = distance(lat, lon, c.lat, c.lon, "m");
+        if (d < bestD) { bestD = d; best = key; }
+    }
+    return best;
+}
 
 // ── URL parameters ───────────────────────────────────────────────────
 //   ?busstop=1002135,1002130   explicit stops (lat/lon/radius ignored)
@@ -819,11 +886,25 @@ const METRO_LINE_NAMES = {
     RD: "Red", BL: "Blue", OR: "Orange",
     SV: "Silver", GR: "Green", YL: "Yellow"
 };
+// Boston subway/light-rail routes (loaded from MBTA /routes type 0,1).
+let metroRoutesCache = null;
+let metroRoutesLoad = null;
+
 function metroLineColor(line) {
-    return METRO_COLORS[String(line || "").toUpperCase()] || "#5d4037";
+    const key = String(line || "");
+    if (isBoston()) {
+        const m = metroRoutesCache && metroRoutesCache[key];
+        return m ? (m.color.startsWith("#") ? m.color : "#" + m.color) : "#5d4037";
+    }
+    return METRO_COLORS[key.toUpperCase()] || "#5d4037";
 }
 function metroLineName(line) {
-    return METRO_LINE_NAMES[String(line || "").toUpperCase()] || String(line || "");
+    const key = String(line || "");
+    if (isBoston()) {
+        const m = metroRoutesCache && metroRoutesCache[key];
+        return m ? m.name : key;
+    }
+    return METRO_LINE_NAMES[key.toUpperCase()] || key;
 }
 
 // ── Mode (bus / metro) and shortcut locations ─────────────────────────
@@ -848,17 +929,18 @@ function writeModeCookie() {
     } catch (e) { /* session-only fallback */ }
 }
 
-function shortcutCookieName() {
-    return "mta_shortcuts_" + mode;
+function shortcutCookieName(kind) {
+    const modeKey = kind || mode;
+    return isBoston() ? `mta_shortcuts_boston_${modeKey}` : `mta_shortcuts_${modeKey}`;
 }
 
 function readShortcutsFor(kind) {
     try {
-        const name = "mta_shortcuts_" + kind;
+        const name = shortcutCookieName(kind);
         let hit = String(document.cookie || "").split("; ")
             .find(p => p.startsWith(name + "="));
         // Legacy bus cookie from before per-mode bookmarks.
-        if (!hit && kind === "bus")
+        if (!hit && kind === "bus" && !isBoston())
             hit = String(document.cookie || "").split("; ")
                 .find(p => p.startsWith("mta_shortcuts="));
         if (!hit) return {};
@@ -883,20 +965,20 @@ function shortcutLabel(slot) {
 }
 
 // ── Multi-favorites from the Add Favorite panel ───────────────────────
-const FAVORITES_COOKIE = "mta_favorites";
-// The single favorite restored by "Delete all favorites" in Settings.
-const DEFAULT_FAVORITE = {
-    kind: "metro", id: "N10",
-    name: "Washington Dulles International Airport", route: "SV"
-};
+const FAVORITES_COOKIE = "mta_favorites";   // legacy DC key
+function favoritesCookieName() {
+    return isBoston() ? "mta_favorites_boston" : FAVORITES_COOKIE;
+}
 let favorites = readFavorites();
 let busRouteDirectory = null;
 let busRouteLoad = null;
+let busRouteMbtaIds = {};
 
 function readFavorites() {
+    const key = favoritesCookieName();
     try {
         if (typeof localStorage !== "undefined") {
-            const raw = localStorage.getItem(FAVORITES_COOKIE);
+            const raw = localStorage.getItem(key);
             if (raw) {
                 const list = JSON.parse(raw);
                 if (Array.isArray(list)) return list;
@@ -905,7 +987,7 @@ function readFavorites() {
     } catch (e) { /* fall through to cookie */ }
     try {
         const hit = String(document.cookie || "").split("; ")
-            .find(p => p.startsWith(FAVORITES_COOKIE + "="));
+            .find(p => p.startsWith(key + "="));
         if (!hit) return [];
         const at = hit.indexOf("=");
         const list = JSON.parse(decodeURIComponent(hit.slice(at + 1)));
@@ -914,12 +996,13 @@ function readFavorites() {
 }
 
 function writeFavorites() {
+    const key = favoritesCookieName();
     try {
         if (typeof localStorage !== "undefined")
-            localStorage.setItem(FAVORITES_COOKIE, JSON.stringify(favorites));
+            localStorage.setItem(key, JSON.stringify(favorites));
     } catch (e) { /* ignore storage failures */ }
     try {
-        document.cookie = `${FAVORITES_COOKIE}=${encodeURIComponent(JSON.stringify(favorites))}`
+        document.cookie = `${key}=${encodeURIComponent(JSON.stringify(favorites))}`
             + "; max-age=31536000; path=/; SameSite=Lax";
     } catch (e) { /* session-only fallback */ }
 }
@@ -932,7 +1015,7 @@ function isFavorite(kind, id) {
 // restore the single default (N10, Washington Dulles International Airport).
 // The view switches to the same Favorites panel the star icon shows.
 function resetFavorites() {
-    favorites = [Object.assign({}, DEFAULT_FAVORITE)];
+    favorites = [defaultFavorite()];
     writeFavorites();
     updateShortcutNav();
     closeFavPanel();
@@ -974,6 +1057,7 @@ const gFavNearList = document.getElementById("favNearList");
 const gFavSettingsBody = document.getElementById("favSettingsBody");
 const gRefreshState = document.getElementById("refreshState");
 const gClearFavorites = document.getElementById("btnClearFavorites");
+const gCitySelect = document.getElementById("citySelect");
 const gFavBusBody = document.getElementById("favBusBody");
 const gFavBusFilter = document.getElementById("favBusFilter");
 const gFavBusRoutes = document.getElementById("favBusRoutes");
@@ -1020,9 +1104,72 @@ async function apiGet(path, query, timeoutMs = 10000) {
     }
 }
 
-// Nearby stops:  GET /Bus.svc/json/jStops?Lat&Lon&Radius
-// Returns [{ StopID, Name, Lat, Lon, Routes }] (or [] if none in range)
+// One GET against the MBTA v3 API (JSON:API). Same retry policy as apiGet.
+async function mbtaGet(path, query, timeoutMs = 15000) {
+    const qs = new URLSearchParams(Object.assign({ api_key: MBTA_KEY }, query || {}));
+    for (let attempt = 0; ; attempt++) {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), timeoutMs);
+        try {
+            const res = await fetch(`${MBTA_API}${path}?${qs}`, { signal: ctl.signal });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 429 && attempt === 0) { await sleep(1500); continue; }
+            const detail = data && data.errors && data.errors[0] && data.errors[0].detail;
+            const error = res.ok ? null : Object.assign(
+                new Error(detail || `HTTP ${res.status}`),
+                { status: res.status, rateLimited: res.status === 429 });
+            return { data, error };
+        } catch (e) {
+            if (attempt === 0) { await sleep(1500); continue; }
+            return { data: null, error: e };
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+}
+
+// MBTA's nearby radius is in degrees: 0.02° ≈ 1 mile.
+function mbtaRadiusDeg(meters) {
+    return Math.max(0.001, (meters / 1609.344) * 0.02);
+}
+
+function mbtaIncluded(data) {
+    const by = new Map();
+    for (const item of (data && data.included) || [])
+        by.set(item.type + ":" + item.id, item);
+    return by;
+}
+
+function mbtaStop(s) {
+    return {
+        StopID: String(s.id),
+        Name: (s.attributes && s.attributes.name) || "",
+        Lat: Number(s.attributes && s.attributes.latitude),
+        Lon: Number(s.attributes && s.attributes.longitude),
+        Routes: []
+    };
+}
+
+function mbtaRouteShort(route, fallback) {
+    const a = (route && route.attributes) || {};
+    return String(a.short_name || (route && route.id) || fallback || "");
+}
+
+// Nearby stops: WMATA jStops, or MBTA /stops within the same radius.
+// Returns [{ StopID, Name, Lat, Lon, Routes }] (or [] if none in range).
 async function fetchStopsNear(lat, lon, radius) {
+    if (isBoston()) {
+        const { data, error } = await mbtaGet("/stops", {
+            "filter[latitude]": lat,
+            "filter[longitude]": lon,
+            "filter[radius]": mbtaRadiusDeg(radius),
+            "filter[route_type]": 3,
+            "filter[location_type]": "0",
+            "page[limit]": 200
+        });
+        if (error) throw error;
+        return ((data && data.data) || []).map(mbtaStop);
+    }
     const { data, error } = await apiGet("/Bus.svc/json/jStops", { Lat: lat, Lon: lon, Radius: radius });
     if (error) throw error;
     return (data && data.Stops) || [];
@@ -1035,6 +1182,21 @@ async function fetchStopsNear(lat, lon, radius) {
 // Fetched once per page load via loadStopDirectory(); it powers the
 // shared entry field's autocomplete and the route picture.
 async function fetchAllStops() {
+    if (isBoston()) {
+        const out = [];
+        for (let offset = 0; offset < 12000; offset += 1000) {
+            const { data, error } = await mbtaGet("/stops", {
+                "filter[route_type]": 3,
+                "filter[location_type]": "0",
+                "page[limit]": 1000,
+                "page[offset]": offset
+            }, 30000);
+            if (error) throw error;
+            out.push(...((data && data.data) || []).map(mbtaStop));
+            if (!(data && data.links && data.links.next)) break;
+        }
+        return out;
+    }
     const { data, error } = await apiGet("/Bus.svc/json/jStops", {}, 30000);
     if (error) throw error;
     return (data && data.Stops) || [];
@@ -1074,7 +1236,44 @@ function allStopsName(id) {
 // the row. Rows are deduped per stop+trip, falling back to
 // vehicle+route+direction when the trip is missing; rows with neither ID
 // are kept (the ETA list stays whole).
+async function fetchMbtaPredictions(stopId) {
+    const { data, error } = await mbtaGet("/predictions", {
+        "filter[stop]": stopId,
+        "filter[route_type]": 3,
+        "include": "route,trip",
+        "sort": "departure_time",
+        "page[limit]": 200
+    });
+    if (error) throw error;
+    const inc = mbtaIncluded(data);
+    const now = Date.now();
+    const preds = [];
+    for (const p of (data && data.data) || []) {
+        const a = p.attributes || {};
+        const at = Date.parse(a.departure_time || a.arrival_time || "");
+        if (!Number.isFinite(at)) continue;
+        const rels = p.relationships || {};
+        const routeRel = rels.route && rels.route.data;
+        const tripRel = rels.trip && rels.trip.data;
+        const route = inc.get("route:" + (routeRel && routeRel.id));
+        const trip = inc.get("trip:" + (tripRel && tripRel.id));
+        const dir = Number(a.direction_id) || 0;
+        const heads = (trip && trip.attributes && trip.attributes.headsign) ||
+            ((route && route.attributes && (route.attributes.direction_destinations || [])[dir]) || "");
+        preds.push({
+            min: Math.max(0, Math.round((at - now) / 60000)),
+            route: mbtaRouteShort(route).toUpperCase(),
+            dir, dirNum: String(dir), heads, dirText: heads,
+            vehicle: null,
+            trip: (tripRel && tripRel.id) || null
+        });
+    }
+    preds.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
+    return { name: allStopsName(stopId) || "", predictions: preds };
+}
+
 async function fetchPredictions(stopId) {
+    if (isBoston()) return fetchMbtaPredictions(stopId);
     const { data, error } = await apiGet("/NextBusService.svc/json/jPredictions", { StopID: stopId });
     if (error) throw error;
     if (!data || !Array.isArray(data.Predictions)) throw new Error("malformed prediction response");
@@ -1169,6 +1368,7 @@ async function fetchStopSchedule(stopId) {
 }
 
 function ensureStopSchedule(stopId) {
+    if (isBoston()) return Promise.resolve([]);   // MBTA has no WMATA stop schedule
     const id = String(stopId || "");
     if (!id) return Promise.resolve([]);
     const day = scheduleDayKey();
@@ -1275,6 +1475,7 @@ function normalizeRouteDetails(routeId, raw) {
 }
 
 async function fetchRouteDetails(routeId) {
+    if (isBoston()) return null;   // MBTA profiles do not expose WMATA-style patterns
     routeId = String(routeId || "").toUpperCase();
     if (!routeId) return null;
     if (routeDetailsCache[routeId] !== undefined) return routeDetailsCache[routeId];
@@ -1370,6 +1571,8 @@ function containsStopId(pattern, stopId) {
 
 function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
     const anchor = String(anchorId || "");
+    const compactNote = (typeof city !== "undefined" && city === "boston")
+        ? "" : "route details unavailable";
     const rows = [];
     const variants = new Map();
     for (const p of predictions || []) {
@@ -1410,11 +1613,11 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
             v.dest = v.heads || v.pattern.heads || "";   // live label wins over the plan
         } else if (v.pattern) {
             v.kind = "compact";
-            v.note = "route details unavailable";   // matched a pattern, but it doesn't board here
+            v.note = compactNote;   // matched a pattern, but it doesn't board here
             v.dest = v.heads || v.pattern.heads || "";
         } else {
             v.kind = "compact";
-            v.note = "route details unavailable";
+            v.note = compactNote;
             v.dest = v.heads || v.dir || "";
         }
     }
@@ -2025,6 +2228,12 @@ async function runFlow() {
         resetPick();                     // a new flow starts from the session's list (any picked stop is undone)
         noteSelectionChange();           // void the old counterpart + any in-flight refresh
         scrollPageTop();
+        // Boston has no fixed default stop: start from downtown when there is
+        // no saved Home bookmark and no URL/search point.
+        if (!stopListFromURL && !searchPoint && isBoston()
+            && !(shortcuts.home && shortcuts.home.id)) {
+            searchPoint = { lat: cityHome().lat, lon: cityHome().lon };
+        }
         if (stopListFromURL && !forceNearby) {
             // ?busstop= given: use it as-is, ignore lat/lon (as documented).
             // Coordinates stay null — the arrivals list never needs them,
@@ -2040,9 +2249,11 @@ async function runFlow() {
                 : [defaultStopRec()];
         } else {
             // ?lat&lon URL point: find stops near the search point
-            const d = distance(DC_CENTER.lat, DC_CENTER.lon, searchPoint.lat, searchPoint.lon, "m");
-            const at = d > 50 ? DC_CENTER : searchPoint;     // far from DC → search DC center
-            gStatus.textContent = `${d.toFixed(1)} mi to the Whitehouse` + (at === DC_CENTER ? " (searching DC center)" : "") + " …";
+            const center = isBoston() ? cityCfg().metroCenter : DC_CENTER;
+            const d = distance(center.lat, center.lon, searchPoint.lat, searchPoint.lon, "m");
+            const at = d > 50 ? center : searchPoint;     // far from the city → search its center
+            const where = isBoston() ? "downtown Boston" : "the Whitehouse";
+            gStatus.textContent = `${d.toFixed(1)} mi to ${where}` + (at === center ? " (searching city center)" : "") + " …";
             const raw = await fetchStopsNear(at.lat, at.lon, gRadius);
             // Distance is measured from the point we actually searched —
             // NOT from the HOME default, so the URL-point view is honest.
@@ -2074,7 +2285,7 @@ async function runFlow() {
         refreshPredictions().catch(() => {});
     } catch (e) {
         // Stops lookup failed (bad key / network): keep whatever is shown.
-        gStatus.textContent = `Could not reach WMATA: ${e.message}`;
+        gStatus.textContent = `Could not reach ${isBoston() ? "MBTA" : "WMATA"}: ${e.message}`;
     } finally {
         busy = false;
         scheduleRefresh();
@@ -2091,9 +2302,67 @@ function normalizeMetroStation(s) {
              Lat: Number(s.Lat), Lon: Number(s.Lon), Lines: lines, distFt: null };
 }
 
+function loadMetroRoutes() {
+    if (!isBoston()) return Promise.resolve(null);
+    if (metroRoutesCache) return Promise.resolve(metroRoutesCache);
+    if (metroRoutesLoad) return metroRoutesLoad;
+    metroRoutesLoad = mbtaGet("/routes", { "filter[type]": "0,1", "page[limit]": 50 })
+        .then(({ data, error }) => {
+            if (error) throw error;
+            const map = {};
+            for (const r of (data && data.data) || []) {
+                map[r.id] = {
+                    name: /^Green-/.test(r.id)
+                        ? "Green " + (r.attributes.short_name || r.id.replace(/^Green-/, ""))
+                        : (r.attributes.short_name || r.id),
+                    color: r.attributes.color || "5d4037",
+                    destinations: r.attributes.direction_destinations || []
+                };
+            }
+            metroRoutesCache = map;
+            return map;
+        })
+        .finally(() => { metroRoutesLoad = null; });
+    return metroRoutesLoad;
+}
+
 function loadMetroStations() {
     if (metroStationsCache) return Promise.resolve(metroStationsCache);
     if (metroStationsLoad) return metroStationsLoad;
+    if (isBoston()) {
+        metroStationsLoad = (async () => {
+            const lines = await loadMetroRoutes();
+            const found = new Map();
+            await Promise.all(Object.keys(lines).map(async line => {
+                const { data, error } = await mbtaGet("/stops", {
+                    "filter[route]": line,
+                    "filter[location_type]": 1,
+                    "page[limit]": 300
+                });
+                if (error) return;
+                for (const s of (data && data.data) || []) {
+                    let st = found.get(s.id);
+                    if (!st) {
+                        st = {
+                            Code: s.id, Name: s.attributes.name || "",
+                            Lat: Number(s.attributes.latitude),
+                            Lon: Number(s.attributes.longitude),
+                            Lines: [], distFt: null
+                        };
+                        found.set(s.id, st);
+                    }
+                    if (!st.Lines.includes(line)) st.Lines.push(line);
+                }
+            }));
+            metroStationsCache = [...found.values()]
+                .filter(s => s.Code && Number.isFinite(s.Lat) && Number.isFinite(s.Lon));
+            const order = Object.keys(lines);
+            for (const st of metroStationsCache)
+                st.Lines.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+            return metroStationsCache;
+        })().finally(() => { metroStationsLoad = null; });
+        return metroStationsLoad;
+    }
     metroStationsLoad = apiGet("/Rail.svc/json/jStations", {})
         .then(({ data, error }) => {
             if (error) throw error;
@@ -2111,7 +2380,7 @@ function metroRefPoint() {
     const st = anchorStop();
     if (st && st.Lat != null && st.Lon != null)
         return { lat: Number(st.Lat), lon: Number(st.Lon) };
-    return HOME;
+    return isBoston() ? cityCfg().metroCenter : HOME;
 }
 
 function populateMetroSelect(stations) {
@@ -2151,6 +2420,66 @@ function setMode(next) {
         if (allStopsCache) populateBusRoutes(allStopsCache);
         runFlow();
     } else { metroAnchorCode = null; runMetro(); }
+}
+
+// City switching: every city has its own data caches, favorites, and
+// Home/Work bookmarks. Called from Settings and from "Near me".
+function clearCityCaches() {
+    allStopsCache = null;
+    stopDirLoad = null;
+    dirNameIndex = null;
+    busRouteDirectory = null;
+    busRouteLoad = null;
+    busRouteMbtaIds = {};
+    metroStationsCache = null;
+    metroStationsLoad = null;
+    metroRoutesCache = null;
+    metroRoutesLoad = null;
+    metroLive = {};
+    metroLiveError = {};
+    metroSchedule = {};
+    metroAnchor = null;
+    metroNearby = [];
+    metroAnchorCode = null;
+    for (const k of Object.keys(metroPathCache)) delete metroPathCache[k];
+    for (const k of Object.keys(routeDetailsCache)) delete routeDetailsCache[k];
+    for (const k of Object.keys(stopScheduleCache)) delete stopScheduleCache[k];
+    nearbyStopObjs.clear();
+    expandedStops.clear();
+    favBusFilterToken++;
+    stops = [];
+    pickedStop = null;
+    pickedStopObj = null;
+    searchPoint = null;
+    forceNearby = false;
+    boardToken++;
+}
+
+function setCity(next, opts) {
+    if (!CITIES[next]) return;
+    if (next === city) {
+        if (gCitySelect) gCitySelect.value = city;
+        return;
+    }
+    city = next;
+    writeCityCookie();
+    favorites = readFavorites();
+    shortcuts = readShortcutCookie();
+    clearCityCaches();
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = null;
+    nextRefreshAt = 0;
+    gBoardHeader.innerHTML = "";
+    gLinesScroll.innerHTML = "";
+    gLinesNote.textContent = "";
+    if (gCitySelect) gCitySelect.value = city;
+    updateShortcutNav();
+    tickClock();
+    if (!opts || !opts.keepPanel) {
+        favNearToken++;
+        closeFavPanel();
+    }
+    renderBookmarkList("fav");
 }
 
 async function runMetro() {
@@ -2200,7 +2529,47 @@ function metroMin(v) {
     return Number.isFinite(n) ? n : null;
 }
 
+async function fetchMbtaMetroLive(codes) {
+    const { data, error } = await mbtaGet("/predictions", {
+        "filter[stop]": codes.join(","),
+        "filter[route_type]": "0,1",
+        "include": "route,trip,stop",
+        "page[limit]": 300
+    });
+    if (error) throw error;
+    const inc = mbtaIncluded(data);
+    const by = {};
+    for (const c of codes) by[c] = [];
+    for (const p of (data && data.data) || []) {
+        const a = p.attributes || {};
+        const at = Date.parse(a.departure_time || a.arrival_time || "");
+        if (!Number.isFinite(at)) continue;
+        const rels = p.relationships || {};
+        const stopRel = rels.stop && rels.stop.data;
+        const stop = inc.get("stop:" + (stopRel && stopRel.id));
+        const parent = stop && stop.relationships && stop.relationships.parent_station
+            && stop.relationships.parent_station.data;
+        const code = (parent && parent.id) || (stopRel && stopRel.id);
+        if (!by[code]) continue;
+        const routeRel = rels.route && rels.route.data;
+        const route = inc.get("route:" + (routeRel && routeRel.id));
+        const tripRel = rels.trip && rels.trip.data;
+        const trip = inc.get("trip:" + (tripRel && tripRel.id));
+        const heads = (trip && trip.attributes && trip.attributes.headsign) ||
+            ((route && route.attributes && (route.attributes.direction_destinations || [])[a.direction_id]) || "");
+        by[code].push({
+            min: Math.max(0, Math.round((at - Date.now()) / 60000)),
+            route: (routeRel && routeRel.id) || "",
+            dir: heads, heads, dirNum: String(a.direction_id == null ? "" : a.direction_id),
+            vehicle: null, trip: (tripRel && tripRel.id) || null
+        });
+    }
+    for (const c of codes) by[c].sort((a, b) => a.min - b.min);
+    return by;
+}
+
 async function fetchMetroLive(codes) {
+    if (isBoston()) return fetchMbtaMetroLive(codes);
     const { data, error } = await apiGet(
         "/StationPrediction.svc/json/GetPrediction/" + codes.join(","), {});
     if (error) throw error;
@@ -2539,6 +2908,7 @@ async function loadMetroGtfs() {
 }
 
 async function ensureMetroSchedule(codes) {
+    if (isBoston()) return {};   // Boston uses live MBTA predictions only
     const d = new Date();
     const day = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
     if (codes.every(c => metroScheduleCache[c] && metroScheduleCache[c].day === day)) {
@@ -2639,11 +3009,9 @@ async function refreshPredictions() {
         refreshInFlight = false;
         if (refreshQueued) {
             refreshQueued = false;
-            // A prompt trigger (confirmAcross' first fetch) runs as soon as the
-            // in-flight cycle settles; one that belonged to the old selection
-            // simply re-arms the cycle for the new one.
-            if (v === selectionVersion) refreshPredictions();
-            else scheduleRefresh();
+            // A selection change during the cycle queued its own refresh; run
+            // that now against the new selection instead of waiting a tick.
+            refreshPredictions();
         }
     }
 }
@@ -2841,6 +3209,27 @@ function openSelectedInMaps() {
 function loadBusRouteDirectory() {
     if (busRouteDirectory) return Promise.resolve(busRouteDirectory);
     if (busRouteLoad) return busRouteLoad;
+    if (isBoston()) {
+        busRouteLoad = mbtaGet("/routes", { "filter[type]": 3, "page[limit]": 500 })
+            .then(({ data, error }) => {
+                if (error) throw error;
+                const seen = new Set();
+                busRouteMbtaIds = {};
+                busRouteDirectory = ((data && data.data) || []).map(r => {
+                    const id = String(r.attributes.short_name || r.id).toUpperCase();
+                    busRouteMbtaIds[id] = r.id;
+                    return {
+                        id,
+                        name: r.attributes.long_name || r.id,
+                        desc: r.attributes.long_name || r.attributes.description || ""
+                    };
+                }).filter(r => r.id && !seen.has(r.id) && seen.add(r.id))
+                  .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+                return busRouteDirectory;
+            })
+            .finally(() => { busRouteLoad = null; });
+        return busRouteLoad;
+    }
     busRouteLoad = apiGet("/Bus.svc/json/jRoutes", {})
         .then(({ data, error }) => {
             if (error) throw error;
@@ -2912,10 +3301,70 @@ function favBusStopRow(s, route) {
         + `${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}</div>`;
 }
 
+let favBusFilterToken = 0;
+let favBusDebounce = 0;
+
+// Boston: routes are expanded from stop-name matches. MBTA has no cheap
+// stop→routes index, so resolve the first 25 matching stops in parallel.
+async function renderFavBusRoutesMbta(raw) {
+    if (!gFavBusRoutes) return;
+    const token = ++favBusFilterToken;
+    const q = raw.toLowerCase();
+    if (q && !allStopsCache) {
+        loadStopDirectory()
+            .then(() => {
+                if (gFavBusFilter && gFavBusFilter.value.trim() === raw)
+                    renderFavBusRoutesMbta(raw);
+            })
+            .catch(() => {});
+    }
+    const byStop = new Map();
+    if (q.length >= 3 && allStopsCache) {
+        const matched = allStopsCache
+            .filter(s => String(s.Name || "").toLowerCase().includes(q))
+            .slice(0, 25);
+        await Promise.all(matched.map(async s => {
+            const { data } = await mbtaGet("/routes", {
+                "filter[stop]": s.StopID, "filter[type]": 3
+            });
+            for (const r of (data && data.data) || []) {
+                const key = String(r.attributes.short_name || r.id).toUpperCase();
+                if (!byStop.has(key)) byStop.set(key, new Map());
+                byStop.get(key).set(s.StopID, {
+                    StopID: s.StopID, Name: s.Name, Routes: [key]
+                });
+            }
+        }));
+    }
+    if (token !== favBusFilterToken) return;
+    const routes = (busRouteDirectory || []).filter(r => !q ||
+        r.id.toLowerCase().includes(q) ||
+        r.desc.toLowerCase().includes(q) ||
+        r.name.toLowerCase().includes(q) ||
+        byStop.has(r.id));
+    gFavBusRoutes.innerHTML = routes.length ? routes.map(r => {
+        const matches = byStop.has(r.id)
+            ? [...byStop.get(r.id).values()]
+                .sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")))
+            : [];
+        const expanded = matches.length > 0;
+        return `<button type="button" class="fav-route" data-fav-route="${esc(r.id)}" aria-expanded="${expanded ? "true" : "false"}">`
+            + `<span class="fav-badge" style="background:${routeColor(r.id)}">${esc(r.id)}</span>`
+            + `<span class="fav-desc">${esc(r.desc || "Bus route")}</span>`
+            + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
+            + `<div class="fav-stops" data-fav-stops="bus" data-route="${esc(r.id)}"`
+            + `${expanded ? ` data-loaded="1"` : " hidden"}>`
+            + (expanded ? matches.map(s => favBusStopRow(s, r.id)).join("") : "")
+            + `</div>`;
+    }).join("") : `<div class="fav-empty">no matching bus routes</div>`;
+}
+
 function renderFavBusRoutes(query) {
     if (!gFavBusRoutes) return;
     const raw = String(query || "").trim();
     const q = raw.toLowerCase();
+    if (isBoston()) return renderFavBusRoutesMbta(raw);
+    favBusFilterToken++;
     if (q && !allStopsCache) {
         loadStopDirectory()
             .then(() => {
@@ -2944,9 +3393,15 @@ function renderFavBusRoutes(query) {
     }).join("") : `<div class="fav-empty">no matching bus routes</div>`;
 }
 
-function renderFavMetroLines() {
+async function renderFavMetroLines() {
     if (!gFavMetroLines) return;
-    const lines = ["RD", "GR", "YL", "BL", "OR", "SV"];
+    let lines;
+    if (isBoston()) {
+        await loadMetroRoutes().catch(() => null);
+        lines = Object.keys(metroRoutesCache || {});
+    } else {
+        lines = ["RD", "GR", "YL", "BL", "OR", "SV"];
+    }
     gFavMetroLines.innerHTML = lines.map(line =>
         `<button type="button" class="fav-route" data-fav-line="${line}" aria-expanded="false">`
         + `<span class="fav-badge line" style="background:${metroLineColor(line)}">${esc(metroLineName(line))}</span>`
@@ -3081,7 +3536,8 @@ async function fillBookmarkArrivals(rows, token) {
     }));
 }
 
-function renderBookmarkList(slot) {
+async function renderBookmarkList(slot) {
+    if (isBoston()) await loadMetroRoutes().catch(() => null);
     bookmarkSlot = slot;
     const token = ++bookmarkToken;
     const label = slot === "fav" ? "Favorites" : shortcutLabel(slot);
@@ -3148,6 +3604,9 @@ async function populateNearMe() {
         gFavNearList.innerHTML = `<div class="fav-empty">location unavailable — allow location access and try again</div>`;
         return;
     }
+    // "Near me" selects the city automatically from the device location.
+    const targetCity = nearestCity(pos.lat, pos.lon);
+    if (targetCity !== city) setCity(targetCity, { keepPanel: true });
     try {
         const [busStops, stations] = await Promise.all([
             fetchStopsNear(pos.lat, pos.lon, NEAR_ME_M),
@@ -3189,10 +3648,24 @@ async function populateFavStops(container, kind, key) {
     container.innerHTML = `<div class="fav-empty">loading stops…</div>`;
     try {
         if (kind === "bus") {
-            const all = await loadStopDirectory();
-            const list = (all || [])
-                .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === key))
-                .sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
+            let list;
+            if (isBoston()) {
+                const routeId = busRouteMbtaIds[key] || key;
+                const { data, error } = await mbtaGet("/stops", {
+                    "filter[route]": routeId,
+                    "filter[location_type]": "0",
+                    "page[limit]": 300
+                });
+                if (error) throw error;
+                list = ((data && data.data) || []).map(s => ({
+                    StopID: s.id, Name: s.attributes.name || "", Routes: [key]
+                }));
+            } else {
+                const all = await loadStopDirectory();
+                list = (all || [])
+                    .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === key));
+            }
+            list = list.sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
             container.innerHTML = list.length ? list.map(s =>
                 `<div class="fav-stop">${favStarHtml("bus", s.StopID, s.Name, key)}${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}</div>`
             ).join("") : `<div class="fav-empty">no stops for this route</div>`;
@@ -3242,7 +3715,8 @@ if (gAddFavBtn) gAddFavBtn.addEventListener("click", () => {
     gAddFavBtn.setAttribute("aria-expanded", "true");
 });
 if (gFavBusFilter) gFavBusFilter.addEventListener("input", () => {
-    renderFavBusRoutes(gFavBusFilter.value);
+    clearTimeout(favBusDebounce);
+    favBusDebounce = setTimeout(() => renderFavBusRoutes(gFavBusFilter.value), 250);
 });
 if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     const star = e.target.closest ? e.target.closest(".fav-star") : null;
@@ -3313,7 +3787,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
                     .catch(() => {});
             } else if (which === "metro") {
                 await loadMetroStations();
-                renderFavMetroLines();
+                await renderFavMetroLines();
             }
             body.hidden = false;
         } catch (err) {
@@ -3407,12 +3881,14 @@ gBoardHeader.addEventListener("click", e => {
     if (slot === "fav") {
         const route = kind === "metro"
             ? String((st.Lines && st.Lines[0]) || "")
-            : String((st.Routes && st.Routes[0]) || "");
+            : String((st.Routes && st.Routes[0]) ||
+                (st.Arrivals && st.Arrivals[0] && st.Arrivals[0].route) || "");
         toggleFavorite(kind, id, st.Name || "", route);
     } else {
         const route = kind === "metro"
             ? String((st.Lines && st.Lines[0]) || "")
-            : String((st.Routes && st.Routes[0]) || "");
+            : String((st.Routes && st.Routes[0]) ||
+                (st.Arrivals && st.Arrivals[0] && st.Arrivals[0].route) || "");
         if (shortcuts[slot] && String(shortcuts[slot].id) === id) {
             // Clearing Home/Work leaves the master favorites list alone.
             delete shortcuts[slot];
@@ -4248,6 +4724,10 @@ function setRefreshEnabled(on) {
 }
 gRefreshToggle.addEventListener("click", () => setRefreshEnabled(!refreshEnabled));
 if (gClearFavorites) gClearFavorites.addEventListener("click", resetFavorites);
+if (gCitySelect) {
+    gCitySelect.value = city;
+    gCitySelect.addEventListener("change", () => setCity(gCitySelect.value));
+}
 
 // Access gate: check the password, decode the API key, then start the app.
 const gateForm = document.getElementById("gateForm");

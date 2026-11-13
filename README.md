@@ -2,8 +2,8 @@
 
 A tiny, single-file web app (no backend, no build step) that shows **live DC Metrobus
 arrival predictions** for a handful of bus stops around **Cleveland Park (20010)** — the
-Park Rd NW / 19 St NW corner. It's a static HTML page hosted on **GitHub Pages**, so it
-costs nothing to run.
+Park Rd NW / 19 St NW corner — and now also supports **Boston** (MBTA bus + subway). It's
+a static HTML page hosted on **GitHub Pages**, so it costs nothing to run.
 
 Open it: **https://tishtosh.github.io/MTA/mta26.html**
 
@@ -21,9 +21,11 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 - The top bar holds **Search**, **Favorites**, **Home**, and **Work**, with the clock at
   the right showing the last data-refresh time. All four icons are always enabled.
 - **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Subway**, and
-  **Settings** (auto-refresh toggle and “Delete all favorites”).
-- **Near me** lists bus stops and Metro stations within 1,000 ft of the current location.
-  The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
+  **Settings**. Settings includes the **City** selector: **Washington DC** or **Boston**.
+- **Near me** lists bus stops and Metro/subway stations within 1,000 ft of the current
+  location, and auto-selects Boston or Washington DC from that location. Favorites and
+  Home/Work bookmarks are stored separately per city.
+- The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
   each matching route to only the matching stops.
 - A selected stop opens its **hero card** plus **route/departure rows**; other stops
   within walking distance appear below as **nearby stop cards** with their own rows.
@@ -42,6 +44,23 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 | **Route/departure rows** | The repeated rows inside a stop card: line badge, destination/headsign, and ETAs. Class `.board-row`. |
 | **Bookmark cards** | The cards shown in the Favorites / Home / Work views (saved locations). Class `.bookmark-card`. |
 | **Bookmark list view** | The main-panel view that replaces the board when Favorites, Home, or Work is selected. |
+
+## Cities
+
+The **Settings** section of the search dropdown selects the transport system:
+
+| City | Data source | Modes |
+|------|-------------|-------|
+| **Washington DC** | WMATA (`api.wmata.com`) | Metrobus + Metrorail |
+| **Boston** | MBTA v3 (`api-v3.mbta.com`) | MBTA bus + subway/light rail |
+
+- The choice is stored in the `mta_city` cookie; the default is Washington DC.
+- Favorites and Home/Work bookmarks are per city (separate storage keys), so switching
+  cities swaps the saved lists.
+- **Near me** uses the device location to pick the nearer city automatically before
+  listing nearby stops and stations.
+- Boston uses the MBTA stop IDs (`place-…` for stations) and line IDs (`Red`, `Orange`,
+  `Green-B`, …); DC uses WMATA stop/station codes.
 
 
 ## URL parameters
@@ -82,24 +101,43 @@ The current 20010 corner stops (useful for building `?busstop=` links):
 
 ---
 
-## The WMATA API
+## APIs
+
+Both data sources are public JSON APIs called directly from the browser (CORS allows it).
+
+### WMATA (Washington DC)
 
 WMATA (the Washington Metropolitan Area Transit Authority) runs DC's bus system
-(**Metrobus**) and exposes a small public JSON API. The app uses two endpoints:
+(**Metrobus**) and Metrorail. The app uses:
 
 | Endpoint | Purpose | Example |
 |----------|---------|---------|
 | `GET https://api.wmata.com/Bus.svc/json/jStops` | Nearby stops: `?Lat=&Lon=&Radius=` → `{ Stops: [{ StopID, Name, Lat, Lon, Routes }] }` | `jStops?Lat=38.93468&Lon=-77.04512&Radius=300` |
 | `GET https://api.wmata.com/NextBusService.svc/json/jPredictions` | Arrivals for one stop: `?StopID=` → `{ StopName, Predictions: [{ Minutes, RouteID, DirectionText, VehicleID, TripID }] }` | `jPredictions?StopID=1002135` |
 
-Both require an `api_key` query parameter. Both are verified working (CORS allows any
-origin, so the browser page can call them directly).
+Both require an `api_key` query parameter.
 
 - **Developer portal / docs / key sign-up:** <https://developer.wmata.com>
 - **Support:** `api-support@wmata.com`
 - **⚠ GTFS cutover:** On **2025-06-29** WMATA's "Better Bus" redesign renumbered stops and
   migrated the data. The pre-2025 stop IDs used by the old pages (`1002141`, `1002148`)
   no longer exist and now return HTTP 400. See [Maintenance](#maintenance).
+
+### MBTA (Boston)
+
+The MBTA v3 API uses JSON:API and an `api_key` query parameter:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET https://api-v3.mbta.com/stops` | Stops/stations; supports `filter[latitude]`, `filter[longitude]`, `filter[radius]` (degrees), `filter[route]`, `filter[route_type]`, `filter[location_type]` |
+| `GET https://api-v3.mbta.com/routes` | Route metadata (short name, long name, color, type) |
+| `GET https://api-v3.mbta.com/predictions` | Live predictions by stop, route type, or location; `include=route,trip,stop` supplies line names and headsigns |
+
+- **Developer portal / docs / key sign-up:** <https://www.mbta.com/developers/v3-api>
+- Boston bus mode uses `route_type=3`; subway/light rail uses `route_type=0,1`.
+- The MBTA key is stored as `const MBTA_KEY` in `mta26.html` (same client-side caveat as
+  the WMATA key).
+- Boston transit data is provided by the MBTA (<https://www.mbta.com>).
 
 ---
 
@@ -115,8 +153,9 @@ can read the key. Treat any key used here as **public and disposable**. (The key
 shipped in `mta26.html` has been public in the page and in git history for a long time and
 should be considered burned.)
 
-The code keeps the key in **one place** — `const API_KEY` at the top of the `<script>` — so
-swapping or rotating it is a one-line edit.
+The code keeps the WMATA key in **one place** — the encrypted `KEY_BLOB` decrypted into
+`API_KEY` — so swapping or rotating it is a one-line edit. The MBTA key is the plain
+`const MBTA_KEY` constant.
 
 ### Get your own key
 
