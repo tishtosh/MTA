@@ -418,6 +418,10 @@
         /* Hero tint by mode: bus = light red, Metro = light brown. */
         .board-stophead.hero-bus { background: #fbe3e1; color: #5a1a12; }
         .board-stophead.hero-metro { background: #ece1cd; color: #46301a; }
+        .hero-line-band {
+            position: absolute; top: 0; left: 0; right: 0; height: 7px;
+            border-radius: 10px 10px 0 0; pointer-events: none;
+        }
         .board-stophead.hero-bus .board-stopid,
         .board-stophead.hero-metro .board-stopid { color: #85706a; }
         .board-stophead.hero-bus .bt-next-eta,
@@ -917,8 +921,6 @@ function resetFavorites() {
     if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
     if (bookmarkSlot === "fav") renderBookmarkList("fav");
     syncFavStars();
-    if (gStatus) gStatus.textContent =
-        "All favorites deleted — N10 Washington Dulles Airport restored as the default";
 }
 
 function toggleFavorite(kind, id, name, route) {
@@ -2309,6 +2311,7 @@ function renderMetro() {
         .filter(d => d.at >= now).sort((a, b) => a.at - b.at)[0] || null;
     const headSt = {
         StopID: station.Code, Name: station.Name, Metro: true,
+        Lines: station.Lines || [],
         MetroScheduledNext: nextSched
             ? { at: nextSched.at, route: nextSched.route, heads: nextSched.heads }
             : null,
@@ -2932,8 +2935,8 @@ function favBadgeHtml(kind, route) {
 
 function favRowHtml(f) {
     return `<div class="fav-stop">${favBadgeHtml(f.kind, f.route)}`
-        + `${favGotoHtml(f.kind, f.id, f.name, stopName(f.name) || "#" + f.id)}`
-        + `${favStarHtml(f.kind, f.id, f.name, f.route)}</div>`;
+        + `${favStarHtml(f.kind, f.id, f.name, f.route)}`
+        + `${favGotoHtml(f.kind, f.id, f.name, stopName(f.name) || "#" + f.id)}</div>`;
 }
 
 function sortedFavorites() {
@@ -2992,9 +2995,14 @@ function nextArrivalHtml(kind, next) {
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
 function bmCardHtml(row) {
     const label = stopName(row.name) || "#" + row.id;
+    const band = row.kind === "metro"
+        ? `<span class="hero-line-band" data-band="${esc(row.kind)}:${esc(row.id)}"`
+          + ` style="background:${metroLineColor(row.route)}"></span>`
+        : "";
     return `<div class="board-stophead bm-card hero-${esc(row.kind)}" data-bm-kind="${esc(row.kind)}"`
         + ` data-bm-id="${esc(row.id)}" data-bm-name="${esc(row.name || "")}"`
         + ` role="button" tabindex="0" title="Go to ${esc(label)}">`
+        + band
         + `<div class="board-shortcuts">`
         + `${favStarHtml(row.kind, row.id, row.name, row.route)}</div>`
         + `<div><span class="board-stopname">${esc(label)}</span>`
@@ -3009,16 +3017,18 @@ let bmToken = 0;
 
 async function fillBookmarkArrivals(rows, token) {
     await Promise.all(rows.map(async row => {
-        let html;
+        let html, next = null;
         try {
             if (row.kind === "metro") {
                 const by = await fetchMetroLive([row.id]);
                 const list = (by[row.id] || []).slice().sort((a, b) => a.min - b.min);
-                html = nextArrivalHtml(row.kind, list[0]);
+                next = list[0] || null;
+                html = nextArrivalHtml(row.kind, next);
             } else {
                 const { predictions } = await fetchPredictions(row.id);
                 const list = (predictions || []).slice().sort((a, b) => a.min - b.min);
-                html = nextArrivalHtml(row.kind, list[0]);
+                next = list[0] || null;
+                html = nextArrivalHtml(row.kind, next);
             }
         } catch (e) {
             html = `<span class="text-muted">arrivals unavailable</span>`;
@@ -3027,6 +3037,11 @@ async function fillBookmarkArrivals(rows, token) {
         const el = gBmList.querySelector(
             `.board-next[data-for="${row.kind}:${row.id}"]`);
         if (el) el.innerHTML = html;
+        if (row.kind === "metro" && next) {
+            const band = gBmList.querySelector(
+                `.hero-line-band[data-band="${row.kind}:${row.id}"]`);
+            if (band) band.style.background = metroLineColor(next.route);
+        }
     }));
 }
 
@@ -3123,9 +3138,9 @@ async function populateNearMe() {
         rows.sort((a, b) => a.dist - b.dist);
         gFavNearList.innerHTML = rows.length ? rows.map(r =>
             `<div class="fav-stop">${favBadgeHtml(r.kind, r.route)}`
+            + `${favStarHtml(r.kind, r.id, r.name, r.route)}`
             + `${favGotoHtml(r.kind, r.id, r.name, stopName(r.name) || "#" + r.id)}`
-            + `<small class="fav-dist">${Math.round(r.dist)} ft</small>`
-            + `${favStarHtml(r.kind, r.id, r.name, r.route)}</div>`
+            + `<small class="fav-dist">${Math.round(r.dist)} ft</small></div>`
         ).join("") : `<div class="fav-empty">nothing within 1,000 ft</div>`;
     } catch (e) {
         gFavNearList.innerHTML = `<div class="fav-empty">could not load nearby stops</div>`;
@@ -3143,7 +3158,7 @@ async function populateFavStops(container, kind, key) {
                 .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === key))
                 .sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
             container.innerHTML = list.length ? list.map(s =>
-                `<div class="fav-stop">${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}${favStarHtml("bus", s.StopID, s.Name, key)}</div>`
+                `<div class="fav-stop">${favStarHtml("bus", s.StopID, s.Name, key)}${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}</div>`
             ).join("") : `<div class="fav-empty">no stops for this route</div>`;
         } else {
             const all = await loadMetroStations();
@@ -3151,7 +3166,7 @@ async function populateFavStops(container, kind, key) {
                 .filter(s => s.Lines.includes(key))
                 .sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
             container.innerHTML = list.length ? list.map(s =>
-                `<div class="fav-stop">${favGotoHtml("metro", s.Code, s.Name, stopName(s.Name) || s.Code)}${favStarHtml("metro", s.Code, s.Name, key)}</div>`
+                `<div class="fav-stop">${favStarHtml("metro", s.Code, s.Name, key)}${favGotoHtml("metro", s.Code, s.Name, stopName(s.Name) || s.Code)}</div>`
             ).join("") : `<div class="fav-empty">no stations on this line</div>`;
         }
     } catch (e) {
@@ -3827,7 +3842,11 @@ function boardHeaderHtml(st, arrivals) {
             nextLine = `${verb} <span class="text-muted">no arrival or departure</span>`;
         }
     }
+    const lineBand = st.Metro
+        ? `<span class="hero-line-band" style="background:${metroLineColor(next ? next.route : ((st.Lines || [])[0] || ""))}"></span>`
+        : "";
     return `<div class="board-stophead${st.Metro ? " hero-metro" : " hero-bus"}">`
+        + lineBand
         + shortcutButtonsHtml(id)
         + `<div><span class="board-stopname">${esc(label)}</span>`
         + (st.Name ? `<span class="board-stopid">#${esc(id)}</span>` : "")
