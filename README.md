@@ -22,7 +22,8 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   the right showing the last data-refresh time. All four icons are always enabled.
 - **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Subway**, and
   **Settings**. Settings includes the **City** selector (**Washington DC** or **Boston**),
-  the **Maps app** choice (**Apple Maps** or **Google Maps**, used by the hero share icon),
+  the **Maps app** choice (**Apple Maps** or **Google Maps**, default Google, used by the
+  hero share icon),
   auto-refresh, and Delete all favorites.
 - **Near me** lists bus stops and Metro/subway stations within 1,000 ft of the current
   location, and auto-selects Boston or Washington DC from that location. Favorites and

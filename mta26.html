@@ -858,8 +858,7 @@ function readMapsProvider() {
         const v = hit ? decodeURIComponent(hit.slice(MAPS_COOKIE.length + 1)) : "";
         if (v === "apple" || v === "google") return v;
     } catch (e) { /* fall through */ }
-    return /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent || "")
-        ? "apple" : "google";
+    return "google";
 }
 
 function writeMapsProvider() {
@@ -2001,6 +2000,116 @@ function confirmAcross(st, have) {
 // nearby-search pool already carries Distance; the directory pool does not,
 // so compute it there (feet, via distance()).
 const NEARBY_MAX_FT = 1000;
+// Cross-mode nearby cards (bus board shows stations; metro board shows stops).
+let crossNearbyKey = "";
+let crossNearbyLoading = "";
+let crossMetroNearby = [];
+let crossBusNearby = [];
+
+function crossNearbyKeyFor(kind, anchor) {
+    if (!anchor) return "";
+    const id = kind === "metro" ? anchor.Code : anchor.StopID;
+    const lat = kind === "metro" ? anchor.Lat : anchor.Lat;
+    const lon = kind === "metro" ? anchor.Lon : anchor.Lon;
+    if (!id || lat == null || lon == null) return "";
+    return `${city}:${kind}:${id}:${Number(lat).toFixed(5)},${Number(lon).toFixed(5)}`;
+}
+
+async function ensureCrossMetroNearby(anchor) {
+    const key = crossNearbyKeyFor("bus", anchor);
+    if (!key || key === crossNearbyKey || key === crossNearbyLoading) return;
+    crossNearbyLoading = key;
+    try {
+        const stations = await loadMetroStations();
+        const list = stations
+            .map(s => Object.assign({}, s, {
+                distFt: distance(anchor.Lat, anchor.Lon, s.Lat, s.Lon, "f")
+            }))
+            .filter(s => s.distFt <= NEARBY_MAX_FT)
+            .sort((a, b) => a.distFt - b.distFt);
+        let live = {};
+        if (list.length) {
+            try { live = await fetchMetroLive(list.map(s => s.Code)); }
+            catch (e) { live = {}; }
+        }
+        crossMetroNearby = list.map(s => Object.assign({}, s, {
+            next: ((live[s.Code] || []).slice().sort((a, b) => a.min - b.min)[0]) || null
+        }));
+        crossNearbyKey = key;
+    } finally {
+        crossNearbyLoading = "";
+    }
+    if (mode === "bus") {
+        const cur = anchorStop();
+        if (cur && String(cur.StopID) === String(anchor.StopID)) renderLines();
+    }
+}
+
+async function ensureCrossBusNearby(station) {
+    const key = crossNearbyKeyFor("metro", station);
+    if (!key || key === crossNearbyKey || key === crossNearbyLoading) return;
+    crossNearbyLoading = key;
+    try {
+        const raw = await fetchStopsNear(station.Lat, station.Lon,
+            NEARBY_MAX_FT / 3.28084);
+        const list = (raw || []).map(s => ({
+            StopID: String(s.StopID), Name: s.Name || "",
+            distFt: distance(station.Lat, station.Lon, s.Lat, s.Lon, "f")
+        })).filter(s => s.distFt <= NEARBY_MAX_FT)
+          .sort((a, b) => a.distFt - b.distFt);
+        for (const s of list) {
+            try {
+                const { predictions } = await fetchPredictions(s.StopID);
+                s.next = (predictions || []).slice().sort((a, b) => a.min - b.min)[0] || null;
+            } catch (e) { s.next = null; }
+        }
+        crossBusNearby = list;
+        crossNearbyKey = key;
+    } finally {
+        crossNearbyLoading = "";
+    }
+    if (mode === "metro") {
+        if (metroAnchor && String(metroAnchor.Code) === String(station.Code)) renderMetro();
+    }
+}
+
+function crossMetroSectionHtml(st) {
+    const dist = st.distFt == null ? "" : `${Math.round(st.distFt)} ft away`;
+    const card = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0"`
+        + ` data-cross="metro" data-stop="${esc(st.Code)}" data-name="${esc(st.Name || "")}">`
+        + `<span class="hero-line-band" style="background:${metroLineColor((st.Lines || [])[0] || "")}"></span>`
+        + `<div class="nearby-card-head"><div class="nearby-card-main">`
+        + `<div class="nearby-card-title">${esc(stopName(st.Name) || st.Code)}</div>`
+        + `<div class="nearby-card-sub">${esc([dist, "#" + st.Code].filter(Boolean).join(" · "))}</div>`
+        + `</div></div></div>`;
+    const line = st.next ? nextArrivalHtml("metro", st.next)
+        : `<span class="text-muted">no arrival or departure</span>`;
+    return {
+        dist: st.distFt == null ? Infinity : st.distFt,
+        html: card + `<div class="nearby-board"><div class="board">`
+            + `<div class="board-row"><div class="board-next">${line}</div></div>`
+            + `</div></div>`
+    };
+}
+
+function crossBusSectionHtml(st) {
+    const dist = st.distFt == null ? "" : `${Math.round(st.distFt)} ft away`;
+    const card = `<div class="nearby-stop-card nearby-bus" role="button" tabindex="0"`
+        + ` data-cross="bus" data-stop="${esc(st.StopID)}" data-name="${esc(st.Name || "")}">`
+        + `<span class="hero-line-band bus-band"></span>`
+        + `<div class="nearby-card-head"><div class="nearby-card-main">`
+        + `<div class="nearby-card-title">${esc(stopName(st.Name) || st.StopID)}</div>`
+        + `<div class="nearby-card-sub">${esc([dist, "#" + st.StopID].filter(Boolean).join(" · "))}</div>`
+        + `</div></div></div>`;
+    const line = st.next ? nextArrivalHtml("bus", st.next)
+        : `<span class="text-muted">no arrival or departure</span>`;
+    return {
+        dist: st.distFt == null ? Infinity : st.distFt,
+        html: card + `<div class="nearby-board"><div class="board">`
+            + `<div class="board-row"><div class="board-next">${line}</div></div>`
+            + `</div></div>`
+    };
+}
 function nearbyStops(st) {
     if (!st || st.Lat == null || st.Lon == null) return [];
     const aId = String(st.StopID);
@@ -2582,6 +2691,9 @@ function clearCityCaches() {
     nearbyStopObjs.clear();
     expandedStops.clear();
     stopConnections.clear();
+    crossNearbyKey = "";
+    crossMetroNearby = [];
+    crossBusNearby = [];
     favBusFilterToken++;
     stops = [];
     pickedStop = null;
@@ -2883,15 +2995,16 @@ async function loadMbtaRowStops(ul) {
 }
 
 async function refreshBoardStopConnections() {
-    const roots = [gBoardHeader, gLinesScroll].filter(Boolean);
-    const nodes = roots.flatMap(root =>
-        [...root.querySelectorAll(".fav-conns[data-conn]")]);
-    await Promise.all(nodes.map(async el => {
+    const hero = gBoardHeader
+        ? [...gBoardHeader.querySelectorAll(".fav-conns[data-conn]")] : [];
+    const rows = gLinesScroll
+        ? [...gLinesScroll.querySelectorAll(".fav-conns[data-conn]")] : [];
+    for (const el of [...hero, ...rows]) {
         const conns = await fetchStopConnections(
             el.dataset.connKind || "bus", el.dataset.conn);
         if (el.parentNode) el.innerHTML = connectionBadgesHtml(conns,
             el.dataset.connKind || "bus", el.dataset.connRoute || "");
-    }));
+    }
 }
 
 async function loadMetroStops(ul) {
@@ -2971,11 +3084,12 @@ function renderMetro() {
         ? `<div class="main-board"><div class="board">${rowsHtml(mainRows)}</div></div>`
         : "";
     let nearbyHtml = "";
+    const sections = [];
     for (const stn of metroNearby) {
         const dist = stn.distFt == null ? ""
             : (stn.distFt < 5280 ? `${Math.round(stn.distFt)} ft away`
                                  : `${(stn.distFt / 5280).toFixed(1)} mi away`);
-        nearbyHtml += `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
+        let html = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
             + `<span class="hero-line-band" style="background:${metroLineColor((stn.Lines || [])[0] || "")}"></span>`
             + `<div class="nearby-card-head"><div class="nearby-card-main">`
             + `<div class="nearby-card-title">${esc(stopName(stn.Name) || stn.Code)}</div>`
@@ -2983,8 +3097,15 @@ function renderMetro() {
             + `</div></div></div>`;
         const rows = metroRowsFor(stn);
         if (rows.length)
-            nearbyHtml += `<div class="nearby-board"><div class="board">${rowsHtml(rows)}</div></div>`;
+            html += `<div class="nearby-board"><div class="board">${rowsHtml(rows)}</div></div>`;
+        sections.push({ dist: stn.distFt == null ? Infinity : stn.distFt, html });
     }
+    const crossKey = crossNearbyKeyFor("metro", station);
+    if (crossKey && crossKey === crossNearbyKey) {
+        for (const bs of crossBusNearby) sections.push(crossBusSectionHtml(bs));
+    }
+    sections.sort((a, b) => a.dist - b.dist);
+    nearbyHtml = sections.map(s => s.html).join("");
     gLinesScroll.innerHTML = mainHtml + nearbyHtml;
     gLinesNote.textContent = "";
     if (gLinesScroll.querySelectorAll) {
@@ -2998,25 +3119,57 @@ function renderMetro() {
 async function refreshMetro() {
     if (metroRefreshInFlight) { metroRefreshQueued = true; return; }
     metroRefreshInFlight = true;
+    const anchor = metroAnchor;
+    if (!anchor) { metroRefreshInFlight = false; return; }
+    const anchorCode = String(anchor.Code);
+    const nearby = metroNearby.filter(s => String(s.Code) !== anchorCode);
     try {
-        const stations = [metroAnchor, ...metroNearby].filter(Boolean);
-        if (!stations.length) return;
-        const codes = [...new Set(stations.map(s => s.Code))];
-        const liveP = fetchMetroLive(codes)
-            .then(live => { metroLive = live; metroLiveError = {}; })
-            .catch(e => { for (const c of codes) metroLiveError[c] = e; });
-        const schedP = ensureMetroSchedule(codes)
-            .then(sched => { metroSchedule = sched; })
-            .catch(() => {});
-        await liveP;
-        if (mode !== "metro") return;
+        const setLive = async (code) => {
+            try {
+                const live = await fetchMetroLive([code]);
+                metroLive[code] = live[code] || [];
+                delete metroLiveError[code];
+            } catch (e) {
+                metroLive[code] = [];
+                metroLiveError[code] = e;
+            }
+        };
+        // 1) The current station's trains first, then its connections.
+        await setLive(anchorCode);
+        if (mode !== "metro" || !metroAnchor || String(metroAnchor.Code) !== anchorCode)
+            return;
         lastRefreshAt = Date.now();
         renderMetro();
         tickClock();
-        scheduleRefresh();
-        await schedP;
-        if (mode !== "metro") return;
+        await refreshBoardStopConnections();
+        try {
+            const sched = await ensureMetroSchedule([anchorCode]);
+            Object.assign(metroSchedule, sched || {});
+        } catch (e) { /* no schedule fallback */ }
+        if (mode !== "metro" || !metroAnchor || String(metroAnchor.Code) !== anchorCode)
+            return;
         renderMetro();
+
+        // 2) Nearby stations in distance order.
+        for (const stn of nearby) {
+            if (mode !== "metro" || !metroAnchor || String(metroAnchor.Code) !== anchorCode)
+                return;
+            await setLive(String(stn.Code));
+            lastRefreshAt = Date.now();
+            renderMetro();
+            tickClock();
+        }
+
+        // 3) Schedules are secondary; then cross-mode nearby bus stops.
+        try {
+            const sched = await ensureMetroSchedule(nearby.map(s => s.Code));
+            Object.assign(metroSchedule, sched || {});
+        } catch (e) { /* no schedule fallback */ }
+        if (mode === "metro" && metroAnchor && String(metroAnchor.Code) === anchorCode) {
+            renderMetro();
+            ensureCrossBusNearby(anchor).catch(() => {});
+        }
+        scheduleRefresh();
     } finally {
         metroRefreshInFlight = false;
         if (metroRefreshQueued) {
@@ -3200,51 +3353,84 @@ async function refreshPredictions() {
     refreshInFlight = true;
     const v = selectionVersion;      // captured up front for the stale-result guard
     try {
-        const toFetch = new Map();              // StopID → stop object
-        for (const s of shownStops()) toFetch.set(String(s.StopID), s);
-        if (acrossStop) toFetch.set(String(acrossStop.StopID), acrossStop);
+        const target = new Map();               // StopID → stop object
+        const anchor = anchorStop();
+        if (anchor) target.set(String(anchor.StopID), anchor);
+        if (acrossStop) target.set(String(acrossStop.StopID), acrossStop);
+        for (const s of shownStops()) target.set(String(s.StopID), s);
         // Nearby sections need their own live predictions too; otherwise the
         // same stop looks different as the anchor vs a secondary section.
-        const anchor = anchorStop();
-        if (anchor) {
-            for (const n of nearbyStops(anchor)) {
-                const stp = nearbyStopObj(n);
-                toFetch.set(String(stp.StopID), stp);
-            }
-        }
-        if (!toFetch.size) return;
+        const nearby = anchor
+            ? nearbyStops(anchor).map(n => nearbyStopObj(n))
+            : [];
+        for (const stp of nearby) target.set(String(stp.StopID), stp);
+        if (!target.size) return;
+
+        const priorityIds = new Set();
+        if (anchor) priorityIds.add(String(anchor.StopID));
+        if (acrossStop) priorityIds.add(String(acrossStop.StopID));
+        const priority = [...target.values()]
+            .filter(s => priorityIds.has(String(s.StopID)));
+
         let saw429 = false;
-        await Promise.all([
-            ...[...toFetch.values()].map(async (stop) => {
-                try {
-                    const { name, predictions } = await fetchPredictions(stop.StopID);
-                    if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
-                    const at = Date.now();
-                    updateDeparted(stop, predictions, at);
-                    stop.Arrivals = predictions;
-                    stop.ArrivalsAt = at;
-                    stop.Error = null;
-                } catch (e) {
-                    stop.Arrivals = [];
-                    stop.Error = e;                                 // rendered as a muted row
-                    if (e.rateLimited) saw429 = true;
-                }
-            }),
-            // Schedule fallback for rows with no live prediction. Cached per
-            // stop/day; failures never block the predictions render.
-            ...[...toFetch.keys()].map(id => ensureStopSchedule(id)),
-        ]);
+        const fetchOne = async (stop) => {
+            try {
+                const { name, predictions } = await fetchPredictions(stop.StopID);
+                if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
+                const at = Date.now();
+                updateDeparted(stop, predictions, at);
+                stop.Arrivals = predictions;
+                stop.ArrivalsAt = at;
+                stop.Error = null;
+            } catch (e) {
+                stop.Arrivals = [];
+                stop.Error = e;                                 // rendered as a muted row
+                if (e.rateLimited) saw429 = true;
+            }
+        };
+        const paint = () => {
+            if (mode !== "bus") return;
+            renderLines();
+            tickClock();
+        };
+
+        // 1) The current stop (and its across-the-street counterpart) first.
+        await Promise.all(priority.map(fetchOne));
+        if (v !== selectionVersion) { scheduleRefresh(); return; }
+        lastRefreshAt = Date.now();
+        paint();
+        // Hero connections are the next priority after the current arrivals.
+        await refreshBoardStopConnections();
+        if (v !== selectionVersion) { scheduleRefresh(); return; }
+        // Schedule fallback for the current stop can arrive after the live rows.
+        await Promise.all(priority.map(s => ensureStopSchedule(s.StopID)))
+            .catch(() => {});
+        if (v !== selectionVersion) { scheduleRefresh(); return; }
+        paint();
+
+        // 2) Then work through nearby stops in distance order.
+        const nearbyIds = new Set(nearby.map(s => String(s.StopID)));
+        const ordered = [...target.values()].filter(s =>
+            !priorityIds.has(String(s.StopID)));
+        ordered.sort((a, b) => {
+            const ai = nearbyIds.has(String(a.StopID)) ? nearby.indexOf(a) : 1e9;
+            const bi = nearbyIds.has(String(b.StopID)) ? nearby.indexOf(b) : 1e9;
+            return (ai < 0 ? 1e9 : ai) - (bi < 0 ? 1e9 : bi);
+        });
+        for (const stop of ordered) {
+            if (v !== selectionVersion) { scheduleRefresh(); return; }
+            await fetchOne(stop);
+            await ensureStopSchedule(stop.StopID).catch(() => {});
+            if (v !== selectionVersion) { scheduleRefresh(); return; }
+            lastRefreshAt = Date.now();
+            paint();
+        }
+
         rateLimited = saw429;          // → next refresh is delayed (self-throttling)
         lastRefreshAt = Date.now();
-        // Plan §4: a stale result must not land after a new selection —
-        // the new selection's own refresh wins; this one only re-arms the cycle.
-        if (v !== selectionVersion) {
-            scheduleRefresh();
-            return;
-        }
         if (mode !== "bus") { scheduleRefresh(); return; }
-        // Keep the board moving on every tick.
-        renderLines();
+        // Cross-mode nearby stops load after the same-mode current/nearby set.
+        if (anchor) ensureCrossMetroNearby(anchor).catch(() => {});
         scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
         tickClock();                   // reflect this update + the new countdown at once
         gStatus.textContent = rateLimited
@@ -4928,6 +5114,12 @@ gLinesScroll.addEventListener("click", e => {
         syncFavStars();
         return;
     }
+    const cross = e.target.closest ? e.target.closest("[data-cross]") : null;
+    if (cross) {
+        e.preventDefault();
+        gotoFavorite(cross.dataset.cross, cross.dataset.stop, cross.dataset.name);
+        return;
+    }
     const item = e.target.closest ? e.target.closest(".bt-stop-item") : null;
     if (item && item.dataset && item.dataset.stop) {
         if (mode === "metro") setMetroAnchor(item.dataset.stop);
@@ -5269,22 +5461,35 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
             + `</div></div>`);
         off += sliceLen;
     }
-    // Interleave: each nearby stop's rows directly under its own bar.
+    // Interleave: each nearby stop's rows directly under its own card, then
+    // cross-mode stations/stops, all ordered by distance.
+    const anchorBus = anchorStop();
     let nearbyHtml = "";
     off = 0;
+    const sections = [];
     for (let i = 0; i < nearbyRecs.length; i++) {
         const sliceLen = nearbyRowCounts[i];
-        if (nearbyParts[i]) nearbyHtml += nearbyParts[i];
+        let html = nearbyParts[i] || "";
         if (sliceLen) {
             // Final guard: sort this stop's slice immediately before painting,
             // so scheduled fallbacks and predictions always share one order.
             const slice = nearbyRows.slice(off, off + sliceLen);
             sortRowsBySoonest(slice, String(nearbyRecs[i].StopID), nowMs);
             const body = boardHtml({ ...geo, rows: geo.rows.slice(mainRows.length + off) }, slice);
-            nearbyHtml += `<div class="nearby-board">${body}</div>`;
+            html += `<div class="nearby-board">${body}</div>`;
         }
+        sections.push({
+            dist: nearbyRecs[i].distFt == null ? Infinity : nearbyRecs[i].distFt,
+            html
+        });
         off += sliceLen;
     }
+    const crossKey = crossNearbyKeyFor("bus", anchorBus);
+    if (crossKey && crossKey === crossNearbyKey) {
+        for (const cs of crossMetroNearby) sections.push(crossMetroSectionHtml(cs));
+    }
+    sections.sort((a, b) => a.dist - b.dist);
+    nearbyHtml = sections.map(s => s.html).join("");
     const mainHtml = mainRows.length
         ? `<div class="main-board">${boardHtml(geo, mainRows)}</div>`
         : "";
