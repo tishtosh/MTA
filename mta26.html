@@ -68,6 +68,7 @@
             font: 700 13px/1.4 system-ui, -apple-system, sans-serif;
         }
         .fav-header:hover { background: #f1f3f5; }
+        .fav-header[hidden] { display: none; }
         .fav-header:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .fav-header .bt-chevron { font-size: 9px; transition: transform .15s ease; }
         .fav-header[aria-expanded="true"] .bt-chevron { transform: rotate(180deg); }
@@ -111,6 +112,22 @@
         .fav-star:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .fav-empty { padding: 4px; color: #6c757d; font-size: 12px; }
         .fav-dist { flex: none; color: #6c757d; font-size: 11px; white-space: nowrap; }
+        .fav-setting {
+            display: flex; align-items: center; gap: 8px; width: 100%;
+            padding: 7px 8px; border: 1px solid #e9ecef; border-radius: 6px;
+            background: #fff; color: #343a40; cursor: pointer; text-align: left;
+            font: 13px/1.4 system-ui, -apple-system, sans-serif;
+        }
+        .fav-setting:hover { background: #f8f9fa; }
+        .fav-setting:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .fav-setting i { color: #2e7d32; }
+        .fav-setting[aria-pressed="false"] i { color: #adb5bd; }
+        .fav-setting-name { flex: 1; }
+        .fav-setting-state {
+            font-size: 11px; font-weight: 700; letter-spacing: .05em;
+            text-transform: uppercase; color: #adb5bd;
+        }
+        .fav-setting[aria-pressed="true"] .fav-setting-state { color: #2e7d32; }
 
         /* clock block: current time over "at … ·refresh in Ns", with
            the auto-refresh toggle beside it. */
@@ -493,10 +510,6 @@
                     <i class="fa-solid fa-star fa-xl-mta"></i>
                     <i class="fa-regular fa-bookmark nav-bookmark" aria-hidden="true"></i>
                 </button>
-                <button id="btnRefreshToggle" class="navicon clock-refresh nav-refresh" type="button"
-                        title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
-                    <i class="fa-solid fa-arrows-rotate"></i>
-                </button>
                 <div class="d-flex flex-column" style="line-height:1.15; text-align:right">
                     <span class="navbar-text" id="clock" style="font-size: 30px; font-family: 'Orbitron', sans-serif"></span>
                     <span id="clockMeta" class="clock-meta"></span>
@@ -507,6 +520,13 @@
 </div>
 
 <div id="favPanel" class="fav-panel" hidden>
+    <button type="button" class="fav-header" id="favSlotHeader" data-fav-panel="slot" aria-expanded="false" hidden>
+        <span id="favSlotTitle">Home</span>
+        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+    </button>
+    <div id="favSlotBody" class="fav-body" hidden>
+        <div id="favSlotList" class="fav-list"></div>
+    </div>
     <button type="button" class="fav-header" data-fav-panel="favorites" aria-expanded="false">
         <span>Favorites</span>
         <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
@@ -536,6 +556,18 @@
     </button>
     <div id="favMetroBody" class="fav-body" hidden>
         <div id="favMetroLines" class="fav-list"></div>
+    </div>
+    <button type="button" class="fav-header" data-fav-panel="settings" aria-expanded="false">
+        <span>Settings</span>
+        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+    </button>
+    <div id="favSettingsBody" class="fav-body" hidden>
+        <button id="btnRefreshToggle" class="fav-setting" type="button"
+                title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
+            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+            <span class="fav-setting-name">Auto-refresh</span>
+            <span id="refreshState" class="fav-setting-state">on</span>
+        </button>
     </div>
 </div>
 
@@ -688,6 +720,7 @@ let nextRefreshAt = 0;        // when the armed timer fires (for the countdown)
 let rateLimited = false;      // WMATA returned 429 → slow the refresh down
 let busy = false;             // re-entrancy guard for runFlow()
 let lastRefreshAt = 0;
+const PAGE_LOADED_AT = Date.now();
 // stop directory
 // The full jStops dump (812 KB, ~7.5k stops) is fetched once per page load
 // and feeds the shared entry field's autocomplete plus the route picture.
@@ -750,19 +783,23 @@ function shortcutCookieName() {
     return "mta_shortcuts_" + mode;
 }
 
-function readShortcutCookie() {
+function readShortcutsFor(kind) {
     try {
-        const name = shortcutCookieName();
+        const name = "mta_shortcuts_" + kind;
         let hit = String(document.cookie || "").split("; ")
             .find(p => p.startsWith(name + "="));
         // Legacy bus cookie from before per-mode bookmarks.
-        if (!hit && mode === "bus")
+        if (!hit && kind === "bus")
             hit = String(document.cookie || "").split("; ")
                 .find(p => p.startsWith("mta_shortcuts="));
         if (!hit) return {};
         const at = hit.indexOf("=");
         return JSON.parse(decodeURIComponent(hit.slice(at + 1))) || {};
     } catch (e) { return {}; }
+}
+
+function readShortcutCookie() {
+    return readShortcutsFor(mode);
 }
 
 function writeShortcutCookie() {
@@ -850,10 +887,16 @@ const gBusBtn = document.getElementById("btnBus");
 const gMetroBtn = document.getElementById("btnMetro");
 const gAddFavBtn = document.getElementById("btnAddFav");
 const gFavPanel = document.getElementById("favPanel");
+const gFavSlotHeader = document.getElementById("favSlotHeader");
+const gFavSlotTitle = document.getElementById("favSlotTitle");
+const gFavSlotBody = document.getElementById("favSlotBody");
+const gFavSlotList = document.getElementById("favSlotList");
 const gFavFavBody = document.getElementById("favFavBody");
 const gFavFavList = document.getElementById("favFavList");
 const gFavNearBody = document.getElementById("favNearBody");
 const gFavNearList = document.getElementById("favNearList");
+const gFavSettingsBody = document.getElementById("favSettingsBody");
+const gRefreshState = document.getElementById("refreshState");
 const gFavBusBody = document.getElementById("favBusBody");
 const gFavBusFilter = document.getElementById("favBusFilter");
 const gFavBusRoutes = document.getElementById("favBusRoutes");
@@ -2852,7 +2895,64 @@ function renderFavorites() {
     ).join("") : `<div class="fav-empty">no favorites yet — tap a star to save one</div>`;
 }
 
-// "Near me": bus stops and Metro stations within 1,000 ft of the device's
+// ── Home / Work bookmarks (one bus stop + one Metro station each) ─────
+let favSlotKind = "home";
+
+function shortcutRoute(kind, id) {
+    if (kind === "metro") {
+        const st = (metroStationsCache || []).find(s => String(s.Code) === String(id));
+        return st ? (st.Lines || [])[0] || "" : "";
+    }
+    const st = (allStopsCache || []).find(s => String(s.StopID) === String(id));
+    return st ? (st.Routes || [])[0] || "" : "";
+}
+
+function renderShortcutSlot(slot) {
+    if (!gFavSlotList) return;
+    favSlotKind = slot;
+    const label = shortcutLabel(slot);
+    if (gFavSlotTitle) gFavSlotTitle.textContent = label;
+    const rows = [];
+    for (const kind of ["bus", "metro"]) {
+        const saved = readShortcutsFor(kind)[slot];
+        if (!saved || !saved.id) continue;
+        const id = String(saved.id);
+        rows.push({ kind, id, name: saved.name || "", route: shortcutRoute(kind, id) });
+    }
+    gFavSlotList.innerHTML = rows.length ? rows.map(r =>
+        `<div class="fav-stop">${favBadgeHtml(r.kind, r.route)}`
+        + `${favGotoHtml(r.kind, r.id, r.name, stopName(r.name) || "#" + r.id)}`
+        + `${favStarHtml(r.kind, r.id, r.name, r.route)}</div>`
+    ).join("") : `<div class="fav-empty">no ${label.toLowerCase()} bookmark saved for a bus stop or Metro station</div>`;
+}
+
+// Home/Work open the panel focused on that slot's bus + Metro bookmarks.
+function openShortcutSlot(slot) {
+    if (!gFavPanel) return;
+    gFavPanel.hidden = false;
+    if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "true");
+    if (gFavSlotHeader) gFavSlotHeader.hidden = false;
+    renderShortcutSlot(slot);
+    gFavPanel.querySelectorAll(".fav-body").forEach(b => {
+        if (b !== gFavSlotBody) b.hidden = true;
+    });
+    gFavPanel.querySelectorAll(".fav-header").forEach(h => {
+        if (h !== gFavSlotHeader) h.setAttribute("aria-expanded", "false");
+    });
+    if (gFavSlotBody) gFavSlotBody.hidden = false;
+    if (gFavSlotHeader) gFavSlotHeader.setAttribute("aria-expanded", "true");
+}
+
+function syncFavStars() {
+    if (!gFavPanel) return;
+    gFavPanel.querySelectorAll(".fav-star").forEach(star => {
+        const on = isFavorite(star.dataset.favKind, star.dataset.favId);
+        star.classList.toggle("active", on);
+        star.setAttribute("aria-pressed", on ? "true" : "false");
+        star.title = on ? "Remove favorite" : "Add favorite";
+        star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
+    });
+}
 // current position, nearest first.
 const NEAR_ME_FT = 1000;
 const NEAR_ME_M = 305;           // WMATA jStops radius is meters
@@ -2941,7 +3041,13 @@ async function populateFavStops(container, kind, key) {
 }
 
 function closeFavPanel() {
-    if (gFavPanel) gFavPanel.hidden = true;
+    if (gFavPanel) {
+        gFavPanel.hidden = true;
+        gFavPanel.querySelectorAll(".fav-body, .fav-stops").forEach(b => { b.hidden = true; });
+        gFavPanel.querySelectorAll(".fav-header, .fav-route").forEach(h =>
+            h.setAttribute("aria-expanded", "false"));
+        if (gFavSlotHeader) gFavSlotHeader.hidden = true;
+    }
     if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "false");
 }
 
@@ -2952,6 +3058,8 @@ function openFavoritesPanel() {
     if (!gFavPanel) return;
     gFavPanel.hidden = false;
     if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "true");
+    if (gFavSlotHeader) gFavSlotHeader.hidden = true;
+    if (gFavSlotBody) gFavSlotBody.hidden = true;
     renderFavorites();
     if (gFavFavBody) gFavFavBody.hidden = false;
     const header = gFavPanel.querySelector('.fav-header[data-fav-panel="favorites"]');
@@ -2974,9 +3082,9 @@ async function gotoFavorite(kind, id, name) {
 }
 
 if (gAddFavBtn) gAddFavBtn.addEventListener("click", () => {
-    const open = gFavPanel.hidden;
-    gFavPanel.hidden = !open;
-    gAddFavBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!gFavPanel.hidden) { closeFavPanel(); return; }
+    gFavPanel.hidden = false;
+    gAddFavBtn.setAttribute("aria-expanded", "true");
 });
 if (gFavBusFilter) gFavBusFilter.addEventListener("input", () => {
     renderFavBusRoutes(gFavBusFilter.value);
@@ -2996,6 +3104,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
         updateShortcutNav();
         if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+        syncFavStars();
         return;
     }
     const go = e.target.closest ? e.target.closest(".fav-goto") : null;
@@ -3024,14 +3133,18 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     const header = e.target.closest ? e.target.closest(".fav-header") : null;
     if (!header) return;
     const which = header.dataset.favPanel;
-    const body = which === "favorites" ? gFavFavBody
+    const body = which === "slot" ? gFavSlotBody
+        : which === "favorites" ? gFavFavBody
         : which === "near" ? gFavNearBody
-        : which === "bus" ? gFavBusBody : gFavMetroBody;
+        : which === "bus" ? gFavBusBody
+        : which === "metro" ? gFavMetroBody : gFavSettingsBody;
     const open = body.hidden;
     if (open) {
         try {
             if (which === "favorites") {
                 renderFavorites();
+            } else if (which === "slot") {
+                renderShortcutSlot(favSlotKind);
             } else if (which === "near") {
                 populateNearMe();
             } else if (which === "bus") {
@@ -3045,7 +3158,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
                             renderFavBusRoutes(gFavBusFilter ? gFavBusFilter.value : "");
                     })
                     .catch(() => {});
-            } else {
+            } else if (which === "metro") {
                 await loadMetroStations();
                 renderFavMetroLines();
             }
@@ -3071,7 +3184,7 @@ for (const slot of SHORTCUT_SLOTS) {
     if (!btn) continue;
     btn.addEventListener("click", () => {
         if (slot === "fav") openFavoritesPanel();
-        else goShortcut(slot);
+        else openShortcutSlot(slot);
     });
 }
 
@@ -3118,6 +3231,8 @@ gBoardHeader.addEventListener("click", e => {
         b.setAttribute("aria-label", b.title);
     });
     updateShortcutNav();
+    if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+    syncFavStars();
 });
 updateShortcutNav();
 updateModeIcons();
@@ -3882,18 +3997,22 @@ function fmtClockTime(ms) {
 }
 
 function tickClock() {
-    gClock.textContent = fmtClockTime(Date.now());
-    const bits = [lastRefreshAt ? `at ${fmtClockTime(lastRefreshAt)}` : "at —"];
-    if (!refreshEnabled) bits.push("auto-refresh off");
+    // The clock is a freshness stamp: it shows when the page last refreshed
+    // its data (or when the page loaded, before any stop is chosen).
+    gClock.textContent = fmtClockTime(lastRefreshAt || PAGE_LOADED_AT);
+    let meta = "";
+    if (refreshInFlight) meta = "refreshing…";
+    else if (!refreshEnabled) meta = "auto-refresh off";
     else if (nextRefreshAt)
-        bits.push(`refresh in ${Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000))}s`);
-    else if (refreshInFlight) bits.push("refreshing…");
-    gClockMeta.textContent = bits.join(" ·");
+        meta = `refresh in ${Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000))}s`;
+    else if (!lastRefreshAt) meta = "waiting for a stop";
+    gClockMeta.textContent = meta;
 }
 
 function setRefreshEnabled(on) {
     refreshEnabled = on;
     gRefreshToggle.setAttribute("aria-pressed", on ? "true" : "false");
+    if (gRefreshState) gRefreshState.textContent = on ? "on" : "off";
     const label = on ? "Pause timed refresh" : "Resume timed refresh";
     gRefreshToggle.title = label;
     gRefreshToggle.setAttribute("aria-label", label);
