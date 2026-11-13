@@ -172,7 +172,7 @@ const board = () => els.linesScroll.innerHTML;
   } else if (ANCHOR === "1002130") {
     check("130: next bus D72 @14 min", h.includes('aria-label="Next bus"') && h.includes("D72") && h.includes("14 min"));
     check("130: D72 compact row hides the route-details note", !b.includes("route details unavailable"));
-    check("130: D72 compact keeps its live headsign", b.includes("North to Van Ness"));
+    check("130: hero keeps its live headsign", h.includes("North to Van Ness"));
     check("130: C87 service row toward TENLEYTOWN", /C87[\s\S]{0,120}TENLEYTOWN/.test(b));
     check("130: compact row before service row", b.indexOf("North to Van Ness") < b.indexOf("TENLEYTOWN"));
     check("130: no track graphic on the compact row", !b.includes("board-tracksvg"));
@@ -190,7 +190,9 @@ const board = () => els.linesScroll.innerHTML;
     check("135: no service rows in the primary section", !mainOnly.includes("TENLEYTOWN"));
     check("135: nearby stop gets its own heading bar",
       nearIdx > -1 && b.slice(nearIdx, nearIdx + 400).includes("#1002130"));
-    check("135: three ETAs on the compact row (2 · 17 · 39)", h.includes("2 min") && b.includes("then 17 min, 39 min"));
+    check("135: hero service not repeated in the primary rows",
+      h.includes("D72") && h.includes("2 min") &&
+      !/row-badge[^>]*>D72[^]*?2 min/.test(mainOnly));
   }
 
   if (MULTI) {

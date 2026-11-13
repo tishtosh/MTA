@@ -2603,9 +2603,15 @@ async function fetchMetroLive(codes) {
     return by;
 }
 
-function metroRowsFor(station) {
+function metroRowsFor(station, skipFirst) {
     const now = Date.now();
-    const live = metroLive[station.Code] || [];
+    let live = metroLive[station.Code] || [];
+    if (skipFirst && live.length) {
+        const next = live.reduce((best, t) =>
+            !best || t.min < best.min ? t : best, null);
+        const key = t => t.route + "|" + (t.dirNum || "") + "|" + t.heads;
+        live = live.filter(t => key(t) !== key(next));
+    }
     const rows = [];
     const groups = new Map();
     for (const t of live) {
@@ -2733,7 +2739,7 @@ function renderMetro() {
             + boardRowHead(r, metroLineColor(r.route), null, key, r.scheduled)
             + list + `</div>`;
     }).join("");
-    const mainRows = metroRowsFor(station);
+    const mainRows = metroRowsFor(station, true);
     const mainHtml = mainRows.length
         ? `<div class="main-board"><div class="board">${rowsHtml(mainRows)}</div></div>`
         : "";
@@ -4540,7 +4546,19 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
             return r;
         })
         .sort((a, b) => a.departedAt - b.departedAt);
-    const liveRows = buildBoardRows(anchorId, arrivals, routeDetails, posRows);
+    // The hero card already shows the first arriving service (route,
+    // direction, destination) and its next times. Do not repeat that service
+    // in the route/departure rows below.
+    const serviceKey = p => p.route + "|" +
+        ((p.dirNum == null || p.dirNum === "") ? "?" : String(p.dirNum)) + "|" +
+        (p.heads || "");
+    const heroNext = (arrivals || []).reduce((best, p) =>
+        p && (!best || p.min < best.min) ? p : best, null);
+    const heroKey = heroNext ? serviceKey(heroNext) : null;
+    const rowPreds = heroKey
+        ? (arrivals || []).filter(p => serviceKey(p) !== heroKey)
+        : (arrivals || []);
+    const liveRows = buildBoardRows(anchorId, rowPreds, routeDetails, posRows);
     sortRowsBySoonest(liveRows, anchorId, nowMs);
     const mainRows = [...departedRows, ...liveRows];
     // Merge the across-the-street counterpart into the nearby list (first)
