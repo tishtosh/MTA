@@ -14,38 +14,49 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 
 ## What it does
 
-- On load it finds the bus stops near a location and lists their next arrivals, refreshing
-  automatically (default every 30 s).
-- Three buttons in the top bar:
-  - **🚌 (bus)** — reload the page.
-  - **🏠 (house)** — show stops near the *home* location (the 20010 corner, or whatever
-    `?lat`/`?lon` you passed).
-  - **📍 (location)** — use your browser's **geolocation** to find the stops nearest *you*.
-- Distances are shown from the point actually searched, so the geolocation view is honest.
-- A **stop lookup field** above the tabs (autocomplete over the full ~7,500-stop DC
-  directory) lets you jump to any stop; the **✕** next to it returns to the nearby list.
-  It drives **both** tabs at once.
-- Two tabs:
-  - **Arrivals** — the predictions table. With a stop picked, it tracks *just that stop*.
-  - **Lines** — one banded "track" per route through the picked stop, with live 🚌 icons
-    and hover cards. Details under [Lines tab](#lines-tab).
+- On load it shows the **Favorites** view: each saved stop/station is a **bookmark card**
+  in the main panel (the default favorite is N10 — Washington Dulles International
+  Airport). Selecting Favorites, Home, or Work always shows that view; the icons are not
+  toggles.
+- The top bar holds **Search**, **Favorites**, **Home**, and **Work**, with the clock at
+  the right showing the last data-refresh time. All four icons are always enabled.
+- **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Subway**, and
+  **Settings** (auto-refresh toggle and “Delete all favorites”).
+- **Near me** lists bus stops and Metro stations within 1,000 ft of the current location.
+  The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
+  each matching route to only the matching stops.
+- A selected stop opens its **hero card** plus **route/departure rows**; other stops
+  within walking distance appear below as **nearby stop cards** with their own rows.
+- Live arrivals refresh automatically (default every 30 s), with a manual auto-refresh
+  pause/resume in Settings.
 - If one stop's prediction request fails (e.g. a stop that no longer exists), the page
   still renders the others and shows a muted "predictions unavailable" row instead of
   going blank.
+
+## UI terminology
+
+| Term | What it means in this app |
+|------|---------------------------|
+| **Hero card** | The primary card for the selected stop/station: name, ID, and next bus/train with the colored top strip. Class `.hero-card`. |
+| **Nearby stop cards** | Cards for other stops within walking distance, below the hero card. They reuse the hero header line and top strip on a lighter tint of the same mode color, with their own departure rows underneath. Class `.nearby-stop-card`. |
+| **Route/departure rows** | The repeated rows inside a stop card: line badge, destination/headsign, and ETAs. Class `.board-row`. |
+| **Bookmark cards** | The cards shown in the Favorites / Home / Work views (saved locations). Class `.bookmark-card`. |
+| **Bookmark list view** | The main-panel view that replaces the board when Favorites, Home, or Work is selected. |
+
 
 ## URL parameters
 
 | Param | Meaning | Default |
 |-------|---------|---------|
 | `busstop` | Comma-separated explicit stop IDs. **When set, `lat`/`lon`/`radius` are ignored.** | — |
-| `lat`, `lon` | Search for stops near this GPS point (both required to take effect). | the 20010 corner |
+| `lat`, `lon` | Search for stops near this GPS point (both required to take effect). | — |
 | `radius` | Nearby-search radius, meters. | `300` |
 | `refresh` | Prediction refresh interval, seconds (clamped to 15–600). | `30` |
 
 Examples:
 
 ```
-/mta26.html                                          # stops near the 20010 corner
+/mta26.html                                          # Favorites view (no stop fetched)
 /mta26.html?busstop=1002135,1002130                  # just these two stops
 /mta26.html?lat=38.934&lon=-77.045&radius=500        # stops within 500 m of a point
 /mta26.html?refresh=45                               # refresh every 45 s (default: 30)
@@ -61,32 +72,13 @@ The current 20010 corner stops (useful for building `?busstop=` links):
 
 ---
 
-## Lines tab
+## Data loading
 
-The **Lines** tab draws one row per route that serves the picked stop. There's no map:
-WMATA publishes no line geometry, so each row is a *synthetic* track, not a drawn route:
-
-- Each stop on the route is placed on a horizontal axis of **travel time from the picked
-  stop**: five equal-width bands (0–5, 5–15, 15–30, 30–60, 60–120 min) on each side of
-  the picked stop, which sits at the same fixed center in every row, so the rows line up
-  vertically. Stops whose cumulative travel time passes 120 min are clipped.
-- Travel time is **haversine distance ÷ 8 mph**, accumulated segment by segment along
-  the chain. 8 mph is a field calibration (median of 83 live vehicle samples was
-  7.5 mph, per route 6.9–7.6), so the positions are estimates, not survey-grade.
-- The chain is the route's stops ordered by a 150-ft collapse (busbays) plus a two-sided
-  nearest-neighbor walk from the picked stop. It's approximate in shape and self-heals
-  if WMATA renumbers stops again (see [Maintenance](#maintenance)).
-- A **🚌** marks each live prediction — one per unique `VehicleID`, positioned by its
-  predicted minutes from the picked stop, on the arm opposite its stated destination.
-  WMATA has no live vehicle-locations feed, so this is derived from the same 30 s
-  per-stop `jPredictions` polls that feed the Arrivals tab; the icons move as the
-  predictions move.
-- **Hover any stop dot** for a floating card with that stop's name, routes, and live
-  arrivals. The card's arrivals are fetched on first hover and cached for the page
-  load, so re-hovering is free.
-- The full ~800 KB `jStops` dump that powers the lookup field's autocomplete (and the
-  route→stop list) is fetched **lazily — only when you first type in the lookup field** —
-  never on page load, and fetched once per load.
+- The ~800 KB `jStops` directory is fetched lazily — when the Bus filter, a stop
+  lookup, or **Near me** needs it — never on initial load, and once per page load.
+- Live arrivals are fetched per visible stop/station and refreshed on the configured
+  cycle (default 30 s).
+- Favorite and bookmark cards fetch their own next arrival when the view opens.
 
 ---
 
@@ -146,9 +138,8 @@ politely on its own:
   (150 s at the 30 s default) and the status line shows "API rate limit hit, slowing
   refresh".
 - Keep `?refresh` reasonable. Don't run a 15 s interval against many stops with a shared
-  key. The Lines tab adds a little on top: each *first* hover on a stop dot costs one
-  `jPredictions` fetch (cached for the page load after), so working down a long line is
-  a one-time cost per stop, not a per-tick one.
+  key. Each visible stop/station (including nearby cards and bookmark cards) costs one
+  prediction request per cycle.
 
 ### If you'd rather the key never be public
 

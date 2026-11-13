@@ -133,29 +133,29 @@
         .fav-setting-danger:hover { background: #fff5f5; }
 
         /* Main-panel bookmark list (Home / Work / Favorites) */
-        .bm-view {
+        .bookmark-view {
             margin: 8px 0 18px; padding: 12px 14px;
             background: #fff; border: 1px solid #dee2e6; border-radius: 10px;
         }
-        .bm-view[hidden] { display: none; }
-        .bm-title { margin: 0 0 8px; font: 700 18px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
-        .bm-list { gap: 8px; }
-        .board-stophead.bm-card {
+        .bookmark-view[hidden] { display: none; }
+        .bookmark-title { margin: 0 0 8px; font: 700 18px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
+        .bookmark-list { gap: 8px; }
+        .hero-card.bookmark-card {
             margin: 0; padding: 10px 44px 12px 16px; border-radius: 10px;
             cursor: pointer;
         }
-        .board-stophead.bm-card.hero-bus:hover { background: #cbcbcb; }
-        .board-stophead.bm-card.hero-metro:hover { background: #e4d7c1; }
-        .bm-card:focus-visible { outline: 2px solid #2e7d32; outline-offset: 1px; }
-        .bm-card .board-shortcuts { top: 8px; right: 10px; }
-        .bm-card .fav-star {
+        .hero-card.bookmark-card.hero-bus:hover { background: #cbcbcb; }
+        .hero-card.bookmark-card.hero-metro:hover { background: #e4d7c1; }
+        .bookmark-card:focus-visible { outline: 2px solid #2e7d32; outline-offset: 1px; }
+        .bookmark-card .board-shortcuts { top: 8px; right: 10px; }
+        .bookmark-card .fav-star {
             padding: 4px 5px; border-radius: 4px; font-size: 14px;
             color: #8a6f69; background: none;
         }
-        .bm-card .fav-star:hover { color: #2c1a16; background: rgba(0,0,0,.06); }
-        .bm-card .fav-star.active { color: #2e7d32; }
-        .bm-card.hero-bus .fav-star { color: #6b6b6b; }
-        .bm-card.hero-bus .fav-star:hover { color: #111; background: rgba(0,0,0,.08); }
+        .bookmark-card .fav-star:hover { color: #2c1a16; background: rgba(0,0,0,.06); }
+        .bookmark-card .fav-star.active { color: #2e7d32; }
+        .bookmark-card.hero-bus .fav-star { color: #6b6b6b; }
+        .bookmark-card.hero-bus .fav-star:hover { color: #111; background: rgba(0,0,0,.08); }
 
         /* clock block: current time over "at … ·refresh in Ns", with
            the auto-refresh toggle beside it. */
@@ -309,25 +309,25 @@
             border-top: 1px solid #dee2e6;
         }
 
-        /* Section headings (nearby): slightly lighter than the boarding-stop
-           hero, with square bottom corners so each stop's arrivals group sits
-           flush underneath. Clickable: selecting that stop slides its section
-           to the top of the board. */
-        .curb-head {
+        /* Nearby stop cards: the hero card's header-line format on a lighter
+           tint of the hero color, with the stop's departure rows below. */
+        .nearby-stop-card {
+            position: relative; overflow: hidden;
             margin: 14px 2px 0; padding: 10px 16px; border-radius: 10px 10px 0 0;
-            background: #4a5766; border: 1px solid #414d5c; cursor: pointer;
+            border: 1px solid #dee2e6; border-bottom: 0; cursor: pointer;
         }
-        .curb-head:hover { background: #556374; }
-        .curb-head:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
-        /* Each stop's own heading is a single line: a left-aligned title/sub
-           block and a right-aligned ETA summary, so the bar reads
-           "stop name … Across the street · #id — and xx min / yy min". */
-        .curb-head-stop { display: flex; align-items: center; gap: 16px; }
-        .curb-main { flex: 1 1 auto; min-width: 0; }
-        .curb-title {
-            font: 600 15px/1.3 system-ui, -apple-system, sans-serif; color: #fff;
+        .nearby-stop-card.nearby-bus { background: #ececec; color: #2f2f2f; }
+        .nearby-stop-card.nearby-metro { background: #f5efe4; color: #46301a; }
+        .nearby-stop-card.nearby-bus:hover { background: #e3e3e3; }
+        .nearby-stop-card.nearby-metro:hover { background: #efe7d8; }
+        .nearby-stop-card:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .nearby-card-head { display: flex; align-items: center; gap: 16px; }
+        .nearby-card-main { flex: 1 1 auto; min-width: 0; }
+        .nearby-card-title {
+            font: 600 15px/1.3 system-ui, -apple-system, sans-serif; color: inherit;
         }
-        .curb-sub { margin: 1px 0 0; font-size: 12px; color: #cfd8e3; }
+        .nearby-card-sub { margin: 1px 0 0; font-size: 12px; color: #5f5f5f; }
+        .nearby-stop-card.nearby-metro .nearby-card-sub { color: #7a6a55; }
 
         .board-head {
             display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
@@ -414,15 +414,15 @@
 
         /* the stop header: a dark hero card — name, next bus. Its bottom
            corners are square so it merges with the main-board group below. */
-        .board-stophead {
+        .hero-card {
             position: relative;
             margin: 8px 2px 0; padding: 10px 92px 34px 16px;
             background: #182338; color: #fff;
             border-radius: 10px 10px 0 0;
         }
         /* Hero tint by mode: bus = medium-light grey, Metro = light brown. */
-        .board-stophead.hero-bus { background: #d8d8d8; color: #2f2f2f; }
-        .board-stophead.hero-metro { background: #ece1cd; color: #46301a; }
+        .hero-card.hero-bus { background: #d8d8d8; color: #2f2f2f; }
+        .hero-card.hero-metro { background: #ece1cd; color: #46301a; }
         .hero-line-band {
             position: absolute; top: 0; left: 0; right: 0; height: 7px;
             border-radius: 10px 10px 0 0; pointer-events: none;
@@ -436,38 +436,38 @@
             left: 66.666%; background: #9e9e9e;
             clip-path: polygon(7px 0, 100% 0, 100% 100%, 0 100%);
         }
-        .board-stophead.hero-bus .board-stopid,
-        .board-stophead.hero-metro .board-stopid { color: #85706a; }
-        .board-stophead.hero-bus .bt-next-eta,
-        .board-stophead.hero-metro .bt-next-eta { color: #2e7d32; }
-        .board-stophead.hero-bus .bt-next-rest,
-        .board-stophead.hero-metro .bt-next-rest { color: #7d6f65; }
-        .board-stophead.hero-bus .board-next,
-        .board-stophead.hero-metro .board-next { color: #4a342f; }
-        .board-stophead.hero-bus .board-shortcut,
-        .board-stophead.hero-metro .board-shortcut { color: #8a6f69; }
-        .board-stophead.hero-bus .board-shortcut:hover,
-        .board-stophead.hero-metro .board-shortcut:hover {
+        .hero-card.hero-bus .board-stopid,
+        .hero-card.hero-metro .board-stopid { color: #85706a; }
+        .hero-card.hero-bus .bt-next-eta,
+        .hero-card.hero-metro .bt-next-eta { color: #2e7d32; }
+        .hero-card.hero-bus .bt-next-rest,
+        .hero-card.hero-metro .bt-next-rest { color: #7d6f65; }
+        .hero-card.hero-bus .board-next,
+        .hero-card.hero-metro .board-next { color: #4a342f; }
+        .hero-card.hero-bus .board-shortcut,
+        .hero-card.hero-metro .board-shortcut { color: #8a6f69; }
+        .hero-card.hero-bus .board-shortcut:hover,
+        .hero-card.hero-metro .board-shortcut:hover {
             color: #2c1a16; background: rgba(0,0,0,.06);
         }
-        .board-stophead.hero-bus .board-shortcut.active,
-        .board-stophead.hero-metro .board-shortcut.active { color: #2e7d32; }
-        .board-stophead.hero-bus .board-share,
-        .board-stophead.hero-metro .board-share {
+        .hero-card.hero-bus .board-shortcut.active,
+        .hero-card.hero-metro .board-shortcut.active { color: #2e7d32; }
+        .hero-card.hero-bus .board-share,
+        .hero-card.hero-metro .board-share {
             background: rgba(0,0,0,.06); color: #5a3d38;
         }
-        .board-stophead.hero-bus .board-share:hover,
-        .board-stophead.hero-metro .board-share:hover {
+        .hero-card.hero-bus .board-share:hover,
+        .hero-card.hero-metro .board-share:hover {
             background: rgba(0,0,0,.12); color: #2c1a16;
         }
         /* Neutral ink for the grey bus hero. */
-        .board-stophead.hero-bus .board-stopid { color: #6b6b6b; }
-        .board-stophead.hero-bus .board-next { color: #333; }
-        .board-stophead.hero-bus .bt-next-rest { color: #666; }
-        .board-stophead.hero-bus .board-shortcut { color: #6b6b6b; }
-        .board-stophead.hero-bus .board-shortcut:hover { color: #111; background: rgba(0,0,0,.08); }
-        .board-stophead.hero-bus .board-share { color: #444; }
-        .board-stophead.hero-bus .board-share:hover { color: #111; }
+        .hero-card.hero-bus .board-stopid { color: #6b6b6b; }
+        .hero-card.hero-bus .board-next { color: #333; }
+        .hero-card.hero-bus .bt-next-rest { color: #666; }
+        .hero-card.hero-bus .board-shortcut { color: #6b6b6b; }
+        .hero-card.hero-bus .board-shortcut:hover { color: #111; background: rgba(0,0,0,.08); }
+        .hero-card.hero-bus .board-share { color: #444; }
+        .hero-card.hero-bus .board-share:hover { color: #111; }
         .board-share {
             position: absolute; right: 10px; bottom: 8px;
             background: rgba(255,255,255,.12); border: 0; border-radius: 6px;
@@ -493,7 +493,7 @@
         .board-stopid { margin-left: 8px; font: 500 12px/1.4 system-ui, -apple-system, sans-serif; color: #9fb0c7; }
         .board-next { margin: 6px 0 0; font-size: 14px; color: #cfd8e3; }
         .hero-verb { display: inline-flex; align-items: center; margin-right: 3px; }
-        .hero-verb i { font-size: 13px; }
+        .hero-verb i { font-size: 18px; }
         .bt-next-eta { font-weight: 700; font-size: 20px; color: #8ce99a; font-variant-numeric: tabular-nums; }
         .bt-next-rest { font-size: 13px; color: #9fb0c7; font-variant-numeric: tabular-nums; }
 
@@ -652,9 +652,9 @@
     </div>
 
     <!-- Bookmark views (Home / Work / Favorites) replace the board area. -->
-    <div id="bmView" class="bm-view" hidden>
-        <h4 id="bmTitle" class="bm-title"></h4>
-        <div id="bmList" class="fav-list bm-list"></div>
+    <div id="bookmarkView" class="bookmark-view" hidden>
+        <h4 id="bookmarkTitle" class="bookmark-title"></h4>
+        <div id="bookmarkList" class="fav-list bookmark-list"></div>
     </div>
 
     <!-- v5: route picture first — the stop (name + ID) and its next bus
@@ -958,9 +958,9 @@ const gLinesNote = document.getElementById("linesNote");
 const gBoardHeader = document.getElementById("boardHeader");
 const gLinesScroll = document.getElementById("linesScroll");
 const gViewArrivals = document.getElementById("viewArrivals");
-const gBmView = document.getElementById("bmView");
-const gBmTitle = document.getElementById("bmTitle");
-const gBmList = document.getElementById("bmList");
+const gBookmarkView = document.getElementById("bookmarkView");
+const gBookmarkTitle = document.getElementById("bookmarkTitle");
+const gBookmarkList = document.getElementById("bookmarkList");
 const gHoverTip = document.getElementById("hovertip");
 const gAcWrap = document.getElementById("acWrap");
 const gMetroWrap = document.getElementById("metroWrap");
@@ -2337,7 +2337,7 @@ function renderMetro() {
             : null,
         Error: metroLiveError[station.Code] || null
     };
-    gBoardHeader.innerHTML = boardHeaderHtml(headSt, live);
+    gBoardHeader.innerHTML = heroCardHtml(headSt, live);
     const rowsHtml = (rows) => rows.map(r => {
         const key = rowKey(r);
         const open = expandedStops.has(key);
@@ -2362,10 +2362,11 @@ function renderMetro() {
         const dist = stn.distFt == null ? ""
             : (stn.distFt < 5280 ? `${Math.round(stn.distFt)} ft away`
                                  : `${(stn.distFt / 5280).toFixed(1)} mi away`);
-        nearbyHtml += `<div class="curb-head" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
-            + `<div class="curb-head-stop"><div class="curb-main">`
-            + `<div class="curb-title">${esc(stopName(stn.Name) || stn.Code)}</div>`
-            + `<div class="curb-sub">${esc([dist, "#" + stn.Code].filter(Boolean).join(" · "))}</div>`
+        nearbyHtml += `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
+            + `<span class="hero-line-band" style="background:${metroLineColor((stn.Lines || [])[0] || "")}"></span>`
+            + `<div class="nearby-card-head"><div class="nearby-card-main">`
+            + `<div class="nearby-card-title">${esc(stopName(stn.Name) || stn.Code)}</div>`
+            + `<div class="nearby-card-sub">${esc([dist, "#" + stn.Code].filter(Boolean).join(" · "))}</div>`
             + `</div></div></div>`;
         const rows = metroRowsFor(stn);
         if (rows.length)
@@ -3028,14 +3029,14 @@ function nextArrivalHtml(kind, next) {
 }
 
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
-function bmCardHtml(row) {
+function bookmarkCardHtml(row) {
     const label = stopName(row.name) || "#" + row.id;
     const band = row.kind === "metro"
         ? `<span class="hero-line-band" data-band="${esc(row.kind)}:${esc(row.id)}"`
           + ` style="background:${metroLineColor(row.route)}"></span>`
         : `<span class="hero-line-band bus-band"></span>`;
-    return `<div class="board-stophead bm-card hero-${esc(row.kind)}" data-bm-kind="${esc(row.kind)}"`
-        + ` data-bm-id="${esc(row.id)}" data-bm-name="${esc(row.name || "")}"`
+    return `<div class="hero-card bookmark-card hero-${esc(row.kind)}" data-bookmark-kind="${esc(row.kind)}"`
+        + ` data-bookmark-id="${esc(row.id)}" data-bookmark-name="${esc(row.name || "")}"`
         + ` role="button" tabindex="0" title="Go to ${esc(label)}">`
         + band
         + `<div class="board-shortcuts">`
@@ -3048,7 +3049,7 @@ function bmCardHtml(row) {
 }
 
 let bookmarkSlot = null;
-let bmToken = 0;
+let bookmarkToken = 0;
 
 async function fillBookmarkArrivals(rows, token) {
     await Promise.all(rows.map(async row => {
@@ -3068,12 +3069,12 @@ async function fillBookmarkArrivals(rows, token) {
         } catch (e) {
             html = `<span class="text-muted">arrivals unavailable</span>`;
         }
-        if (token !== bmToken || !gBmList) return;
-        const el = gBmList.querySelector(
+        if (token !== bookmarkToken || !gBookmarkList) return;
+        const el = gBookmarkList.querySelector(
             `.board-next[data-for="${row.kind}:${row.id}"]`);
         if (el) el.innerHTML = html;
         if (row.kind === "metro" && next) {
-            const band = gBmList.querySelector(
+            const band = gBookmarkList.querySelector(
                 `.hero-line-band[data-band="${row.kind}:${row.id}"]`);
             if (band) band.style.background = metroLineColor(next.route);
         }
@@ -3082,15 +3083,15 @@ async function fillBookmarkArrivals(rows, token) {
 
 function renderBookmarkList(slot) {
     bookmarkSlot = slot;
-    const token = ++bmToken;
+    const token = ++bookmarkToken;
     const label = slot === "fav" ? "Favorites" : shortcutLabel(slot);
-    if (gBmTitle) gBmTitle.textContent = label;
+    if (gBookmarkTitle) gBookmarkTitle.textContent = label;
     const rows = bookmarkRows(slot);
-    if (gBmList) {
-        gBmList.innerHTML = rows.length ? rows.map(bmCardHtml).join("")
+    if (gBookmarkList) {
+        gBookmarkList.innerHTML = rows.length ? rows.map(bookmarkCardHtml).join("")
             : `<div class="fav-empty">no ${slot === "fav" ? "favorites" : label.toLowerCase() + " bookmark"} saved yet</div>`;
     }
-    if (gBmView) gBmView.hidden = false;
+    if (gBookmarkView) gBookmarkView.hidden = false;
     if (gViewArrivals) gViewArrivals.hidden = true;
     scrollPageTop();
     if (rows.length) fillBookmarkArrivals(rows, token);
@@ -3098,8 +3099,8 @@ function renderBookmarkList(slot) {
 
 function showBoardView() {
     bookmarkSlot = null;
-    bmToken++;
-    if (gBmView) gBmView.hidden = true;
+    bookmarkToken++;
+    if (gBookmarkView) gBookmarkView.hidden = true;
     if (gViewArrivals) gViewArrivals.hidden = false;
 }
 
@@ -3111,7 +3112,7 @@ function showBookmarkList(slot) {
 }
 
 function syncFavStars() {
-    const scope = [gFavPanel, gBmList, gLinesScroll].filter(Boolean);
+    const scope = [gFavPanel, gBookmarkList, gLinesScroll].filter(Boolean);
     for (const root of scope) root.querySelectorAll(".fav-star").forEach(star => {
         const on = isFavorite(star.dataset.favKind, star.dataset.favId);
         star.classList.toggle("active", on);
@@ -3324,7 +3325,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     }
     header.setAttribute("aria-expanded", open ? "true" : "false");
 });
-if (gBmList) gBmList.addEventListener("click", async e => {
+if (gBookmarkList) gBookmarkList.addEventListener("click", async e => {
     const star = e.target.closest ? e.target.closest(".fav-star") : null;
     if (star) {
         e.preventDefault();
@@ -3336,16 +3337,16 @@ if (gBmList) gBmList.addEventListener("click", async e => {
         syncFavStars();
         return;
     }
-    const go = e.target.closest ? e.target.closest(".bm-card") : null;
-    if (go && go.dataset.bmId) {
+    const go = e.target.closest ? e.target.closest(".bookmark-card") : null;
+    if (go && go.dataset.bookmarkId) {
         e.preventDefault();
-        await gotoFavorite(go.dataset.bmKind, go.dataset.bmId, go.dataset.bmName);
+        await gotoFavorite(go.dataset.bookmarkKind, go.dataset.bookmarkId, go.dataset.bookmarkName);
     }
 });
-if (gBmList) gBmList.addEventListener("keydown", e => {
+if (gBookmarkList) gBookmarkList.addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
-    const card = e.target.closest ? e.target.closest(".bm-card") : null;
-    if (!card || !card.dataset.bmId) return;
+    const card = e.target.closest ? e.target.closest(".bookmark-card") : null;
+    if (!card || !card.dataset.bookmarkId) return;
     e.preventDefault();
     card.click();
 });
@@ -3711,9 +3712,9 @@ function centerBoard() {
     else gLinesScroll.scrollTo({ left: target, behavior: "smooth" });
 }
 
-// Clicking a secondary section heading selects that stop. The redraw puts
-// its section FIRST, and this smooths the vertical travel up to the top of
-// the arrivals view afterwards (the re-paint itself would jump).
+// Clicking a nearby stop card selects that stop. The redraw puts its section
+// FIRST, and this smooths the vertical travel up to the top of the arrivals
+// view afterwards (the re-paint itself would jump).
 function slideSectionToTop(headEl) {
     const view = document.getElementById("viewArrivals");
     if (!headEl || !headEl.getBoundingClientRect || !view || !view.scrollTo) return;
@@ -3737,7 +3738,7 @@ function scrollPageTop() {
 }
 
 // Re-anchor the board on `id`: update the pick, repaint, and refresh its
-// predictions. Shared by the nearby bars and the "View all stops" list.
+// predictions. Shared by nearby stop cards and the "View all stops" list.
 function selectStop(id, keepPicker) {
     id = String(id || "");
     if (!id) return false;
@@ -3755,8 +3756,8 @@ function selectStop(id, keepPicker) {
     return true;
 }
 
-// Delegated across every paint: a nearby bar selects the named stop (the
-// redraw puts it first, then the view glides up). A stop in the expanded
+// Delegated across every paint: a nearby stop card selects the named stop
+// (the redraw puts it first, then the view glides up). A stop in the expanded
 // "View all stops" list re-anchors the board on that stop and refreshes it.
 gLinesScroll.addEventListener("click", e => {
     const star = e.target.closest ? e.target.closest(".fav-star") : null;
@@ -3777,22 +3778,22 @@ gLinesScroll.addEventListener("click", e => {
         else selectStop(item.dataset.stop);
         return;
     }
-    const head = e.target.closest ? e.target.closest(".curb-head") : null;
+    const head = e.target.closest ? e.target.closest(".nearby-stop-card") : null;
     if (!head || !head.dataset) return;
     if (mode === "metro" && head.dataset.metro) {
         setMetroAnchor(head.dataset.stop);
         return;
     }
     if (mode !== "bus") return;
-    // Each nearby bar names its stop; the across counterpart is simply the
-    // first bar, with "Across the street" as its location description.
+    // Each nearby stop card names its stop; the across counterpart is simply
+    // the first card, with "Across the street" as its location description.
     if (selectStop(head.dataset.stop)) slideSectionToTop(head);
 });
 gLinesScroll.addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
     // The star is a real button: let its native activation toggle the favorite.
     if (e.target.closest && e.target.closest(".fav-star")) return;
-    const el = e.target.closest ? e.target.closest(".curb-head, .bt-stop-item") : null;
+    const el = e.target.closest ? e.target.closest(".nearby-stop-card, .bt-stop-item") : null;
     if (!el || !el.dataset || !el.dataset.stop) return;
     e.preventDefault();
     el.click();
@@ -3875,7 +3876,7 @@ function heroVerbHtml(metro) {
 // surface (the palette colors are dark enough for white text on them).
 // Successive buses on the same route + direction follow the first ETA
 // ("9 min then 13 min, 31 min").
-function boardHeaderHtml(st, arrivals) {
+function heroCardHtml(st, arrivals) {
     const id = String(st.StopID || "");
     const label = st.Name ? stopName(st.Name) : `#${id}`;
     const list = (arrivals || []).slice().sort((a, b) => a.min - b.min);
@@ -3918,7 +3919,7 @@ function boardHeaderHtml(st, arrivals) {
     const lineBand = st.Metro
         ? `<span class="hero-line-band" style="background:${metroLineColor(next ? next.route : ((st.Lines || [])[0] || ""))}"></span>`
         : `<span class="hero-line-band bus-band"></span>`;
-    return `<div class="board-stophead${st.Metro ? " hero-metro" : " hero-bus"}">`
+    return `<div class="hero-card${st.Metro ? " hero-metro" : " hero-bus"}">`
         + lineBand
         + shortcutButtonsHtml(id)
         + `<div><span class="board-stopname">${esc(label)}</span>`
@@ -4052,12 +4053,11 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     // Board geometry supplies each row's ordered stop list for the
     // "View all stops" disclosure.
     const geo = boardGeometry([...mainRows, ...nearbyRows]);
-    // Section headings. The selected stop is already named in the boarding
-    // stop card above the board, so its rows need no heading of their own.
-    // Every nearby STOP gets its own dark bar: title = the stop's name, sub =
-    // "Across the street · #id" for the counterpart or "N ft away · #id".
-    // Clicking a bar selects that stop — which slides its section (now first)
-    // to the top of the board.
+    // Nearby stop cards. The selected stop is already named in the hero card
+    // above the board, so its rows need no card of their own. Every nearby
+    // STOP gets a card: title = the stop's name, sub = "Across the street ·
+    // #id" for the counterpart or "N ft away · #id". Clicking a card selects
+    // that stop — which slides its section (now first) to the top of the board.
     let nearbyParts = [];
     let off = 0;
     for (let i = 0; i < nearbyRecs.length; i++) {
@@ -4070,10 +4070,11 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
             ? "Across the street"
             : (rec.distFt != null ? `${Math.round(rec.distFt)} ft away` : "");
         const subBits = [where, `#${id}`].filter(Boolean);
-        nearbyParts.push(`<div class="curb-head" role="button" tabindex="0" data-nearby="1" data-stop="${esc(id)}">`
-            + `<div class="curb-head-stop"><div class="curb-main">`
-            + `<div class="curb-title">${esc(stopName(name) || "Nearby stop")}</div>`
-            + `<div class="curb-sub">${esc(subBits.join(" · "))}</div>`
+        nearbyParts.push(`<div class="nearby-stop-card nearby-bus" role="button" tabindex="0" data-nearby="1" data-stop="${esc(id)}">`
+            + `<span class="hero-line-band bus-band"></span>`
+            + `<div class="nearby-card-head"><div class="nearby-card-main">`
+            + `<div class="nearby-card-title">${esc(stopName(name) || "Nearby stop")}</div>`
+            + `<div class="nearby-card-sub">${esc(subBits.join(" · "))}</div>`
             + `</div>`
             + `</div></div>`);
         off += sliceLen;
@@ -4131,7 +4132,7 @@ function renderLines() {
     const headSt = tracked
         ? Object.assign({}, st, { Error: tracked.Error || null, Arrivals: arr })
         : st;
-    gBoardHeader.innerHTML = boardHeaderHtml(headSt, arr);
+    gBoardHeader.innerHTML = heroCardHtml(headSt, arr);
     // The directory is NOT a hard dependency (plan §2): if it is not loaded
     // yet, kick off the load and come back for a better name, the Routes
     // list (service rows) and the across-the-street section — but paint

@@ -1,5 +1,5 @@
 // Node test for the piece 7b pipeline: anchorStop (no directory hard-gate)
-// + boardHeaderHtml (stop name + Next bus). Extracts the real code from
+// + heroCardHtml (stop name + Next bus). Extracts the real code from
 // the page's <script> (from mta26.html, via lib/extract) into a VM sandbox;
 // state vars are sandbox globals.
 const fs = require("fs");
@@ -51,7 +51,7 @@ vm.runInContext(
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),
-   extractFn("heroVerbHtml"), extractFn("boardHeaderHtml")].join("\n")
+   extractFn("heroVerbHtml"), extractFn("heroCardHtml")].join("\n")
    + "\nglobalThis.__stopScheduleCache = stopScheduleCache;"
    + "\nglobalThis.__shortcuts = shortcuts;",
   sandbox);
@@ -92,9 +92,9 @@ sandbox.stops = [];                              // nothing at all
 sandbox.pickedStop = null;
 check("no stops anywhere → null (the view says so)", run("anchorStop()") === null);
 
-// ---- boardHeaderHtml ----
+// ---- heroCardHtml ----
 sandbox.allStopsCache = null;
-const h1 = sandbox.boardHeaderHtml(
+const h1 = sandbox.heroCardHtml(
   { StopID: "1002130", Name: "Park Rd & 19th St NW", Arrivals: [], Error: null },
   [{ min: 14, route: "D72", dir: "North to Van Ness", heads: "North to Van Ness" }]);
 check("header: name", h1.includes("Park Rd &amp; 19th St NW"));
@@ -103,13 +103,13 @@ check("header: 'Selected boarding stop' removed", !h1.includes("Selected boardin
 check("header: home/work/favorite shortcuts",
   h1.includes('data-shortcut="home"') && h1.includes('data-shortcut="work"') && h1.includes('data-shortcut="fav"'));
 sandbox.__shortcuts.home = { id: "1002130", name: "Park Rd & 19th St NW" };
-const hActive = sandbox.boardHeaderHtml(
+const hActive = sandbox.heroCardHtml(
   { StopID: "1002130", Name: "Park Rd & 19th St NW", Arrivals: [], Error: null }, []);
 delete sandbox.__shortcuts.home;
 check("header: saved shortcut shows checked",
   /data-shortcut="home"[^>]*aria-pressed="true"/.test(hActive));
 sandbox.favorites = [{ kind: "bus", id: "1002130", name: "Park Rd & 19th St NW" }];
-const hFav = sandbox.boardHeaderHtml(
+const hFav = sandbox.heroCardHtml(
   { StopID: "1002130", Name: "Park Rd & 19th St NW", Arrivals: [], Error: null }, []);
 sandbox.favorites = [];
 check("header: favorite star shows selected",
@@ -118,16 +118,16 @@ check("header: next bus route + headsign", /aria-label="Next bus"[^]*?D72<\/span
 check("header: ETA 14 min", h1.includes(">14 min<"));
 check("header: first ETA uses bt-next-eta", h1.includes("bt-next-eta"));
 
-const h2 = sandbox.boardHeaderHtml(
+const h2 = sandbox.heroCardHtml(
   { StopID: "1002130", Name: null, Arrivals: [], Error: null },
   [{ min: 0, route: "C87", dir: "TENLEYTOWN", heads: "TENLEYTOWN" }]);
 check("header: no name → #id only, no doubled id", (h2.match(/#1002130/g) || []).length === 1);
 check("header: 0 min → Due", /C87<\/span> TENLEYTOWN/.test(h2) && h2.includes('bt-next-eta">Due'));
 
-const h3 = sandbox.boardHeaderHtml({ StopID: "X", Name: "x", Error: { rateLimited: false }, Arrivals: [] }, []);
+const h3 = sandbox.heroCardHtml({ StopID: "X", Name: "x", Error: { rateLimited: false }, Arrivals: [] }, []);
 check("header: failed predictions → 'arrivals unavailable'", h3.includes("arrivals unavailable"));
 
-const h4 = sandbox.boardHeaderHtml({ StopID: "X", Name: "x", Error: null, Arrivals: [] }, []);
+const h4 = sandbox.heroCardHtml({ StopID: "X", Name: "x", Error: null, Arrivals: [] }, []);
 check("header: no predictions → 'no arrival or departure'", h4.includes("no arrival or departure"));
 
 // With no live prediction but a schedule entry, the header shows the time
@@ -137,7 +137,7 @@ sandbox.__stopScheduleCache["1002130"] = {
   arrivals: [{ at: Date.now() + 3600000, route: "D60", dirNum: "1",
                heads: "North to Silver Spring", dirText: "NORTH" }],
 };
-const hSched = sandbox.boardHeaderHtml(
+const hSched = sandbox.heroCardHtml(
   { StopID: "1002130", Name: "x", Error: null, Arrivals: [] }, []);
 delete sandbox.__stopScheduleCache["1002130"];
 check("header: no prediction → scheduled time + not seen",
@@ -157,7 +157,7 @@ for (const p of raw.Predictions) {
 preds.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
 check("live pred130: at least one prediction", preds.length > 0);
 if (preds.length) {
-  const h5 = sandbox.boardHeaderHtml(
+  const h5 = sandbox.heroCardHtml(
     { StopID: "1002130", Name: raw.StopName || null, Error: null, Arrivals: preds }, preds);
   const first = preds[0];
   check(`live header: earliest ${first.route} @ ${first.min} min leads the Next bus line`,
