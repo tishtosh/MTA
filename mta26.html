@@ -89,6 +89,7 @@
             flex: none; min-width: 52px; padding: 2px 8px; border-radius: 5px;
             color: #fff; font-weight: 700; font-size: 12px; text-align: center;
         }
+        .fav-badge.boston-bus { min-width: 65px; }
         .fav-badge.line { min-width: 74px; }
         .fav-desc { flex: 1; min-width: 0; }
         .fav-stops { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px 14px; }
@@ -110,6 +111,17 @@
         }
         .fav-star.active { color: #e0a800; }
         .fav-star:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .fav-select {
+            flex: none; border: 0; background: none; padding: 2px;
+            color: #adb5bd; cursor: pointer; font-size: 12px; line-height: 1;
+        }
+        .fav-select.active { color: #2e7d32; }
+        .fav-select:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .fav-dir-label {
+            margin: 8px 0 2px 2px;
+            font: 600 11px/1.3 system-ui, -apple-system, sans-serif;
+            letter-spacing: .04em; text-transform: uppercase; color: #6c757d;
+        }
         .fav-empty { padding: 4px; color: #6c757d; font-size: 12px; }
         .fav-dist { flex: none; color: #6c757d; font-size: 11px; white-space: nowrap; }
         .fav-setting {
@@ -349,6 +361,7 @@
             flex: none; padding: 2px 9px; border-radius: 5px;
             color: #fff; font-weight: 700; font-size: 13px; line-height: 1.4;
         }
+        .row-badge.boston-bus { padding-left: 11px; padding-right: 11px; }
         .row-badge.hollow {
             background: transparent; border: 2px solid currentColor;
             padding: 0 7px;
@@ -2182,15 +2195,17 @@ function boardRowHead(row, color, g, k, scheduled) {
     const chevron = hasList
         ? ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>`
         : "";
-    const badgeClass = `row-badge${row.metro ? " metro-line" : ""}${departed ? " hollow" : ""}${hasList ? " bt-allstops" : ""}`;
+    const badgeClass = `row-badge${row.metro ? " metro-line" : busBadgeClass()}${departed ? " hollow" : ""}${hasList ? " bt-allstops" : ""}`;
     const badgeTag = hasList ? "button" : "span";
     const badgeAttrs = hasList
         ? ` type="button" class="${badgeClass}" aria-expanded="${expandedStops.has(k)}"`
         : ` class="${badgeClass}"`;
     const badgeInner = `${esc(badgeText)}${chevron}`;
+    const hollowColor = row.metro ? color
+        : (busTextColor(row.route) === "#000" ? "#000" : color);
     const badge = departed
-        ? `<${badgeTag}${badgeAttrs} style="color:${color};border-color:${color}">${badgeInner}</${badgeTag}>`
-        : `<${badgeTag}${badgeAttrs} style="background:${color}">${badgeInner}</${badgeTag}>`;
+        ? `<${badgeTag}${badgeAttrs} style="color:${hollowColor};border-color:${color}">${badgeInner}</${badgeTag}>`
+        : `<${badgeTag}${badgeAttrs} style="background:${color};color:${row.metro ? "#fff" : busTextColor(row.route)}">${badgeInner}</${badgeTag}>`;
     return `<div class="board-head">`
         + `<span class="row-badge-wrap">${badge}</span>`
         + `<div class="row-mainline">`
@@ -3362,6 +3377,67 @@ function favBusStopRow(s, route) {
         + `${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}</div>`;
 }
 
+// The "selected stop" control shown in Boston's ordered route lists.
+function favSelectHtml(kind, id, name, route) {
+    const selected = kind === "bus"
+        ? String(pickedStop) === String(id)
+        : String(metroAnchorCode) === String(id);
+    const label = selected ? "Selected stop" : "Select this stop";
+    return `<button type="button" class="fav-select${selected ? " active" : ""}"`
+        + ` data-fav-kind="${esc(kind)}" data-fav-id="${esc(id)}"`
+        + ` data-fav-name="${esc(name || "")}" data-fav-route="${esc(route || "")}"`
+        + ` aria-pressed="${selected ? "true" : "false"}" title="${label}" aria-label="${label}">`
+        + `<i class="fa-${selected ? "solid fa-circle-check" : "regular fa-circle"}" aria-hidden="true"></i>`
+        + `</button>`;
+}
+
+function favOrderedBusRow(s, route) {
+    return `<div class="fav-stop">${favSelectHtml("bus", s.StopID, s.Name, route)}`
+        + `${favStarHtml("bus", s.StopID, s.Name, route)}`
+        + `${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}</div>`;
+}
+
+// Ordered stops for a Boston route: one representative trip per direction,
+// read from the trip's ordered `stops` relationship.
+async function fetchMbtaRouteStops(routeKey) {
+    const routeId = busRouteMbtaIds[routeKey] || routeKey;
+    const { data: rp, error } = await mbtaGet("/route_patterns", {
+        "filter[route]": routeId
+    });
+    if (error) throw error;
+    const patterns = ((rp && rp.data) || []).filter(p =>
+        p.relationships && p.relationships.route &&
+        p.relationships.route.data.id === routeId);
+    const byDir = new Map();
+    for (const p of patterns) {
+        const dir = p.attributes.direction_id;
+        const cur = byDir.get(dir);
+        if (!cur || (p.attributes.canonical && !cur.attributes.canonical))
+            byDir.set(dir, p);
+    }
+    const groups = [];
+    for (const [dir, p] of [...byDir.entries()].sort((a, b) => a[0] - b[0])) {
+        const tripId = p.relationships.representative_trip &&
+            p.relationships.representative_trip.data.id;
+        if (!tripId) continue;
+        const { data: tr, error: e2 } = await mbtaGet(`/trips/${tripId}`, {
+            include: "stops"
+        });
+        if (e2 || !tr) continue;
+        const inc = new Map(((tr.included) || [])
+            .filter(i => i.type === "stop")
+            .map(s => [s.id, s]));
+        const rel = tr.data.relationships && tr.data.relationships.stops;
+        const stops = ((rel && rel.data) || []).map(x => {
+            const s = inc.get(x.id);
+            return s ? { StopID: s.id, Name: s.attributes.name || "" } : null;
+        }).filter(Boolean);
+        if (stops.length)
+            groups.push({ dir, name: p.attributes.name || "", stops });
+    }
+    return groups;
+}
+
 let favBusFilterToken = 0;
 let favBusDebounce = 0;
 
@@ -3374,7 +3450,8 @@ async function renderFavBusRoutesMbta(raw) {
     if (q && !allStopsCache) {
         loadStopDirectory()
             .then(() => {
-                if (gFavBusFilter && gFavBusFilter.value.trim() === raw)
+                if (gFavBusFilter && gFavBusFilter.value.trim() === raw &&
+                    !gFavBusRoutes.querySelector(".fav-stops:not([hidden])"))
                     renderFavBusRoutesMbta(raw);
             })
             .catch(() => {});
@@ -3410,7 +3487,7 @@ async function renderFavBusRoutesMbta(raw) {
             : [];
         const expanded = matches.length > 0;
         return `<button type="button" class="fav-route" data-fav-route="${esc(r.id)}" aria-expanded="${expanded ? "true" : "false"}">`
-            + `<span class="fav-badge" style="background:${routeColor(r.id)}">${esc(r.id)}</span>`
+            + `<span class="fav-badge${busBadgeClass()}" style="background:${routeColor(r.id)};color:${busTextColor(r.id)}">${esc(r.id)}</span>`
             + `<span class="fav-desc">${esc(r.desc || "Bus route")}</span>`
             + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
             + `<div class="fav-stops" data-fav-stops="bus" data-route="${esc(r.id)}"`
@@ -3429,7 +3506,8 @@ function renderFavBusRoutes(query) {
     if (q && !allStopsCache) {
         loadStopDirectory()
             .then(() => {
-                if (gFavBusFilter && gFavBusFilter.value.trim() === raw)
+                if (gFavBusFilter && gFavBusFilter.value.trim() === raw &&
+                    !gFavBusRoutes.querySelector(".fav-stops:not([hidden])"))
                     renderFavBusRoutes(raw);
             })
             .catch(() => {});
@@ -3444,7 +3522,7 @@ function renderFavBusRoutes(query) {
         const matches = byStop ? (byStop.get(r.id) || []) : [];
         const expanded = matches.length > 0;
         return `<button type="button" class="fav-route" data-fav-route="${esc(r.id)}" aria-expanded="${expanded ? "true" : "false"}">`
-            + `<span class="fav-badge" style="background:${routeColor(r.id)}">${esc(r.id)}</span>`
+            + `<span class="fav-badge${busBadgeClass()}" style="background:${routeColor(r.id)};color:${busTextColor(r.id)}">${esc(r.id)}</span>`
             + `<span class="fav-desc">${esc(r.desc || "Bus route")}</span>`
             + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
             + `<div class="fav-stops" data-fav-stops="bus" data-route="${esc(r.id)}"`
@@ -3481,7 +3559,8 @@ function favBadgeHtml(kind, route) {
         return `<span class="fav-badge line" style="background:${metroLineColor(r)}">`
             + `${esc(r ? metroLineName(r) : "Metro")}</span>`;
     }
-    return `<span class="fav-badge" style="background:${routeColor(r)}">`
+    return `<span class="fav-badge${busBadgeClass()}"`
+        + ` style="background:${routeColor(r)};color:${busTextColor(r)}">`
         + `${esc(r || "Bus")}</span>`;
 }
 
@@ -3538,8 +3617,8 @@ function nextArrivalHtml(kind, next) {
     if (!next) return `${verb} <span class="text-muted">no arrival or departure</span>`;
     const color = kind === "metro" ? metroLineColor(next.route) : routeColor(next.route);
     const label = kind === "metro" ? metroLineName(next.route) : next.route;
-    return `${verb} <span class="row-badge${kind === "metro" ? " metro-line" : ""}"`
-        + ` style="background:${color}">${esc(label)}</span> `
+    return `${verb} <span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
+        + ` style="background:${color};color:${kind === "metro" ? "#fff" : busTextColor(next.route)}">${esc(label)}</span> `
         + `${esc(next.heads || next.dir || "")}`
         + ` <span class="bt-next-eta">${esc(fmtEta(next.min))}</span>`;
 }
@@ -3798,23 +3877,18 @@ async function populateFavStops(container, kind, key) {
     container.innerHTML = `<div class="fav-empty">loading stops…</div>`;
     try {
         if (kind === "bus") {
-            let list;
             if (isBoston()) {
-                const routeId = busRouteMbtaIds[key] || key;
-                const { data, error } = await mbtaGet("/stops", {
-                    "filter[route]": routeId,
-                    "filter[location_type]": "0",
-                    "page[limit]": 300
-                });
-                if (error) throw error;
-                list = ((data && data.data) || []).map(s => ({
-                    StopID: s.id, Name: s.attributes.name || "", Routes: [key]
-                }));
-            } else {
-                const all = await loadStopDirectory();
-                list = (all || [])
-                    .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === key));
+                const groups = await fetchMbtaRouteStops(key);
+                container.innerHTML = groups.length ? groups.map(g =>
+                    `<div class="fav-dir-label">${esc(g.name || ("Direction " + g.dir))}</div>`
+                    + g.stops.map(s => favOrderedBusRow(s, key)).join("")
+                ).join("") : `<div class="fav-empty">no stops for this route</div>`;
+                return;
             }
+            let list;
+            const all = await loadStopDirectory();
+            list = (all || [])
+                .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === key));
             list = list.sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
             container.innerHTML = list.length ? list.map(s =>
                 `<div class="fav-stop">${favStarHtml("bus", s.StopID, s.Name, key)}${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}</div>`
@@ -3869,6 +3943,13 @@ if (gFavBusFilter) gFavBusFilter.addEventListener("input", () => {
     favBusDebounce = setTimeout(() => renderFavBusRoutes(gFavBusFilter.value), 250);
 });
 if (gFavPanel) gFavPanel.addEventListener("click", async e => {
+    const select = e.target.closest ? e.target.closest(".fav-select") : null;
+    if (select && select.dataset.favId) {
+        e.preventDefault();
+        e.stopPropagation();
+        await gotoFavorite(select.dataset.favKind, select.dataset.favId, select.dataset.favName);
+        return;
+    }
     const star = e.target.closest ? e.target.closest(".fav-star") : null;
     if (star) {
         e.preventDefault();
@@ -4223,6 +4304,23 @@ function busBandAttr(route) {
     const c = routeColor(route);
     return c ? ` style="--bus-band-color:${c}"` : "";
 }
+
+// Black text on light (yellow) MBTA bus colors; white otherwise.
+function busTextColor(route) {
+    if (typeof isBoston !== "function" || !isBoston()) return "#fff";
+    const raw = typeof busRouteColors !== "undefined"
+        && busRouteColors[String(route || "").toUpperCase()];
+    const hex = String(raw || "").replace(/^#/, "");
+    if (!/^[0-9a-f]{6}$/i.test(hex)) return "#fff";
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 160 ? "#000" : "#fff";
+}
+
+function busBadgeClass() {
+    return (typeof isBoston === "function" && isBoston()) ? " boston-bus" : "";
+}
 // The hover card: a stop's live arrivals, fetched once per page load and
 // then cached (a hover is a peek — the arrivals table already refreshes the
 // stops it tracks; the dots it peeks at are usually not among them).
@@ -4546,9 +4644,9 @@ function heroCardHtml(st, arrivals) {
             ? (a) => `${a.route}|${a.heads || a.dir || ""}`
             : (a) => `${a.route}|${a.dirNum || a.heads || a.dir || ""}`;
         const mins = list.filter(a => svc(a) === svc(next)).map(a => a.min);
-        const badgeCls = `row-badge${st.Metro ? " metro-line" : ""}`;
+        const badgeCls = `row-badge${st.Metro ? " metro-line" : busBadgeClass()}`;
         const bits = [
-            `<span class="${badgeCls}" style="background:${badgeColor(next.route)}">${esc(badgeLabel(next.route))}</span>`,
+            `<span class="${badgeCls}" style="background:${badgeColor(next.route)};color:${st.Metro ? "#fff" : busTextColor(next.route)}">${esc(badgeLabel(next.route))}</span>`,
             esc(next.heads || next.dir || "")
         ].filter(Boolean).join(" ");
         nextLine = `${verb} ${bits} <span class="bt-next-eta">${esc(fmtEta(mins[0]))}</span>`;
@@ -4562,7 +4660,7 @@ function heroCardHtml(st, arrivals) {
         const sched = st.MetroScheduledNext || nextScheduledFor(id);
         if (sched) {
             const schedBits = [
-                `<span class="row-badge${st.Metro ? " metro-line" : ""}" style="background:${badgeColor(sched.route)}">${esc(badgeLabel(sched.route))}</span>`,
+                `<span class="row-badge${st.Metro ? " metro-line" : busBadgeClass()}" style="background:${badgeColor(sched.route)};color:${st.Metro ? "#fff" : busTextColor(sched.route)}">${esc(badgeLabel(sched.route))}</span>`,
                 esc(sched.heads || sched.dirText || "")
             ].filter(Boolean).join(" ");
             nextLine = `${verb} ${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
