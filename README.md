@@ -21,9 +21,11 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 - The top bar holds **Search**, **Favorites**, **Home**, **Work**, and **Airport**, with the
   clock at the right showing the last data-refresh time. All icons are always enabled.
 - Home, Work, and Airport are multi-bookmark categories: each can hold several bus stops
-  and Metro stations. Adding one also adds it to favorites, but removing a favorite does
-  not remove the Home/Work/Airport bookmark. Airports are seeded per city with a bus stop
-  and a rail station.
+  and Metro stations. Adding one also adds it to favorites; removing a favorite removes
+  it from Home, Work, and Airport too.
+- Bookmark cards can be dragged by the grip handle to reorder them. Favorites, Home,
+  Work, and Airport each keep their own order per city.
+- Airports are seeded per city with a bus stop and a rail station.
 - **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Rail**, and
   **Settings**. Settings includes the **City** selector (**Washington DC** or **Boston**),
   the **Maps app** choice (**Apple Maps** or **Google Maps**, default Google, used by the

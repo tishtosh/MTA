@@ -200,6 +200,14 @@
         .hero-card.bookmark-card.hero-metro:hover { background: #e4d7c1; }
         .bookmark-card:focus-visible { outline: 2px solid #2e7d32; outline-offset: 1px; }
         .bookmark-title-line { display: flex; align-items: center; flex-wrap: wrap; }
+        .bookmark-drag {
+            flex: none; display: inline-flex; align-items: center;
+            padding: 2px 4px 2px 0; color: #8a6f69;
+            cursor: grab; touch-action: none; font-size: 12px;
+        }
+        .bookmark-drag:hover { color: #2c1a16; }
+        .bookmark-drag:active { cursor: grabbing; }
+        .bookmark-card.dragging { opacity: .55; }
         .bookmark-card .board-shortcuts { top: 8px; right: 10px; }
         .bookmark-card .fav-star {
             padding: 4px 5px; border-radius: 4px; font-size: 14px;
@@ -1418,6 +1426,7 @@ function resetFavorites() {
         cur.fav = [];
         writeShortcutsFor(kind, cur);
     }
+    for (const slot of ["home", "work", "airport"]) writeBookmarkOrder(slot, []);
     shortcuts = readShortcutCookie();
     ensureAirportDefaults();
     // The city's default favorite (Dulles in DC) is also an Airport bookmark.
@@ -1454,10 +1463,14 @@ function toggleFavorite(kind, id, name, route) {
         favorites.splice(i, 1);
         on = false;
         // Removing a favorite removes it from every bookmark category too.
+        const key = bookmarkKey(kind, id);
         for (const slot of ["home", "work", "airport"]) {
             const list = slotEntries(kind, slot);
             const next = list.filter(e => String(e.id) !== String(id));
             if (next.length !== list.length) setSlotEntries(kind, slot, next);
+            const order = readBookmarkOrder(slot);
+            const nextOrder = order.filter(k => k !== key);
+            if (nextOrder.length !== order.length) writeBookmarkOrder(slot, nextOrder);
         }
     } else {
         favorites.push({ kind, id: String(id), name: name || "", route: route || "" });
@@ -5409,16 +5422,13 @@ function favRowHtml(f) {
         + `${favGotoHtml(f.kind, f.id, f.name, stopName(f.name) || "#" + f.id)}</div>`;
 }
 
-function sortedFavorites() {
-    const rank = { bus: 0, metro: 1 };
-    return favorites.slice().sort((a, b) =>
-        (rank[a.kind] ?? 2) - (rank[b.kind] ?? 2) ||
-        String(a.name || "").localeCompare(String(b.name || "")));
+function orderedFavorites() {
+    return favorites.slice();
 }
 
 function renderFavorites() {
     if (!gFavFavList) return;
-    const list = sortedFavorites();
+    const list = orderedFavorites();
     gFavFavList.innerHTML = list.length ? list.map(favRowHtml).join("")
         : `<div class="fav-empty">no favorites yet — tap a star to save one</div>`;
 }
@@ -5433,14 +5443,49 @@ function shortcutRoute(kind, id) {
     return st ? (st.Routes || [])[0] || "" : "";
 }
 
+function bookmarkOrderStorageKey(slot) {
+    return `mta_bookmark_order_${city}_${slot}`;
+}
+
+function readBookmarkOrder(slot) {
+    try {
+        if (typeof localStorage === "undefined") return [];
+        const raw = localStorage.getItem(bookmarkOrderStorageKey(slot));
+        const list = raw ? JSON.parse(raw) : [];
+        return Array.isArray(list) ? list.filter(k => typeof k === "string") : [];
+    } catch (e) { return []; }
+}
+
+function writeBookmarkOrder(slot, keys) {
+    try {
+        if (typeof localStorage !== "undefined")
+            localStorage.setItem(bookmarkOrderStorageKey(slot), JSON.stringify(keys));
+    } catch (e) { /* ignore storage failures */ }
+}
+
+function orderedSlotEntries(slot) {
+    const rows = allSlotEntries(slot);
+    const order = readBookmarkOrder(slot);
+    if (!order.length) return rows;
+    const rank = new Map(order.map((k, i) => [k, i]));
+    return rows.map((row, i) => ({ row, i }))
+        .sort((a, b) => {
+            const ak = bookmarkKey(a.row.kind, a.row.id);
+            const bk = bookmarkKey(b.row.kind, b.row.id);
+            return (rank.get(ak) ?? Infinity) - (rank.get(bk) ?? Infinity) ||
+                a.i - b.i;
+        })
+        .map(x => x.row);
+}
+
 // Home/Work: that slot's bus stop and Metro station (both modes). Favorites:
-// the master list. Bus entries always come before Metro.
+// the master list. Both preserve the user's drag order.
 function bookmarkRows(slot) {
     if (slot === "fav") {
-        return sortedFavorites().map(f =>
+        return orderedFavorites().map(f =>
             ({ kind: f.kind, id: String(f.id), name: f.name || "", route: f.route || "" }));
     }
-    return allSlotEntries(slot).map(e => ({
+    return orderedSlotEntries(slot).map(e => ({
         kind: e.kind, id: e.id, name: e.name || "",
         route: e.route || shortcutRoute(e.kind, e.id)
     }));
@@ -5495,7 +5540,10 @@ function bookmarkCardHtml(row) {
         + `<div class="board-shortcuts">`
         + `${bmSlotHtml(row, "home")}${bmSlotHtml(row, "work")}${bmSlotHtml(row, "airport")}`
         + `${favStarHtml(row.kind, row.id, row.name, row.route)}</div>`
-        + `<div class="bookmark-title-line">${modeIcon}<span class="board-stopname">${esc(label)}</span>`
+        + `<div class="bookmark-title-line">`
+        + `<span class="bookmark-drag" role="img" aria-label="Drag to reorder" title="Drag to reorder">`
+        + `<i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></span>`
+        + `${modeIcon}<span class="board-stopname">${esc(label)}</span>`
         + (row.name ? `<span class="board-stopid">#${esc(row.id)}</span>` : "")
         + `</div>`
         + `<div class="board-next" data-for="${esc(row.kind)}:${esc(row.id)}">loading arrivals…</div>`
@@ -5607,6 +5655,30 @@ function syncBookmarkView() {
     }
     syncBookmarkSlotButtons();
     syncFavStars();
+}
+
+function saveBookmarkOrderFromDom() {
+    if (!bookmarkSlot || !gBookmarkList) return;
+    const keys = [...gBookmarkList.querySelectorAll(".bookmark-card")]
+        .map(card => bookmarkKey(card.dataset.bookmarkKind, card.dataset.bookmarkId));
+    if (bookmarkSlot === "fav") {
+        const by = new Map(favorites.map(f => [bookmarkKey(f.kind, f.id), f]));
+        const next = [];
+        for (const key of keys) {
+            const f = by.get(key);
+            if (!f) continue;
+            next.push(f);
+            by.delete(key);
+        }
+        for (const f of favorites) {
+            if (by.has(bookmarkKey(f.kind, f.id))) next.push(f);
+        }
+        favorites = next;
+        writeFavorites();
+    } else {
+        writeBookmarkOrder(bookmarkSlot, keys);
+    }
+    if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
 }
 
 // ── Screen history (last 10 views) ───────────────────────────────────
@@ -5955,7 +6027,57 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     }
     header.setAttribute("aria-expanded", open ? "true" : "false");
 });
+let bookmarkDragCard = null;
+let bookmarkDragMoved = false;
+
+if (gBookmarkList) gBookmarkList.addEventListener("pointerdown", e => {
+    const handle = e.target.closest ? e.target.closest(".bookmark-drag") : null;
+    if (!handle) return;
+    const card = handle.closest(".bookmark-card");
+    if (!card) return;
+    e.preventDefault();
+    e.stopPropagation();
+    bookmarkDragCard = card;
+    bookmarkDragMoved = false;
+    card.classList.add("dragging");
+    const move = ev => {
+        if (!bookmarkDragCard) return;
+        ev.preventDefault();
+        const under = document.elementFromPoint
+            ? document.elementFromPoint(ev.clientX, ev.clientY) : null;
+        const target = under && under.closest ? under.closest(".bookmark-card") : null;
+        if (!target || target === bookmarkDragCard || !gBookmarkList.contains(target))
+            return;
+        const rect = target.getBoundingClientRect();
+        const before = ev.clientY < rect.top + rect.height / 2;
+        gBookmarkList.insertBefore(bookmarkDragCard,
+            before ? target : target.nextSibling);
+        bookmarkDragMoved = true;
+    };
+    const end = () => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", end);
+        document.removeEventListener("pointercancel", end);
+        if (bookmarkDragCard) bookmarkDragCard.classList.remove("dragging");
+        if (bookmarkDragMoved) {
+            saveBookmarkOrderFromDom();
+            setTimeout(() => { bookmarkDragMoved = false; }, 350);
+        }
+        bookmarkDragCard = null;
+    };
+    document.addEventListener("pointermove", move, { passive: false });
+    document.addEventListener("pointerup", end);
+    document.addEventListener("pointercancel", end);
+});
+
 if (gBookmarkList) gBookmarkList.addEventListener("click", async e => {
+    const dragHandle = e.target.closest ? e.target.closest(".bookmark-drag") : null;
+    if (dragHandle || bookmarkDragMoved) {
+        bookmarkDragMoved = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
     const slotBtn = e.target.closest ? e.target.closest(".bm-slot") : null;
     if (slotBtn) {
         e.preventDefault();
