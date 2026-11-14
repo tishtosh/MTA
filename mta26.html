@@ -4042,8 +4042,9 @@ function openSelectedInMaps() {
     }
     const label = stopName(name) || `${lat},${lon}`;
     const coords = `${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
+    const center = { lat: Number(lat), lon: Number(lon) };
     const url = mapsProvider === "apple"
-        ? `https://maps.apple.com/?ll=${coords}&q=${encodeURIComponent(label)}`
+        ? appleFrameUrl(center, center)
         : (label && label !== `${lat},${lon}`
             ? `https://www.google.com/maps/place/${encodeURIComponent(label)}/@${lat},${lon},17z`
             : `https://www.google.com/maps/search/?api=1&query=${coords}`);
