@@ -35,9 +35,8 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   each matching route to only the matching stops.
 - A selected stop opens its **hero card** plus **route/departure rows**; other stops
   within walking distance appear below as **nearby stop cards** with their own rows.
-- Each route row expands to **Next stops…**, with connection chips, a **See route** action,
-  and a share button that opens transit directions from the selected stop to that route's
-  terminal.
+- Each route row expands to **Next stops…**, with connection chips and a **See route**
+  action that opens transit directions from the selected stop to that route's terminal.
 - Live arrivals refresh automatically (default every 30 s), with a manual auto-refresh
   pause/resume in Settings. Nearby stops refresh on slower tiers and hidden tabs pause
   fully.
@@ -55,8 +54,8 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 | **Route / line badge** | The colored rectangle before a destination. It is a bus route number or a subway line name. In the hero it is also the disclosure button for the route's stop list. |
 | **Status chip** | The small pill before the ETA showing **Arriving**, **Boarding**, **Departing**, **NOW**, or **Departed**. `NOW` is the red uppercase chip at zero minutes; the row switches to `DEPARTING` when no live status exists. |
 | **Connection chips** | Small route or line badges at a stop in an expanded route list. The current route/line is excluded so the chips mean "you can transfer here". |
-| **Next stops…** | The label at the top of a route expansion. The current stop is not repeated; only upcoming stops are listed, each with its own star and connection chips. |
-| **See route / share** | Two actions at the top of a route expansion. Both open transit directions from the selected stop to that direction's terminal; the share icon uses the same map destination. |
+| **Next stops…** | The label at the end of the **See route** line. The current stop is not repeated; only upcoming stops are listed, each with its own star and connection chips. |
+| **See route** | The share-icon action at the top of a route expansion. It opens transit directions from the selected stop to that direction's terminal. |
 | **Selected-stop map button** | The share/arrow button in the hero card. It opens the selected stop/station in the configured Maps app. |
 | **Bookmark cards** | The cards shown in the Favorites / Home / Work / Airport views (saved locations). Class `.bookmark-card`. |
 | **Bookmark list view** | The main-panel view that replaces the board when Favorites, Home, Work, or Airport is selected. |

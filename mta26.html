@@ -120,7 +120,7 @@
             flex: none; border: 0; background: none; padding: 2px;
             color: #adb5bd; cursor: pointer; font-size: 13px; line-height: 1;
         }
-        .fav-star.active { color: #e0a800; }
+        .fav-star.active { color: #2e7d32; }
         .fav-star:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .fav-selected {
             flex: none; display: inline-flex; align-items: center; padding: 2px;
@@ -149,7 +149,10 @@
         .route-action:hover { background: #f1f3f5; }
         .route-action:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .route-action i { font-size: 12px; }
-        .route-action-share { padding: 4px 7px; color: #495057; }
+        .route-actions .next-stops-label,
+        .route-actions .bt-next-label {
+            padding: 0; margin-left: 2px;
+        }
         .bt-stoplist .route-actions-item {
             list-style: none; padding: 0; margin: 0; cursor: default;
         }
@@ -178,7 +181,7 @@
         .fav-setting-static:hover { background: #fff; }
         .fav-city-select { width: auto; max-width: 150px; font-size: 12px; }
         .fav-setting-danger i { color: #c92a2a; }
-        .fav-setting-danger .fa-star { color: #e0a800; }
+        .fav-setting-danger .fa-star { color: #2e7d32; }
         .fav-setting-danger:hover { background: #fff5f5; }
 
         /* Main-panel bookmark list (Home / Work / Favorites) */
@@ -3829,12 +3832,12 @@ async function loadMbtaRowStops(ul) {
         const line = ul.dataset.line || "";
         const anchorRow = stops.find(s => String(s.StopID) === anchor);
         const terminal = stops[stops.length - 1];
+        const label = at >= 0 ? `<span class="bt-next-label">Next stops…</span>` : "";
         const actions = routeActionsHtml("bus", line, anchor,
             anchorRow ? anchorRow.Name : "", terminal ? terminal.StopID : "",
-            terminal ? terminal.Name : "");
-        const label = at >= 0 ? `<li class="bt-next-label">Next stops…</li>` : "";
+            terminal ? terminal.Name : "", label);
         ul.innerHTML = (actions ? `<li class="route-actions-item">${actions}</li>` : "")
-            + label + (shown.length ? shown.map(s => {
+            + (shown.length ? shown.map(s => {
             const id = String(s.StopID);
             const badges = connectionBadgesHtml(conns.get(id), "bus", line);
             return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(id)}">`
@@ -3877,12 +3880,12 @@ async function loadMetroStops(ul) {
         }));
         const fromRow = path[0];
         const toRow = path[path.length - 1];
+        const label = path.length ? `<span class="bt-next-label">Next stops…</span>` : "";
         const actions = routeActionsHtml("metro", line, from,
             fromRow ? fromRow.StationName : "",
-            to, toRow ? toRow.StationName : "");
-        const label = path.length ? `<li class="bt-next-label">Next stops…</li>` : "";
+            to, toRow ? toRow.StationName : "", label);
         ul.innerHTML = (actions ? `<li class="route-actions-item">${actions}</li>` : "")
-            + label + (next.length ? next.map(p => {
+            + (next.length ? next.map(p => {
             const mark = p.StationCode === to ? ` <b class="bt-mark">terminal</b>` : "";
             const badges = connectionBadgesHtml(conns.get(p.StationCode), "metro", line);
             return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(p.StationCode)}">`
@@ -4630,8 +4633,9 @@ async function stopMapPoint(kind, id, name, line) {
     return { id, label, lat, lon };
 }
 
-function routeActionsHtml(kind, line, originId, originName, destId, destName) {
-    if (!originId || !destId || String(originId) === String(destId)) return "";
+function routeActionsHtml(kind, line, originId, originName, destId, destName, labelHtml) {
+    const label = labelHtml || "";
+    if (!originId || !destId || String(originId) === String(destId)) return label;
     const attrs = `data-route-kind="${esc(kind)}" data-route-line="${esc(line || "")}"`
         + ` data-route-origin="${esc(originId)}"`
         + ` data-route-origin-name="${esc(originName || "")}"`
@@ -4639,11 +4643,8 @@ function routeActionsHtml(kind, line, originId, originName, destId, destName) {
         + ` data-route-dest-name="${esc(destName || "")}"`;
     return `<div class="route-actions">`
         + `<button type="button" class="route-action" ${attrs} data-route-action="see">`
-        + `<i class="fa-solid fa-route" aria-hidden="true"></i>See route</button>`
-        + `<button type="button" class="route-action route-action-share" ${attrs}`
-        + ` data-route-action="share" title="Share transit directions"`
-        + ` aria-label="Share transit directions">`
-        + `<i class="fa-solid fa-share-nodes" aria-hidden="true"></i></button>`
+        + `<i class="fa-solid fa-share-nodes" aria-hidden="true"></i>See route</button>`
+        + label
         + `</div>`;
 }
 
@@ -5084,13 +5085,13 @@ function heroRouteListHtml(stops, kind, route, anchor, connsMap) {
     const list = at >= 0 ? stops.slice(at + 1) : stops;
     const anchorStopRow = at >= 0 ? stops[at] : null;
     const terminal = stops[stops.length - 1] || null;
-    const actions = terminal ? routeActionsHtml(kind, route, anchor,
+    const label = at >= 0 ? `<span class="next-stops-label">Next stops…</span>` : "";
+    const actions = routeActionsHtml(kind, route, anchor,
         (anchorStopRow && (anchorStopRow.Name || anchorStopRow.name)) || "",
-        terminal.StopID || terminal.id,
-        terminal.Name || terminal.name) : "";
-    const label = at >= 0 ? `<div class="next-stops-label">Next stops…</div>` : "";
-    if (!list.length) return actions + label + `<div class="fav-empty">no further stops</div>`;
-    return actions + label + list.map(s => {
+        terminal ? (terminal.StopID || terminal.id) : "",
+        terminal ? (terminal.Name || terminal.name) : "", label);
+    if (!list.length) return actions + `<div class="fav-empty">no further stops</div>`;
+    return actions + list.map(s => {
         const id = String(s.StopID || s.id || "");
         const name = s.Name || s.name || "";
         const conns = connsMap && connsMap.get(id);
