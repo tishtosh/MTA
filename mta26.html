@@ -895,7 +895,10 @@ const CITIES = {
             name: "Washington Dulles International Airport", route: "SV" },
         airportDefaults: {
             bus: [{ id: "6000892", name: "Crystal Dr+23 St S", route: "A1X" }],
-            metro: [{ id: "C10", name: "Ronald Reagan Washington National Airport", route: "BL" }]
+            metro: [
+                { id: "C10", name: "Ronald Reagan Washington National Airport", route: "BL" },
+                { id: "N10", name: "Washington Dulles International Airport", route: "SV" }
+            ]
         }
     },
     boston: {
@@ -1222,43 +1225,44 @@ function isFavorite(kind, id) {
 // Settings → Delete all favorites: drop every saved bus stop/station and
 // restore the single default (N10, Washington Dulles International Airport).
 // The view switches to the same Favorites panel the star icon shows.
-function seedAirportDefaults() {
-    const seeded = [];
+function ensureAirportDefaults() {
+    const hadNoFavorites = !favorites.length;
+    const added = [];
     const defs = cityCfg().airportDefaults || {};
     for (const kind of ["bus", "metro"]) {
-        const list = (defs[kind] || []).map(e => ({
+        const defaults = (defs[kind] || []).map(e => ({
             id: String(e.id), name: e.name || "", route: e.route || ""
         }));
-        if (!list.length) continue;
+        if (!defaults.length) continue;
         const cur = readShortcutsFor(kind);
-        cur.airport = list;
-        writeShortcutsFor(kind, cur);
-        for (const e of list)
-            seeded.push({ kind, id: e.id, name: e.name, route: e.route });
-    }
-    shortcuts = readShortcutCookie();
-    return seeded;
-}
-
-function ensureAirportDefaults() {
-    let seeded = [];
-    if (!allSlotEntries("airport").length) {
-        seeded = seedAirportDefaults();
-        for (const e of seeded) {
-            if (!isFavorite(e.kind, e.id))
-                favorites.push({ kind: e.kind, id: e.id, name: e.name, route: e.route });
+        const list = shortcutList(cur.airport).map(e => Object.assign({}, e));
+        let changed = false;
+        for (const e of defaults) {
+            if (list.some(x => String(x.id) === e.id)) continue;
+            list.push(e);
+            added.push({ kind, id: e.id, name: e.name, route: e.route });
+            changed = true;
         }
-        if (seeded.length) writeFavorites();
+        if (changed) {
+            cur.airport = list;
+            writeShortcutsFor(kind, cur);
+        }
     }
+    if (added.length) shortcuts = readShortcutCookie();
+    for (const e of added) {
+        if (!isFavorite(e.kind, e.id))
+            favorites.push({ kind: e.kind, id: e.id, name: e.name, route: e.route });
+    }
+    if (added.length) writeFavorites();
     // With no favorites at all, the airport is the default saved set.
     const airport = allSlotEntries("airport");
-    if (!favorites.length && airport.length) {
+    if (hadNoFavorites && airport.length) {
         favorites = airport.map(e => ({
             kind: e.kind, id: e.id, name: e.name, route: e.route
         }));
         writeFavorites();
     }
-    return seeded;
+    return added;
 }
 
 function resetFavorites() {
