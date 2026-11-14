@@ -159,6 +159,7 @@
         .fav-setting-static:hover { background: #fff; }
         .fav-city-select { width: auto; max-width: 150px; font-size: 12px; }
         .fav-setting-danger i { color: #c92a2a; }
+        .fav-setting-danger .fa-star { color: #e0a800; }
         .fav-setting-danger:hover { background: #fff5f5; }
 
         /* Main-panel bookmark list (Home / Work / Favorites) */
@@ -755,9 +756,9 @@
             <span id="refreshState" class="fav-setting-state">on</span>
         </button>
         <button id="btnClearFavorites" class="fav-setting fav-setting-danger" type="button"
-                title="Delete all favorites and restore the default"
-                aria-label="Delete all favorites and restore the default">
-            <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                title="Delete all favorites, Home, Work, and Airport bookmarks"
+                aria-label="Delete all favorites and bookmarks">
+            <i class="fa-solid fa-star" aria-hidden="true"></i>
             <span class="fav-setting-name">Delete all favorites</span>
         </button>
     </div>
@@ -1261,6 +1262,17 @@ function ensureAirportDefaults() {
 }
 
 function resetFavorites() {
+    // Clear Home / Work / Airport shortcuts first, then reseed the airport
+    // defaults (which are also favorites).
+    for (const kind of ["bus", "metro"]) {
+        const cur = readShortcutsFor(kind);
+        cur.home = [];
+        cur.work = [];
+        cur.airport = [];
+        cur.fav = [];
+        writeShortcutsFor(kind, cur);
+    }
+    shortcuts = readShortcutCookie();
     ensureAirportDefaults();
     const list = [];
     const seen = new Set();
