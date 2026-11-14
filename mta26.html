@@ -1442,6 +1442,7 @@ async function fetchMbtaPredictions(stopId) {
             ((route && route.attributes && (route.attributes.direction_destinations || [])[dir]) || "");
         preds.push({
             min: Math.max(0, Math.round((at - now) / 60000)),
+            at,
             route: mbtaRouteShort(route).toUpperCase(),
             dir, dirNum: String(dir), heads, dirText: heads,
             vehicle: null,
@@ -2396,6 +2397,60 @@ function statusChipHtml(status) {
     return ` <span class="status-chip status-${esc(cls)}">${esc(status)}</span>`;
 }
 
+// Sub-minute hero departure: 1 s countdown plus a 10 s API poll until the
+// prediction is replaced or disappears.
+let heroCountdownTimer = null;
+let heroPollTimer = null;
+let heroCountdownKey = "";
+let heroCountdownDeadline = 0;
+
+function clearHeroCountdown() {
+    if (heroCountdownTimer) clearInterval(heroCountdownTimer);
+    if (heroPollTimer) clearTimeout(heroPollTimer);
+    heroCountdownTimer = null;
+    heroPollTimer = null;
+    heroCountdownKey = "";
+    heroCountdownDeadline = 0;
+}
+
+function startHeroCountdown(st, arrivals) {
+    const next = (arrivals || []).slice().sort((a, b) => a.min - b.min)[0];
+    const span = document.querySelector("#boardHeader .hero-countdown");
+    if (!next || next.min !== 0 || !span) { clearHeroCountdown(); return; }
+    const id = st && (st.Code || st.StopID);
+    const key = [mode, id, next.route, next.trip || "", next.heads || next.dir || ""].join("|");
+    if (key !== heroCountdownKey) {
+        heroCountdownKey = key;
+        heroCountdownDeadline = Number.isFinite(next.at) && next.at > Date.now() + 500
+            ? next.at : Date.now() + 60000;
+    }
+    if (heroCountdownTimer) clearInterval(heroCountdownTimer);
+    const tick = () => {
+        const el = document.querySelector("#boardHeader .hero-countdown");
+        if (!el) { clearHeroCountdown(); return; }
+        const ms = heroCountdownDeadline - Date.now();
+        el.textContent = ms <= 0 ? "Departing"
+            : `0:${String(Math.max(0, Math.ceil(ms / 1000))).padStart(2, "0")}`;
+    };
+    tick();
+    heroCountdownTimer = setInterval(tick, 1000);
+    if (heroPollTimer) clearTimeout(heroPollTimer);
+    const poll = () => {
+        heroPollTimer = setTimeout(() => {
+            heroPollTimer = null;
+            if (!document.querySelector("#boardHeader .hero-countdown")) {
+                clearHeroCountdown();
+                return;
+            }
+            Promise.resolve(refreshActive()).finally(() => {
+                if (document.querySelector("#boardHeader .hero-countdown") && !heroPollTimer)
+                    poll();
+            });
+        }, 10000);
+    };
+    poll();
+}
+
 function etaToken(m) {
     return m === 0 ? "Due" : String(m);
 }
@@ -2896,6 +2951,7 @@ async function fetchMbtaMetroLive(codes) {
             ((route && route.attributes && (route.attributes.direction_destinations || [])[a.direction_id]) || "");
         by[code].push({
             min: Math.max(0, Math.round((at - Date.now()) / 60000)),
+            at,
             route: (routeRel && routeRel.id) || "",
             dir: heads, heads, dirNum: String(a.direction_id == null ? "" : a.direction_id),
             vehicle: null, trip: (tripRel && tripRel.id) || null,
@@ -3149,6 +3205,7 @@ function renderMetro() {
         Error: metroLiveError[station.Code] || null
     };
     gBoardHeader.innerHTML = heroCardHtml(headSt, live);
+    startHeroCountdown(station, live);
     const rowsHtml = (rows) => rows.map(r => {
         const key = rowKey(r);
         const open = expandedStops.has(key);
@@ -4413,6 +4470,7 @@ async function goBack() {
 }
 
 async function renderBookmarkList(slot) {
+    clearHeroCountdown();
     if (isBoston()) {
         await Promise.all([
             loadMetroRoutes().catch(() => null),
@@ -5356,9 +5414,12 @@ function heroCardHtml(st, arrivals) {
         ].filter(Boolean).join(" ");
         const heroStatus = next.status || (next.min === 0 ? "Arriving" : "");
         const showEta = !(mins[0] === 0 && statusReplacesDue(heroStatus));
+        const etaHtml = next.min === 0
+            ? ` <span class="bt-next-eta soon hero-countdown">0:59</span>`
+            : (showEta ? ` <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>` : "");
         nextLine = `${bits}`
             + statusChipHtml(heroStatus)
-            + (showEta ? ` <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>` : "");
+            + etaHtml;
         if (mins.length > 1)
             nextLine += ` <span class="bt-next-rest">and then ${mins.slice(1).map(etaToken).join(", ")} min</span>`;
     } else if (st.Error) {
@@ -5652,6 +5713,7 @@ function renderLines() {
         ? Object.assign({}, st, { Error: tracked.Error || null, Arrivals: arr })
         : st;
     gBoardHeader.innerHTML = heroCardHtml(headSt, arr);
+    startHeroCountdown(st, arr);
     // The directory is NOT a hard dependency (plan §2): if it is not loaded
     // yet, kick off the load and come back for a better name, the Routes
     // list (service rows) and the across-the-street section — but paint
