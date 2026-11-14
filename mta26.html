@@ -5678,6 +5678,33 @@ function saveBookmarkOrderFromDom() {
     if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
 }
 
+const bookmarkReflowAnimations = new Map();
+
+// FLIP animation for a live reorder: rows slide from their old position to
+// the new one instead of jumping when the dragged card changes index.
+function animateBookmarkReflow(beforeRects) {
+    if (!gBookmarkList) return;
+    if (typeof REDUCE_MOTION !== "undefined" && REDUCE_MOTION.matches) return;
+    for (const card of gBookmarkList.querySelectorAll(".bookmark-card")) {
+        const before = beforeRects.get(card);
+        if (!before || typeof card.animate !== "function") continue;
+        const prior = bookmarkReflowAnimations.get(card);
+        if (prior) prior.cancel();
+        const after = card.getBoundingClientRect();
+        const dy = before.top - after.top;
+        if (Math.abs(dy) < 1) continue;
+        const anim = card.animate(
+            [{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }],
+            { duration: 170, easing: "cubic-bezier(.2,.7,.3,1)" }
+        );
+        bookmarkReflowAnimations.set(card, anim);
+        if (anim.finished) anim.finished.catch(() => {}).then(() => {
+            if (bookmarkReflowAnimations.get(card) === anim)
+                bookmarkReflowAnimations.delete(card);
+        });
+    }
+}
+
 // ── Screen history (last 10 views) ───────────────────────────────────
 const SCREEN_HISTORY_MAX = 10;
 let screenHistory = [];
@@ -6047,8 +6074,12 @@ if (gBookmarkList) gBookmarkList.addEventListener("pointerdown", e => {
             return;
         const rect = target.getBoundingClientRect();
         const before = ev.clientY < rect.top + rect.height / 2;
+        const beforeRects = new Map(
+            [...gBookmarkList.querySelectorAll(".bookmark-card")]
+                .map(card => [card, card.getBoundingClientRect()]));
         gBookmarkList.insertBefore(bookmarkDragCard,
             before ? target : target.nextSibling);
+        animateBookmarkReflow(beforeRects);
         bookmarkDragMoved = true;
     };
     const end = () => {
