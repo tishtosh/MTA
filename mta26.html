@@ -199,6 +199,7 @@
         .hero-card.bookmark-card.hero-bus:hover { background: #cbcbcb; }
         .hero-card.bookmark-card.hero-metro:hover { background: #e4d7c1; }
         .bookmark-card:focus-visible { outline: 2px solid #2e7d32; outline-offset: 1px; }
+        .bookmark-title-line { display: flex; align-items: center; flex-wrap: wrap; }
         .bookmark-card .board-shortcuts { top: 8px; right: 10px; }
         .bookmark-card .fav-star {
             padding: 4px 5px; border-radius: 4px; font-size: 14px;
@@ -5466,11 +5467,15 @@ function bmSlotHtml(row, slot) {
 
 function bookmarkCardHtml(row) {
     const label = stopName(row.name) || "#" + row.id;
+    const route = row.route || shortcutRoute(row.kind, row.id);
+    const commuter = row.kind === "metro" && isCommuterRoute(route);
+    const modeIcon = nearbyModeIcon(row.kind === "metro", commuter,
+        row.kind === "metro" ? metroLineColor(route) : "");
     const band = row.kind === "metro"
         ? `<span class="hero-line-band" data-band="${esc(row.kind)}:${esc(row.id)}"`
-          + ` style="background:${metroLineColor(row.route)}"></span>`
+          + ` style="background:${metroLineColor(route)}"></span>`
         : `<span class="hero-line-band bus-band" data-band="${esc(row.kind)}:${esc(row.id)}"`
-          + `${busBandAttr(row.route)}></span>`;
+          + `${busBandAttr(route)}></span>`;
     return `<div class="hero-card bookmark-card hero-${esc(row.kind)}" data-bookmark-kind="${esc(row.kind)}"`
         + ` data-bookmark-id="${esc(row.id)}" data-bookmark-name="${esc(row.name || "")}"`
         + ` data-bookmark-route="${esc(row.route || "")}"`
@@ -5479,7 +5484,7 @@ function bookmarkCardHtml(row) {
         + `<div class="board-shortcuts">`
         + `${bmSlotHtml(row, "home")}${bmSlotHtml(row, "work")}${bmSlotHtml(row, "airport")}`
         + `${favStarHtml(row.kind, row.id, row.name, row.route)}</div>`
-        + `<div><span class="board-stopname">${esc(label)}</span>`
+        + `<div class="bookmark-title-line">${modeIcon}<span class="board-stopname">${esc(label)}</span>`
         + (row.name ? `<span class="board-stopid">#${esc(row.id)}</span>` : "")
         + `</div>`
         + `<div class="board-next" data-for="${esc(row.kind)}:${esc(row.id)}">loading arrivals…</div>`
@@ -5972,6 +5977,7 @@ function syncHeaderShortcuts() {
             b.setAttribute("aria-pressed", on ? "true" : "false");
             b.title = text;
             b.setAttribute("aria-label", text);
+            b.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i>`;
             return;
         }
         const on = slotHas(kind, s, id);
@@ -6526,7 +6532,7 @@ function shortcutButtonsHtml(id) {
             return `<button type="button" class="board-shortcut${on ? " active" : ""}"`
                 + ` data-shortcut="fav" aria-pressed="${on ? "true" : "false"}"`
                 + ` title="${text}" aria-label="${text}">`
-                + `<i class="fa-solid fa-star" aria-hidden="true"></i>`
+                + `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i>`
                 + `</button>`;
         }
         const on = slotHas(kind, slot, id);
