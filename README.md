@@ -18,8 +18,12 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   in the main panel. Defaults are N10 (Washington Dulles International Airport) for DC and
   Boston Logan Airport Terminal A (`#17091`) for Boston. Selecting Favorites, Home, or
   Work always shows that view; the icons are not toggles.
-- The top bar holds **Search**, **Favorites**, **Home**, and **Work**, with the clock at
-  the right showing the last data-refresh time. All four icons are always enabled.
+- The top bar holds **Search**, **Favorites**, **Home**, **Work**, and **Airport**, with the
+  clock at the right showing the last data-refresh time. All icons are always enabled.
+- Home, Work, and Airport are multi-bookmark categories: each can hold several bus stops
+  and Metro stations. Adding one also adds it to favorites, but removing a favorite does
+  not remove the Home/Work/Airport bookmark. Airports are seeded per city with a bus stop
+  and a rail station.
 - **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Subway**, and
   **Settings**. Settings includes the **City** selector (**Washington DC** or **Boston**),
   the **Maps app** choice (**Apple Maps** or **Google Maps**, default Google, used by the
@@ -141,8 +145,8 @@ The MBTA v3 API uses JSON:API and an `api_key` query parameter:
 
 - **Developer portal / docs / key sign-up:** <https://www.mbta.com/developers/v3-api>
 - Boston bus mode uses `route_type=3`; subway/light rail uses `route_type=0,1`.
-- The MBTA key is stored as `const MBTA_KEY` in `mta26.html` (same client-side caveat as
-  the WMATA key).
+- The MBTA key is encrypted in `MBTA_KEY_BLOB` and decrypted into `MBTA_KEY` after unlock
+  (same client-side caveat as the WMATA key).
 - Boston transit data is provided by the MBTA (<https://www.mbta.com>).
 
 ---
@@ -159,9 +163,9 @@ can read the key. Treat any key used here as **public and disposable**. (The key
 shipped in `mta26.html` has been public in the page and in git history for a long time and
 should be considered burned.)
 
-The code keeps the WMATA key in **one place** — the encrypted `KEY_BLOB` decrypted into
-`API_KEY` — so swapping or rotating it is a one-line edit. The MBTA key is the plain
-`const MBTA_KEY` constant.
+The code keeps each key in **one encrypted place** — `KEY_BLOB` for WMATA and
+`MBTA_KEY_BLOB` for MBTA — decrypted into `API_KEY` / `MBTA_KEY` only after the access
+password is entered. Rotating a key means replacing its blob.
 
 ### Get your own key
 

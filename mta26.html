@@ -170,7 +170,7 @@
         .bookmark-title { margin: 0 0 8px; font: 700 18px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
         .bookmark-list { gap: 8px; }
         .hero-card.bookmark-card {
-            margin: 0; padding: 10px 84px 12px 16px; border-radius: 10px;
+            margin: 0; padding: 10px 108px 12px 16px; border-radius: 10px;
             cursor: pointer;
         }
         .hero-card.bookmark-card.hero-bus:hover { background: #cbcbcb; }
@@ -491,7 +491,7 @@
            corners are square so it merges with the main-board group below. */
         .hero-card {
             position: relative;
-            margin: 8px 2px 0; padding: 10px 120px 14px 16px;
+            margin: 8px 2px 0; padding: 10px 150px 14px 16px;
             background: #182338; color: #fff;
             border-radius: 10px 10px 0 0;
         }
@@ -682,6 +682,9 @@
                 <button id="btnWork" class="navicon nav-shortcut" title="Work stop" aria-label="Go to work stop">
                     <i class="fa-solid fa-briefcase fa-xl-mta"></i>
                 </button>
+                <button id="btnAirport" class="navicon nav-shortcut" title="Airport stops" aria-label="Show airport stops">
+                    <i class="fa-solid fa-plane fa-xl-mta"></i>
+                </button>
             </div>
             <div class="d-flex align-items-center">
                 <div class="d-flex flex-column" style="line-height:1.15; text-align:right">
@@ -802,11 +805,13 @@
 
 // ⚠  Client-side gating raises the cost of casual inspection but is not a
 //    substitute for server-side secrecy: after unlock the key is in memory.
-//    The key is AES-GCM encrypted with a key derived from the access password
-//    via PBKDF2-SHA-256 (salt and IV are stored with the ciphertext).
+//    The keys are AES-GCM encrypted with a key derived from the access
+//    password via PBKDF2-SHA-256 (salt and IV are stored with the ciphertext).
 const KEY_BLOB = "5iUncaMBYE7uFbNF/sa4No2ZSSmC3OhN6cevnbrGAfnFyGRzaRvlN14ZCuRDjJxTz0OT+EGRuXJbjkp+m8ACl5Qkq6tF2EnR3MBw0g==";
+const MBTA_KEY_BLOB = "+SZJ27k1QG5H2Hm9P2oAyrXAAopq/FaRuF6qsbcJ0gaqAL7PxSW4c+61/NLmO4ZUPFqB3zmUWrrZEAWIOb8hO2b0NIRPhWyImGunRw==";
 const PBKDF2_ITERATIONS = 210000;
 let API_KEY = "";
+let MBTA_KEY = "";
 
 // WMATA public API — WMATA operates the DC (Metrobus) bus system.
 // Portal / docs / key registration: https://developer.wmata.com
@@ -815,14 +820,13 @@ const WMATA_API = "https://api.wmata.com";
 // MBTA v3 API — Boston's bus, subway, and light rail.
 // Portal / docs / key registration: https://www.mbta.com/developers/v3-api
 const MBTA_API = "https://api-v3.mbta.com";
-const MBTA_KEY = "f0c9d27eb6774459b9ad9c009fa5457a";
 
 function b64Bytes(b64) {
     return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
 
-async function decryptKey(pass) {
-    const blob = b64Bytes(KEY_BLOB);
+async function decryptKey(pass, blobB64) {
+    const blob = b64Bytes(blobB64 || KEY_BLOB);
     const salt = blob.slice(0, 16);
     const iv = blob.slice(16, 28);
     const ciphertext = blob.slice(28);
@@ -837,7 +841,8 @@ async function decryptKey(pass) {
 
 async function unlockAccess(pass) {
     try {
-        API_KEY = await decryptKey(pass);
+        API_KEY = await decryptKey(pass, KEY_BLOB);
+        MBTA_KEY = await decryptKey(pass, MBTA_KEY_BLOB);
     } catch (e) {
         return false;               // wrong password: AES-GCM auth failed
     }
@@ -886,14 +891,22 @@ const CITIES = {
         id: "dc", name: "Washington DC",
         center: HOME, metroCenter: DC_CENTER,
         defaultFavorite: { kind: "metro", id: "N10",
-            name: "Washington Dulles International Airport", route: "SV" }
+            name: "Washington Dulles International Airport", route: "SV" },
+        airportDefaults: {
+            bus: [{ id: "6000892", name: "Crystal Dr+23 St S", route: "A1X" }],
+            metro: [{ id: "C10", name: "Ronald Reagan Washington National Airport", route: "BL" }]
+        }
     },
     boston: {
         id: "boston", name: "Boston",
         center: { lat: 42.3601, lon: -71.0589 },
         metroCenter: { lat: 42.3564, lon: -71.0624 },
         defaultFavorite: { kind: "bus", id: "17091",
-            name: "Boston Logan Airport Terminal A", route: "SL1" }
+            name: "Boston Logan Airport Terminal A", route: "SL1" },
+        airportDefaults: {
+            bus: [{ id: "17091", name: "Boston Logan Airport Terminal A", route: "SL1" }],
+            metro: [{ id: "place-aport", name: "Airport", route: "Blue" }]
+        }
     }
 };
 const CITY_COOKIE = "mta_city";
@@ -1044,7 +1057,7 @@ function metroLineName(line) {
 // ── Mode (bus / metro) and shortcut locations ─────────────────────────
 // Bookmarks are stored per mode; home/work/favorite are not shared.
 const MODE_COOKIE = "mta_mode";
-const SHORTCUT_SLOTS = ["home", "work", "fav"];
+const SHORTCUT_SLOTS = ["home", "work", "airport", "fav"];
 let mode = readModeCookie();
 let shortcuts = readShortcutCookie();
 
@@ -1102,18 +1115,50 @@ function writeShortcutsFor(kind, obj) {
     if (kind === mode) shortcuts = obj;
 }
 
-// Save/clear Home or Work from a summary card. Per-city, per-mode cookie.
-function toggleBookmarkCardSlot(kind, id, name, route, slot) {
-    if (slot !== "home" && slot !== "work") return;
+function shortcutList(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    return value.id ? [value] : [];
+}
+
+function slotEntries(kind, slot) {
+    return shortcutList(readShortcutsFor(kind)[slot]);
+}
+
+function allSlotEntries(slot) {
+    const out = [];
+    for (const kind of ["bus", "metro"]) {
+        for (const e of slotEntries(kind, slot)) {
+            if (!e || !e.id) continue;
+            out.push({ kind, id: String(e.id), name: e.name || "", route: e.route || "" });
+        }
+    }
+    return out;
+}
+
+function slotHas(kind, slot, id) {
+    return slotEntries(kind, slot).some(e => String(e.id) === String(id));
+}
+
+function setSlotEntries(kind, slot, list) {
     const cur = readShortcutsFor(kind);
-    const same = cur[slot] && String(cur[slot].id) === String(id);
-    if (same) {
-        delete cur[slot];
+    cur[slot] = list;
+    writeShortcutsFor(kind, cur);
+}
+
+// Save/clear Home, Work, or Airport from a summary card. Multiple entries
+// are allowed; adding also adds the stop to favorites.
+function toggleBookmarkCardSlot(kind, id, name, route, slot) {
+    if (slot !== "home" && slot !== "work" && slot !== "airport") return;
+    const list = slotEntries(kind, slot);
+    const at = list.findIndex(e => String(e.id) === String(id));
+    if (at >= 0) {
+        list.splice(at, 1);
     } else {
-        cur[slot] = { id: String(id), name: name || "", route: route || "" };
+        list.push({ id: String(id), name: name || "", route: route || "" });
         if (!isFavorite(kind, id)) toggleFavorite(kind, id, name, route);
     }
-    writeShortcutsFor(kind, cur);
+    setSlotEntries(kind, slot, list);
     updateShortcutNav();
     if (bookmarkSlot) renderBookmarkList(bookmarkSlot);
     if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
@@ -1121,7 +1166,8 @@ function toggleBookmarkCardSlot(kind, id, name, route, slot) {
 }
 
 function shortcutLabel(slot) {
-    return slot === "home" ? "Home" : slot === "work" ? "Work" : "Favorite";
+    return slot === "home" ? "Home" : slot === "work" ? "Work"
+        : slot === "airport" ? "Airport" : "Favorite";
 }
 
 // ── Multi-favorites from the Add Favorite panel ───────────────────────
@@ -1233,6 +1279,7 @@ const gFavMetroLines = document.getElementById("favMetroLines");
 const gShortcutBtns = {
     home: document.getElementById("btnHome"),
     work: document.getElementById("btnWork"),
+    airport: document.getElementById("btnAirport"),
     fav: document.getElementById("btnFav"),
 };
 
@@ -2660,7 +2707,7 @@ async function runFlow() {
         // Boston has no fixed default stop: start from downtown when there is
         // no saved Home bookmark and no URL/search point.
         if (!stopListFromURL && !searchPoint && isBoston()
-            && !(shortcuts.home && shortcuts.home.id)) {
+            && !shortcutList(shortcuts.home).length) {
             searchPoint = { lat: cityHome().lat, lon: cityHome().lon };
         }
         if (stopListFromURL && !forceNearby) {
@@ -2669,10 +2716,9 @@ async function runFlow() {
             // and the stop directory (the jStops dump) is the coord source.
             stops = stopListFromURL.map(id => makeStop(id, null, null, null));
         } else if (!searchPoint) {
-            // First load (or a cleared view): the saved home shortcut if one
-            // exists, otherwise the default 20010 stop. Coordinates come from
-            // the directory once it has loaded.
-            const home = shortcuts.home;
+            // First load (or a cleared view): the first saved home bookmark if
+            // one exists, otherwise the default stop.
+            const home = shortcutList(shortcuts.home)[0];
             stops = home && home.id
                 ? [makeStop(String(home.id), home.name || null, null, null)]
                 : [defaultStopRec()];
@@ -2889,6 +2935,21 @@ function clearCityCaches() {
     boardToken++;
 }
 
+function ensureAirportDefaults() {
+    if (allSlotEntries("airport").length) return;
+    const defs = cityCfg().airportDefaults || {};
+    for (const kind of ["bus", "metro"]) {
+        const list = (defs[kind] || []).map(e => ({
+            id: String(e.id), name: e.name || "", route: e.route || ""
+        }));
+        if (!list.length) continue;
+        const cur = readShortcutsFor(kind);
+        cur.airport = list;
+        writeShortcutsFor(kind, cur);
+    }
+    shortcuts = readShortcutCookie();
+}
+
 function setCity(next, opts) {
     if (!CITIES[next]) return;
     if (next === city) {
@@ -2903,6 +2964,7 @@ function setCity(next, opts) {
         writeFavorites();
     }
     shortcuts = readShortcutCookie();
+    ensureAirportDefaults();
     clearCityCaches();
     screenHistory = [];
     currentScreen = null;
@@ -3733,31 +3795,30 @@ function updateShortcutNav() {
             btn.setAttribute("aria-label", btn.title);
             continue;
         }
-        const saved = shortcuts[slot];
+        const entries = allSlotEntries(slot);
         const label = shortcutLabel(slot);
-        if (saved && saved.id) {
-            const name = stopName(saved.name) || `#${saved.id}`;
-            btn.title = `${label}: ${name}`;
-            btn.setAttribute("aria-label", `Go to ${label}: ${name}`);
+        if (entries.length) {
+            const names = entries.slice(0, 2).map(e => stopName(e.name) || `#${e.id}`);
+            btn.title = `${label}: ${names.join(", ")}${entries.length > 2 ? ` +${entries.length - 2}` : ""}`;
+            btn.setAttribute("aria-label", btn.title);
         } else if (slot === "home") {
             btn.title = mode === "metro" ? "Nearest Metro station" : `Home stop (${DEFAULT_STOP_ID})`;
             btn.setAttribute("aria-label", btn.title);
         } else {
-            btn.title = `No ${label} ${noun} saved`;
+            btn.title = `No ${label} ${noun}s saved`;
             btn.setAttribute("aria-label", btn.title);
         }
     }
 }
 
 function goShortcut(slot) {
+    const saved = shortcutList(shortcuts[slot])[0];
     if (mode === "metro") {
-        const saved = shortcuts[slot];
         if (saved && saved.id) { metroAnchorCode = saved.id; runMetro(); return; }
         if (slot === "home") { metroAnchorCode = null; runMetro(); return; }
         gStatus.textContent = `No ${shortcutLabel(slot)} station saved — open a station and tap its ${shortcutLabel(slot).toLowerCase()} icon.`;
         return;
     }
-    const saved = shortcuts[slot];
     if (saved && saved.id) { gotoStop(saved.id, saved.name); return; }
     if (slot === "home") { gotoStop(DEFAULT_STOP_ID, null); return; }
     gStatus.textContent = `No ${shortcutLabel(slot)} stop saved — open a stop and tap its ${shortcutLabel(slot).toLowerCase()} icon.`;
@@ -4360,15 +4421,10 @@ function bookmarkRows(slot) {
         return sortedFavorites().map(f =>
             ({ kind: f.kind, id: String(f.id), name: f.name || "", route: f.route || "" }));
     }
-    const rows = [];
-    for (const kind of ["bus", "metro"]) {
-        const saved = readShortcutsFor(kind)[slot];
-        if (!saved || !saved.id) continue;
-        const id = String(saved.id);
-        rows.push({ kind, id, name: saved.name || "",
-                    route: saved.route || shortcutRoute(kind, id) });
-    }
-    return rows;
+    return allSlotEntries(slot).map(e => ({
+        kind: e.kind, id: e.id, name: e.name || "",
+        route: e.route || shortcutRoute(e.kind, e.id)
+    }));
 }
 
 function nextArrivalHtml(kind, next) {
@@ -4389,11 +4445,10 @@ function nextArrivalHtml(kind, next) {
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
 // Home / Work buttons shown beside the favorite star on every summary card.
 function bmSlotHtml(row, slot) {
-    const saved = readShortcutsFor(row.kind)[slot];
-    const on = !!(saved && String(saved.id) === String(row.id));
+    const on = slotHas(row.kind, slot, row.id);
     const label = shortcutLabel(slot);
     const text = on ? `Clear ${label} bookmark` : `Save as ${label}`;
-    const icon = slot === "home" ? "house" : "briefcase";
+    const icon = slot === "home" ? "house" : slot === "work" ? "briefcase" : "plane";
     return `<button type="button" class="board-shortcut bm-slot${on ? " active" : ""}"`
         + ` data-bookmark-slot="${slot}" data-fav-kind="${esc(row.kind)}"`
         + ` data-fav-id="${esc(row.id)}" data-fav-name="${esc(row.name || "")}"`
@@ -4416,7 +4471,7 @@ function bookmarkCardHtml(row) {
         + ` role="button" tabindex="0" title="Go to ${esc(label)}">`
         + band
         + `<div class="board-shortcuts">`
-        + `${bmSlotHtml(row, "home")}${bmSlotHtml(row, "work")}`
+        + `${bmSlotHtml(row, "home")}${bmSlotHtml(row, "work")}${bmSlotHtml(row, "airport")}`
         + `${favStarHtml(row.kind, row.id, row.name, row.route)}</div>`
         + `<div><span class="board-stopname">${esc(label)}</span>`
         + (row.name ? `<span class="board-stopid">#${esc(row.id)}</span>` : "")
@@ -4861,7 +4916,7 @@ function syncHeaderShortcuts() {
             b.setAttribute("aria-label", text);
             return;
         }
-        const on = !!(shortcuts[s] && String(shortcuts[s].id) === id);
+        const on = slotHas(kind, s, id);
         const label = shortcutLabel(s);
         b.classList.toggle("active", on);
         b.setAttribute("aria-pressed", on ? "true" : "false");
@@ -4918,22 +4973,25 @@ gBoardHeader.addEventListener("click", e => {
             ? String((st.Lines && st.Lines[0]) || "")
             : String((st.Routes && st.Routes[0]) ||
                 (st.Arrivals && st.Arrivals[0] && st.Arrivals[0].route) || "");
-        if (shortcuts[slot] && String(shortcuts[slot].id) === id) {
-            // Clearing Home/Work leaves the master favorites list alone.
-            delete shortcuts[slot];
+        const list = slotEntries(kind, slot);
+        const at = list.findIndex(e => String(e.id) === id);
+        if (at >= 0) {
+            // Clearing a category leaves the master favorites list alone.
+            list.splice(at, 1);
         } else {
-            shortcuts[slot] = { id, name: st.Name || "", route };
-            // Saving a Home or Work bookmark also adds the stop to favorites.
+            list.push({ id, name: st.Name || "", route });
+            // Saving Home/Work/Airport also adds the stop to favorites.
             if (!isFavorite(kind, id)) toggleFavorite(kind, id, st.Name || "", route);
         }
-        writeShortcutCookie();
+        setSlotEntries(kind, slot, list);
     }
     syncHeaderShortcuts();
     updateShortcutNav();
     if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
-    if (bookmarkSlot === "fav") renderBookmarkList("fav");
+    if (bookmarkSlot === "fav" || bookmarkSlot === slot) renderBookmarkList(bookmarkSlot);
     syncFavStars();
 });
+ensureAirportDefaults();
 updateShortcutNav();
 if (gMetroSelect) gMetroSelect.addEventListener("change", () => {
     if (mode === "metro") setMetroAnchor(gMetroSelect.value);
@@ -5401,14 +5459,13 @@ function shortcutButtonsHtml(id) {
                 + `<i class="fa-solid fa-star" aria-hidden="true"></i>`
                 + `</button>`;
         }
-        const saved = shortcuts[slot];
-        const on = !!(saved && String(saved.id) === String(id));
+        const on = slotHas(kind, slot, id);
         const label = shortcutLabel(slot);
         const text = on ? `Saved as ${label} — click to clear` : `Save this stop as ${label}`;
         return `<button type="button" class="board-shortcut${on ? " active" : ""}"`
             + ` data-shortcut="${slot}" aria-pressed="${on ? "true" : "false"}"`
             + ` title="${text}" aria-label="${text}">`
-            + `<i class="fa-solid fa-${slot === "home" ? "house" : slot === "work" ? "briefcase" : "star"}" aria-hidden="true"></i>`
+            + `<i class="fa-solid fa-${slot === "home" ? "house" : slot === "work" ? "briefcase" : "plane"}" aria-hidden="true"></i>`
             + `</button>`;
     }).join("") + `</div>`;
 }

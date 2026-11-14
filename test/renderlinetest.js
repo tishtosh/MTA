@@ -45,8 +45,10 @@ sandbox.favorites = [];
 vm.createContext(sandbox);
 vm.runInContext(
   [extractConst("ROUTE_COLORS"), "const stopScheduleCache = {};", "let shortcuts = {};",
-   'const SHORTCUT_SLOTS = ["home", "work", "fav"];',
-   extractFn("shortcutLabel"), extractFn("isFavorite"), extractFn("shortcutButtonsHtml"),
+   'const SHORTCUT_SLOTS = ["home", "work", "airport", "fav"];',
+   extractFn("shortcutLabel"), extractFn("isFavorite"),
+   "function slotHas(kind, slot, id){ const v = shortcuts[slot]; const list = !v ? [] : (Array.isArray(v) ? v : (v.id ? [v] : [])); return list.some(e => String(e.id) === String(id)); }",
+   extractFn("shortcutButtonsHtml"),
    extractFn("routeColor"), extractFn("esc"), extractFn("stopName"),
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
