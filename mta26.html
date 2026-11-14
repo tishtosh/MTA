@@ -1449,9 +1449,23 @@ function resetFavorites() {
 
 function toggleFavorite(kind, id, name, route) {
     const i = favorites.findIndex(f => f.kind === kind && String(f.id) === String(id));
-    if (i >= 0) favorites.splice(i, 1);
-    else favorites.push({ kind, id: String(id), name: name || "", route: route || "" });
+    let on;
+    if (i >= 0) {
+        favorites.splice(i, 1);
+        on = false;
+        // Removing a favorite removes it from every bookmark category too.
+        for (const slot of ["home", "work", "airport"]) {
+            const list = slotEntries(kind, slot);
+            const next = list.filter(e => String(e.id) !== String(id));
+            if (next.length !== list.length) setSlotEntries(kind, slot, next);
+        }
+    } else {
+        favorites.push({ kind, id: String(id), name: name || "", route: route || "" });
+        on = true;
+    }
     writeFavorites();
+    updateShortcutNav();
+    return on;
 }
 
 const gStatus = document.getElementById("statusmessage");
@@ -5522,6 +5536,20 @@ async function fillBookmarkArrivals(rows, token) {
                 `.hero-line-band[data-band="${row.kind}:${row.id}"]`);
             if (band) band.style.setProperty("--bus-band-color", routeColor(next.route));
         }
+        // The icon follows the next departure, not just the saved line. A
+        // mixed station (e.g. Red Line + commuter rail) therefore switches
+        // between train-subway and the circled commuter train.
+        if (next) {
+            const card = gBookmarkList.querySelector(
+                `.bookmark-card[data-bookmark-kind="${row.kind}"][data-bookmark-id="${row.id}"]`);
+            const icon = card && card.querySelector(".bookmark-title-line .nearby-mode-icon");
+            if (icon) {
+                const metro = row.kind === "metro";
+                const commuter = metro && isCommuterRoute(next.route);
+                icon.outerHTML = nearbyModeIcon(metro, commuter,
+                    metro ? metroLineColor(next.route) : "");
+            }
+        }
     }));
 }
 
@@ -5529,6 +5557,23 @@ async function fillBookmarkArrivals(rows, token) {
 // rebuild, no scroll reset, and no re-fetch for cards that are still saved.
 function bookmarkKey(kind, id) {
     return String(kind) + ":" + String(id);
+}
+
+function syncBookmarkSlotButtons() {
+    if (!gBookmarkList) return;
+    for (const btn of gBookmarkList.querySelectorAll(".bm-slot")) {
+        const kind = btn.dataset.favKind;
+        const id = btn.dataset.favId;
+        const slot = btn.dataset.bookmarkSlot;
+        if (!kind || !id || !slot) continue;
+        const on = slotHas(kind, slot, id);
+        const label = shortcutLabel(slot);
+        const text = on ? `Clear ${label} bookmark` : `Save as ${label}`;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+        btn.title = text;
+        btn.setAttribute("aria-label", text);
+    }
 }
 
 function syncBookmarkView() {
@@ -5560,6 +5605,7 @@ function syncBookmarkView() {
     } else if (hasCards && empty) {
         empty.remove();
     }
+    syncBookmarkSlotButtons();
     syncFavStars();
 }
 
