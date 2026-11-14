@@ -2493,7 +2493,7 @@ function predictionRank(p) {
 
 function heroStatusRank(row) {
     const s = String((row && row.status) || "").toLowerCase();
-    if (row && row.departed) return 0;
+    if (row && row.departed) return 9;
     if (/departing/.test(s)) return 1;
     if (/arriving/.test(s)) return 2;
     if (/boarding/.test(s)) return 2;
@@ -5593,9 +5593,12 @@ function sortRowsBySoonest(rows, anchorId, now) {
         if (r.scheduled) return (r.scheduled.at - now) / 60000;
         return Infinity;
     };
-    rows.sort((a, b) => effMin(a) - effMin(b)
-        || String(a.route).localeCompare(String(b.route))
-        || String(a.dirNum).localeCompare(String(b.dirNum)));
+    rows.sort((a, b) => {
+        if (!!a.departed !== !!b.departed) return a.departed ? 1 : -1;
+        return effMin(a) - effMin(b)
+            || String(a.route).localeCompare(String(b.route))
+            || String(a.dirNum).localeCompare(String(b.dirNum));
+    });
     return rows;
 }
 
@@ -5630,7 +5633,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     if (typeof isBoston === "function" && isBoston())
         liveRows.forEach(r => { if (!r.anchorId) r.anchorId = anchorId; });
     sortHeroRows(liveRows, anchorId, nowMs);
-    const mainRows = [...departedRows, ...liveRows];
+    const mainRows = [...liveRows, ...departedRows];
     // Merge the across-the-street counterpart into the nearby list (first)
     // so it is never shown twice.
     const acrossId = across ? String(across.StopID) : "";
