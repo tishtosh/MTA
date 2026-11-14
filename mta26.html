@@ -1711,7 +1711,7 @@ const mbtaPatternCache = new Map();
             if (!Array.isArray(row) || row.length < 2) continue;
             const key = String(row[0] || "");
             const stops = Array.isArray(row[1]) ? row[1] : [];
-            if (!key) continue;
+            if (!key || !stops.length) continue;
             mbtaTerminalCache.set(key, new Set(stops.map(String)));
             mbtaTerminalAt.set(key, Number(row[2]) || cached.at || 0);
         }
@@ -1720,8 +1720,10 @@ const mbtaPatternCache = new Map();
 
 function persistMbtaTerminals() {
     const rows = [];
-    for (const [key, set] of mbtaTerminalCache)
+    for (const [key, set] of mbtaTerminalCache) {
+        if (!set || !set.size) continue;
         rows.push([key, [...set], mbtaTerminalAt.get(key) || 0]);
+    }
     writeCache("terminals", rows);
 }
 
@@ -1788,8 +1790,13 @@ async function buildMbtaTerminals(routeIds, useParent) {
                 terminals.add(`${p.dir}|${stops[stops.length - 1].StopID}`);
         }
         const key = id + ":" + (useParent ? "p" : "s");
-        mbtaTerminalCache.set(key, terminals);
-        mbtaTerminalAt.set(key, Date.now());
+        if (terminals.size) {
+            mbtaTerminalCache.set(key, terminals);
+            mbtaTerminalAt.set(key, Date.now());
+        } else {
+            mbtaTerminalCache.delete(key);
+            mbtaTerminalAt.delete(key);
+        }
         out.set(id, terminals);
     }
     persistMbtaTerminals();
@@ -3431,8 +3438,9 @@ function hydrateCityCaches() {
         for (const row of terminals.v) {
             if (!Array.isArray(row) || row.length < 2) continue;
             const key = String(row[0] || "");
-            if (!key) continue;
-            mbtaTerminalCache.set(key, new Set((row[1] || []).map(String)));
+            const stops = Array.isArray(row[1]) ? row[1] : [];
+            if (!key || !stops.length) continue;
+            mbtaTerminalCache.set(key, new Set(stops.map(String)));
             mbtaTerminalAt.set(key, Number(row[2]) || terminals.at || 0);
         }
     }
@@ -3453,7 +3461,7 @@ function hydrateCityCaches() {
             if (!Array.isArray(row) || row.length < 2) continue;
             const key = String(row[0] || "");
             const rec = row[1] || {};
-            if (!key || !Array.isArray(rec.v)) continue;
+            if (!key || !Array.isArray(rec.v) || !rec.v.length) continue;
             mbtaRouteStopsCache.set(key, {
                 at: Number(rec.at) || routeStops.at || 0,
                 groups: rec.v
@@ -5040,14 +5048,17 @@ async function mbtaTripStopsMany(tripIds, useParent) {
             "filter[id]": need.join(","),
             "include": "stops"
         });
-        if (!error && data) batch = data.data || [];
+        if (!error && data)
+            batch = { rows: data.data || [], included: data.included || [] };
     } catch (e) { /* fall back to one trip at a time */ }
     if (batch) {
         const wanted = new Set(need);
-        for (const tr of batch) {
+        for (const tr of batch.rows) {
             const id = tr && tr.id;
             if (!id || !wanted.has(id)) continue;
-            const stops = mbtaTripStopsFromTrip(tr, useParent);
+            const stops = mbtaTripStopsFromTrip(
+                { data: tr, included: batch.included }, useParent);
+            if (!stops.length) continue;   // single-trip fallback below
             out.set(id, stops);
             mbtaTripStopCache.set(`${id}:${useParent ? "p" : "s"}`,
                 { at: Date.now(), stops });
@@ -5159,7 +5170,7 @@ const mbtaRouteStopsCache = new Map();
             if (!Array.isArray(row) || row.length < 2) continue;
             const key = String(row[0] || "");
             const rec = row[1] || {};
-            if (!key || !Array.isArray(rec.v)) continue;
+            if (!key || !Array.isArray(rec.v) || !rec.v.length) continue;
             mbtaRouteStopsCache.set(key, {
                 at: Number(rec.at) || cached.at || 0,
                 groups: rec.v
@@ -5170,8 +5181,10 @@ const mbtaRouteStopsCache = new Map();
 
 function persistMbtaRouteStops() {
     const rows = [];
-    for (const [key, rec] of mbtaRouteStopsCache)
-        rows.push([key, { at: rec.at || 0, v: rec.groups || [] }]);
+    for (const [key, rec] of mbtaRouteStopsCache) {
+        if (!rec.groups || !rec.groups.length) continue;
+        rows.push([key, { at: rec.at || 0, v: rec.groups }]);
+    }
     writeCache("mbta_route_stops", rows);
 }
 
@@ -5195,8 +5208,10 @@ async function refreshMbtaRouteStops(routeKey, useParent) {
         if (stops.length)
             groups.push({ dir, name: p.name || "", stops });
     }
-    mbtaRouteStopsCache.set(key, { at: Date.now(), groups });
-    persistMbtaRouteStops();
+    if (groups.length) {
+        mbtaRouteStopsCache.set(key, { at: Date.now(), groups });
+        persistMbtaRouteStops();
+    }
     return groups;
 }
 
@@ -5204,7 +5219,7 @@ async function fetchMbtaRouteStops(routeKey, useParent) {
     const routeId = busRouteMbtaIds[routeKey] || routeKey;
     const key = routeId + ":" + (useParent ? "p" : "s");
     const hit = mbtaRouteStopsCache.get(key);
-    if (hit) {
+    if (hit && hit.groups && hit.groups.length) {
         if (Date.now() - (hit.at || 0) > TOPOLOGY_TTL_MS)
             refreshMbtaRouteStops(routeKey, useParent).catch(() => {});
         return hit.groups;

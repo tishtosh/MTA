@@ -31,7 +31,15 @@ vm.runInContext([
   extractFn("sortRowsBySoonest"),
   extractFn("metroRowsFor"),
   extractFn("gtfsCsvFields"),
-  extractFn("gtfsTimeToMs")
+  extractFn("gtfsTimeToMs"),
+  extractFn("mbtaTripStopsFromTrip"),
+  "async " + extractFn("mbtaTripStopsMany"),
+  "const mbtaTripStopCache = new Map();",
+  "const TOPOLOGY_TTL_MS = 86400000;",
+  "function allStopsName() { return ''; }",
+  "var __batch = null;",
+  "async function mbtaGet() { return { data: __batch, error: null }; }",
+  "async function fetchMbtaTripStopsRemote() { return []; }"
 ].join("\n"), sandbox);
 
 let pass = 0, fail = 0;
@@ -79,5 +87,26 @@ t("M6 scheduled duplicate suppressed, missing line added",
   !rows.some(r => r.scheduled && r.route === "RD"));
 t("M7 scheduled row sorts by its time", rows[2].route === "GR" && !!rows[2].scheduled);
 
-console.log("\n" + pass + " passed, " + fail + " failed");
-process.exit(fail ? 1 : 0);
+(async () => {
+  const trip = {
+    id: "t1",
+    relationships: { stops: { data: [{ id: "s1" }, { id: "s2" }] } }
+  };
+  sandbox.__batch = {
+    data: [trip],
+    included: [
+      { type: "stop", id: "s1", attributes: { name: "child one" },
+        relationships: { parent_station: { data: { id: "A15" } } } },
+      { type: "stop", id: "s2", attributes: { name: "child two" },
+        relationships: { parent_station: { data: { id: "E10" } } } }
+    ]
+  };
+  const batched = await sandbox.mbtaTripStopsMany(["t1"], true);
+  const stops = batched.get("t1") || [];
+  t("M8 batched trip response yields ordered parent stations",
+    stops.length === 2 && stops[0].StopID === "A15" &&
+    stops[1].StopID === "E10" && stops[0].Name === "Shady Grove");
+
+  console.log("\n" + pass + " passed, " + fail + " failed");
+  process.exit(fail ? 1 : 0);
+})();
