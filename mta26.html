@@ -1292,7 +1292,7 @@ function toggleBookmarkCardSlot(kind, id, name, route, slot) {
     }
     setSlotEntries(kind, slot, list);
     updateShortcutNav();
-    if (bookmarkSlot) renderBookmarkList(bookmarkSlot);
+    if (bookmarkSlot) syncBookmarkView();
     if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
     syncFavStars();
 }
@@ -2690,7 +2690,7 @@ async function ensureCrossBusNearby(station) {
 function nearbyModeIcon(metro, commuter, color) {
     const label = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
     const style = metro && color ? ` style="color:${esc(color)}"` : "";
-    return `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"} nearby-mode-icon${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}"></i>`;
+    return `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"} nearby-mode-icon${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}"></i>`;
 }
 
 function crossMetroSectionHtml(st) {
@@ -2764,7 +2764,7 @@ function nearbyStops(st) {
 
 const BOARD_MAX_SIDE_PX = 280;      // the board's longest path scales to this
 const BOARD_MIN_EXTENT_FT = 3000;   // short/terminal-only routes: scale floor
-const BOARD_MIN_EXTENT_PX = 120;    // …and the baseline extends at least this far each side
+const BOARD_MIN_EXTENT_PX = 120;    // …and the baseline extends at least this fa-regular each side
 const LAT_FT_PER_DEG = 364000;      // feet per degree of latitude (local projection)
 
 // Flat feet-space around a reference point — good enough for projection.
@@ -3239,7 +3239,7 @@ async function runFlow() {
             // ?lat&lon URL point: find stops near the search point
             const center = isBoston() ? cityCfg().metroCenter : DC_CENTER;
             const d = distance(center.lat, center.lon, searchPoint.lat, searchPoint.lon, "m");
-            const at = d > 50 ? center : searchPoint;     // far from the city → search its center
+            const at = d > 50 ? center : searchPoint;     // fa-regular from the city → search its center
             const where = isBoston() ? "downtown Boston" : "the Whitehouse";
             gStatus.textContent = `${d.toFixed(1)} mi to ${where}` + (at === center ? " (searching city center)" : "") + " …";
             const raw = await fetchStopsNear(at.lat, at.lon, gRadius);
@@ -4675,7 +4675,7 @@ function routeActionsHtml(kind, line, originId, originName, destId, destName, la
         + ` data-route-dest-name="${esc(destName || "")}"`;
     return `<div class="route-actions">`
         + `<button type="button" class="route-action" ${attrs} data-route-action="see">`
-        + `<i class="fa-solid fa-share-alt" aria-hidden="true"></i>See route</button>`
+        + `<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>See route</button>`
         + label
         + `</div>`;
 }
@@ -4807,7 +4807,7 @@ function favStarHtml(kind, id, name, route) {
         + ` data-fav-name="${esc(name || "")}" data-fav-route="${esc(route || "")}"`
         + ` aria-pressed="${on ? "true" : "false"}"`
         + ` title="${on ? "Remove favorite" : "Add favorite"}">`
-        + `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i></button>`;
+        + `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i></button>`;
 }
 
 // Bus stop-name filter: at 3+ characters, routes are expanded to just the
@@ -5523,6 +5523,44 @@ async function fillBookmarkArrivals(rows, token) {
     }));
 }
 
+// Update the visible bookmark list in place after a save/remove. No board
+// rebuild, no scroll reset, and no re-fetch for cards that are still saved.
+function bookmarkKey(kind, id) {
+    return String(kind) + ":" + String(id);
+}
+
+function syncBookmarkView() {
+    if (!bookmarkSlot || !gBookmarkList) return;
+    const slot = bookmarkSlot;
+    const rows = bookmarkRows(slot);
+    const wanted = new Map(rows.map(r => [bookmarkKey(r.kind, r.id), r]));
+    const present = new Set();
+    for (const card of [...gBookmarkList.querySelectorAll(".bookmark-card")]) {
+        const key = bookmarkKey(card.dataset.bookmarkKind, card.dataset.bookmarkId);
+        present.add(key);
+        if (!wanted.has(key)) card.remove();
+    }
+    for (const row of rows) {
+        const key = bookmarkKey(row.kind, row.id);
+        if (present.has(key)) continue;
+        const html = bookmarkCardHtml(row);
+        if (typeof gBookmarkList.insertAdjacentHTML === "function")
+            gBookmarkList.insertAdjacentHTML("beforeend", html);
+        else gBookmarkList.innerHTML += html;
+        fillBookmarkArrivals([row], bookmarkToken);
+    }
+    const empty = gBookmarkList.querySelector(".fav-empty");
+    const hasCards = !!gBookmarkList.querySelector(".bookmark-card");
+    if (!hasCards && !empty) {
+        const label = slot === "fav"
+            ? "favorites" : shortcutLabel(slot).toLowerCase() + " bookmark";
+        gBookmarkList.innerHTML = `<div class="fav-empty">no ${label} saved yet</div>`;
+    } else if (hasCards && empty) {
+        empty.remove();
+    }
+    syncFavStars();
+}
+
 // ── Screen history (last 10 views) ───────────────────────────────────
 const SCREEN_HISTORY_MAX = 10;
 let screenHistory = [];
@@ -5628,7 +5666,7 @@ function syncFavStars() {
         star.classList.toggle("active", on);
         star.setAttribute("aria-pressed", on ? "true" : "false");
         star.title = on ? "Remove favorite" : "Add favorite";
-        star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
+        star.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i>`;
     });
     syncHeaderShortcuts();
 }
@@ -5800,10 +5838,10 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         star.classList.toggle("active", on);
         star.setAttribute("aria-pressed", on ? "true" : "false");
         star.title = on ? "Remove favorite" : "Add favorite";
-        star.innerHTML = `<i class="fa-${on ? "solid" : "regular"} fa-star" aria-hidden="true"></i>`;
+        star.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i>`;
         updateShortcutNav();
         if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
-        if (bookmarkSlot === "fav") renderBookmarkList("fav");
+        syncBookmarkView();
         syncFavStars();
         return;
     }
@@ -5885,7 +5923,7 @@ if (gBookmarkList) gBookmarkList.addEventListener("click", async e => {
         toggleFavorite(star.dataset.favKind, star.dataset.favId,
             star.dataset.favName, star.dataset.favRoute);
         updateShortcutNav();
-        if (bookmarkSlot === "fav") renderBookmarkList("fav");
+        syncBookmarkView();
         if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
         syncFavStars();
         return;
@@ -5968,7 +6006,7 @@ gBoardHeader.addEventListener("click", e => {
         toggleFavorite(favStar.dataset.favKind, favStar.dataset.favId,
             favStar.dataset.favName, favStar.dataset.favRoute);
         updateShortcutNav();
-        if (bookmarkSlot === "fav") renderBookmarkList("fav");
+        syncBookmarkView();
         syncFavStars();
         return;
     }
@@ -6014,7 +6052,7 @@ gBoardHeader.addEventListener("click", e => {
     syncHeaderShortcuts();
     updateShortcutNav();
     if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
-    if (bookmarkSlot === "fav" || bookmarkSlot === slot) renderBookmarkList(bookmarkSlot);
+    syncBookmarkView();
     syncFavStars();
 });
 ensureAirportDefaults();
@@ -6399,7 +6437,7 @@ gLinesScroll.addEventListener("click", e => {
             star.dataset.favName, star.dataset.favRoute);
         updateShortcutNav();
         if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
-        if (bookmarkSlot === "fav") renderBookmarkList("fav");
+        syncBookmarkView();
         syncFavStars();
         return;
     }
@@ -6480,7 +6518,7 @@ function shortcutButtonsHtml(id) {
     const kind = mode === "metro" ? "metro" : "bus";
     return `<div class="board-shortcuts">`
         + `<button type="button" class="board-share board-share-inline" title="Open in Maps" aria-label="Open in Maps">`
-        + `<i class="fa-solid fa-map-marked-alt" aria-hidden="true"></i></button>`
+        + `<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button>`
         + SHORTCUT_SLOTS.map(slot => {
         if (slot === "fav") {
             const on = isFavorite(kind, id);
@@ -6507,7 +6545,7 @@ function heroModeIcon(metro, commuter, color) {
     const label = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
     const style = metro && color ? ` style="color:${esc(color)}"` : "";
     return `<span class="hero-mode-icon${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}">`
-        + `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"}" aria-hidden="true"></i></span>`;
+        + `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"}" aria-hidden="true"></i></span>`;
 }
 
 // "Next bus" / "Next train" is represented by the mode icon; the label is
@@ -6516,7 +6554,7 @@ function heroVerbHtml(metro, commuter, color) {
     const label = commuter ? "Next commuter rail" : metro ? "Next train" : "Next bus";
     const style = metro && color ? ` style="color:${esc(color)}"` : "";
     return `<span class="hero-verb${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}">`
-        + `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"}" aria-hidden="true"></i></span>`;
+        + `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"}" aria-hidden="true"></i></span>`;
 }
 
 // Stop header: a dark hero card — eyebrow, name + ID, then the next bus in
@@ -6620,7 +6658,7 @@ function heroCardHtml(st, arrivals) {
 // row's drawn extent, so a long-ETA bus never lands off the track.
 const BUS_EST_FT_PER_MIN = 704;          // 8 mph ≈ 704 ft/min
 const BUS_SAMPLE_MAX_AGE_MS = 120 * 60000;   // plan §3: the freshness gate
-const BUS_OFF_TOL_FT = 300;              // samples this far off the path (a
+const BUS_OFF_TOL_FT = 300;              // samples this fa-regular off the path (a
                                           // parallel road, another branch) are
                                           // not markers for this row
 
