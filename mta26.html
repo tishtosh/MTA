@@ -2430,12 +2430,31 @@ function startHeroCountdown(st, arrivals) {
         const el = document.querySelector("#boardHeader .hero-countdown");
         if (!el) { clearHeroCountdown(); return; }
         const ms = heroCountdownDeadline - Date.now();
+        const chip = document.querySelector("#boardHeader .status-chip:not(.hero-countdown)");
         if (ms <= 0) {
-            el.textContent = "Departing";
-            const chip = document.querySelector("#boardHeader .status-chip");
+            const chipText = chip ? chip.textContent.trim() : "";
+            if (/arriving|boarding/i.test(chipText)) {
+                // The API still says the vehicle is arriving/boarding; the
+                // local timer is only an estimate. Keep the server status and
+                // show "Now" until the feed changes or drops the trip.
+                chip.style.display = "";
+                el.style.display = "";
+                el.className = "bt-next-eta soon hero-countdown";
+                el.textContent = "Now";
+                return;
+            }
+            if (/departing/i.test(chipText)) {
+                // Server already says departing: keep that single chip.
+                el.style.display = "none";
+                return;
+            }
             if (chip) chip.style.display = "none";
+            el.style.display = "";
+            el.className = "status-chip status-departing hero-countdown";
+            el.textContent = "Departing";
             return;
         }
+        el.style.display = "";
         const secs = Math.max(0, Math.ceil(ms / 1000));
         el.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
     };
@@ -2469,7 +2488,7 @@ function statusReplacesDue(status) {
 function boardEtasHtml(mins, scheduled, departedAt, status) {
     if (departedAt) {
         const ago = Math.max(0, Math.round((Date.now() - departedAt) / 60000));
-        return `<span class="board-eta">Departed</span>`
+        return `<span class="status-chip status-departed">Departed</span>`
             + (ago ? ` <span class="board-eta-note">${ago} min ago</span>` : "");
     }
     let list = (mins || []).slice(0, 8);
