@@ -713,7 +713,7 @@
                     <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
                 </button>
                 <button id="btnAddFav" class="navicon add-fav-btn" title="Find stops and favorites" aria-label="Find stops and favorites" aria-expanded="false" aria-controls="favPanel">
-                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <i class="fa-solid fa-search" aria-hidden="true"></i>
                 </button>
                 <button id="btnFav" class="navicon nav-shortcut" title="All favorites" aria-label="Show all favorites">
                     <i class="fa-solid fa-star fa-xl-mta"></i>
@@ -783,7 +783,7 @@
             </select>
         </div>
         <div class="fav-setting fav-setting-static">
-            <i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>
+            <i class="fa-solid fa-map-marked-alt" aria-hidden="true"></i>
             <label class="fav-setting-name" for="mapsSelect">Maps app</label>
             <select id="mapsSelect" class="form-select form-select-sm fav-city-select" aria-label="Maps app">
                 <option value="apple">Apple Maps</option>
@@ -792,7 +792,7 @@
         </div>
         <button id="btnRefreshToggle" class="fav-setting" type="button"
                 title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
-            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+            <i class="fa-solid fa-sync" aria-hidden="true"></i>
             <span class="fav-setting-name">Auto-refresh</span>
             <span id="refreshState" class="fav-setting-state">on</span>
         </button>
@@ -2687,9 +2687,10 @@ async function ensureCrossBusNearby(station) {
     }
 }
 
-function nearbyModeIcon(metro, commuter) {
+function nearbyModeIcon(metro, commuter, color) {
     const label = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
-    return `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"} nearby-mode-icon${commuter ? " commuter-rail-icon" : ""}" role="img" aria-label="${label}" title="${label}"></i>`;
+    const style = metro && color ? ` style="color:${esc(color)}"` : "";
+    return `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"} nearby-mode-icon${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}"></i>`;
 }
 
 function crossMetroSectionHtml(st) {
@@ -2700,7 +2701,7 @@ function crossMetroSectionHtml(st) {
         + ` data-cross="metro" data-stop="${esc(st.Code)}" data-name="${esc(st.Name || "")}">`
         + `<span class="hero-line-band" style="background:${metroLineColor(primaryRoute)}"></span>`
         + `<div class="nearby-card-head"><div class="nearby-card-main">`
-        + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter)}${esc(stopName(st.Name) || st.Code)}</div>`
+        + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute))}${esc(stopName(st.Name) || st.Code)}</div>`
         + `<div class="nearby-card-sub">${esc([dist, "#" + st.Code].filter(Boolean).join(" · "))}</div>`
         + `</div></div></div>`;
     const line = st.next ? nextArrivalHtml("metro", st.next)
@@ -3991,7 +3992,7 @@ function renderMetro() {
         let html = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
             + `<span class="hero-line-band" style="background:${metroLineColor(primaryRoute)}"></span>`
             + `<div class="nearby-card-head"><div class="nearby-card-main">`
-            + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter)}${esc(stopName(stn.Name) || stn.Code)}</div>`
+            + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute))}${esc(stopName(stn.Name) || stn.Code)}</div>`
             + `<div class="nearby-card-sub">${esc([dist, "#" + stn.Code].filter(Boolean).join(" · "))}</div>`
             + `</div></div></div>`;
         if (rows.length)
@@ -4674,7 +4675,7 @@ function routeActionsHtml(kind, line, originId, originName, destId, destName, la
         + ` data-route-dest-name="${esc(destName || "")}"`;
     return `<div class="route-actions">`
         + `<button type="button" class="route-action" ${attrs} data-route-action="see">`
-        + `<i class="fa-solid fa-share-nodes" aria-hidden="true"></i>See route</button>`
+        + `<i class="fa-solid fa-share-alt" aria-hidden="true"></i>See route</button>`
         + label
         + `</div>`;
 }
@@ -4844,7 +4845,7 @@ function favSelectedMark(kind, id) {
         : String(metroAnchorCode) === String(id);
     return selected
         ? `<span class="fav-selected" role="img" aria-label="Selected stop" title="Selected stop">`
-          + `<i class="fa-solid fa-circle-check" aria-hidden="true"></i></span>`
+          + `<i class="fa-solid fa-check-circle" aria-hidden="true"></i></span>`
         : "";
 }
 
@@ -5432,7 +5433,8 @@ function bookmarkRows(slot) {
 
 function nextArrivalHtml(kind, next) {
     const commuter = kind === "metro" && next && isCommuterRoute(next.route);
-    const verb = heroVerbHtml(kind === "metro", commuter);
+    const railColor = kind === "metro" && next ? metroLineColor(next.route) : "";
+    const verb = heroVerbHtml(kind === "metro", commuter, railColor);
     if (!next) return `${verb} <span class="text-muted">no arrival or departure</span>`;
     const color = kind === "metro" ? metroLineColor(next.route) : routeColor(next.route);
     const label = kind === "metro" ? metroLineName(next.route) : next.route;
@@ -6478,7 +6480,7 @@ function shortcutButtonsHtml(id) {
     const kind = mode === "metro" ? "metro" : "bus";
     return `<div class="board-shortcuts">`
         + `<button type="button" class="board-share board-share-inline" title="Open in Maps" aria-label="Open in Maps">`
-        + `<i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i></button>`
+        + `<i class="fa-solid fa-map-marked-alt" aria-hidden="true"></i></button>`
         + SHORTCUT_SLOTS.map(slot => {
         if (slot === "fav") {
             const on = isFavorite(kind, id);
@@ -6501,17 +6503,19 @@ function shortcutButtonsHtml(id) {
 }
 
 // Bus/train icon for the hero title row.
-function heroModeIcon(metro, commuter) {
+function heroModeIcon(metro, commuter, color) {
     const label = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
-    return `<span class="hero-mode-icon${commuter ? " commuter-rail-icon" : ""}" role="img" aria-label="${label}" title="${label}">`
+    const style = metro && color ? ` style="color:${esc(color)}"` : "";
+    return `<span class="hero-mode-icon${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}">`
         + `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"}" aria-hidden="true"></i></span>`;
 }
 
 // "Next bus" / "Next train" is represented by the mode icon; the label is
 // kept for assistive technology and the hover tooltip.
-function heroVerbHtml(metro, commuter) {
+function heroVerbHtml(metro, commuter, color) {
     const label = commuter ? "Next commuter rail" : metro ? "Next train" : "Next bus";
-    return `<span class="hero-verb${commuter ? " commuter-rail-icon" : ""}" role="img" aria-label="${label}" title="${label}">`
+    const style = metro && color ? ` style="color:${esc(color)}"` : "";
+    return `<span class="hero-verb${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}">`
         + `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"}" aria-hidden="true"></i></span>`;
 }
 
@@ -6595,7 +6599,7 @@ function heroCardHtml(st, arrivals) {
         + lineBand
         + shortcutButtonsHtml(id)
         + `<div class="hero-title-row">`
-        + `${heroModeIcon(st.Metro, commuter)}`
+        + `${heroModeIcon(st.Metro, commuter, st.Metro ? metroLineColor(displayRoute) : "")}`
         + `<span class="board-stopname">${esc(label)}</span>`
         + `</div>`
         + `<div class="hero-connections" hidden>`

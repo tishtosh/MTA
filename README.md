@@ -52,7 +52,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 | **Nearby stop cards** | Cards for other stops within walking distance, below the hero card. They reuse the hero header line and top strip on a lighter tint of the same mode color, with their own departure rows underneath. Class `.nearby-stop-card`. |
 | **Route/departure rows** | The repeated rows inside a stop card: line badge, destination/headsign, and ETAs. Class `.board-row`. |
 | **Route / line badge** | The colored rectangle before a destination. It is a bus route number or a rail line name. In the hero it is also the disclosure button for the route's stop list. |
-| **Commuter-rail icon** | A train icon inside a circle. Subway and light rail use the plain train icon; MBTA commuter rail (`route_type=2`) uses the circled version. |
+| **Commuter-rail icon** | A train icon inside a circle, using the line's color. Subway and light rail use the plain train icon in the same line color. |
 | **Status chip** | The small pill before the ETA showing **Arriving**, **Boarding**, **Departing**, **NOW**, or **Departed**. `NOW` is the red uppercase chip at zero minutes; the row switches to `DEPARTING` when no live status exists. |
 | **Connection chips** | Small route or line badges at a stop in an expanded route list. The current route/line is excluded so the chips mean "you can transfer here". |
 | **Next stops…** | The label at the end of the **See route** line. The current stop is not repeated; only upcoming stops are listed, each with its own star and connection chips. |
@@ -290,7 +290,7 @@ export default {
 | `mta4a.html` | Previous version (kept for reference). |
 | `mta2.html` | Earlier iteration (kept for reference). |
 | `scratchpad.html` | Scratch / experiments. |
-| `css/all.css`, `webfonts/` | Self-hosted **Font Awesome** icons. |
+| `css/all.css`, `webfonts/` | Self-hosted **Font Awesome** icons; icon names use Font Awesome 5-compatible names. |
 | `.github/workflows/static.yml` | GitHub Pages deploy (uploads the whole repo from `main`). |
 
 Bootstrap **5.3.3** (SRI-hashed) and the Orbitron clock font load from CDN in the page;
