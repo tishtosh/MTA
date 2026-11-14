@@ -1176,10 +1176,6 @@ function favoritesCookieName() {
     return isBoston() ? "mta_favorites_boston" : FAVORITES_COOKIE;
 }
 let favorites = readFavorites();
-if (isBoston() && !favorites.length) {
-    favorites = [defaultFavorite()];
-    writeFavorites();
-}
 let busRouteDirectory = null;
 let busRouteLoad = null;
 let busRouteMbtaIds = {};
@@ -1225,8 +1221,58 @@ function isFavorite(kind, id) {
 // Settings → Delete all favorites: drop every saved bus stop/station and
 // restore the single default (N10, Washington Dulles International Airport).
 // The view switches to the same Favorites panel the star icon shows.
+function seedAirportDefaults() {
+    const seeded = [];
+    const defs = cityCfg().airportDefaults || {};
+    for (const kind of ["bus", "metro"]) {
+        const list = (defs[kind] || []).map(e => ({
+            id: String(e.id), name: e.name || "", route: e.route || ""
+        }));
+        if (!list.length) continue;
+        const cur = readShortcutsFor(kind);
+        cur.airport = list;
+        writeShortcutsFor(kind, cur);
+        for (const e of list)
+            seeded.push({ kind, id: e.id, name: e.name, route: e.route });
+    }
+    shortcuts = readShortcutCookie();
+    return seeded;
+}
+
+function ensureAirportDefaults() {
+    let seeded = [];
+    if (!allSlotEntries("airport").length) {
+        seeded = seedAirportDefaults();
+        for (const e of seeded) {
+            if (!isFavorite(e.kind, e.id))
+                favorites.push({ kind: e.kind, id: e.id, name: e.name, route: e.route });
+        }
+        if (seeded.length) writeFavorites();
+    }
+    // With no favorites at all, the airport is the default saved set.
+    const airport = allSlotEntries("airport");
+    if (!favorites.length && airport.length) {
+        favorites = airport.map(e => ({
+            kind: e.kind, id: e.id, name: e.name, route: e.route
+        }));
+        writeFavorites();
+    }
+    return seeded;
+}
+
 function resetFavorites() {
-    favorites = [defaultFavorite()];
+    ensureAirportDefaults();
+    const list = [];
+    const seen = new Set();
+    const add = (e) => {
+        const key = e.kind + ":" + String(e.id);
+        if (!e.id || seen.has(key)) return;
+        seen.add(key);
+        list.push({ kind: e.kind, id: String(e.id), name: e.name || "", route: e.route || "" });
+    };
+    add(defaultFavorite());
+    for (const e of allSlotEntries("airport")) add(e);
+    favorites = list;
     writeFavorites();
     updateShortcutNav();
     closeFavPanel();
@@ -1464,6 +1510,41 @@ function mbtaPredictionStatus(a, now) {
     return "";
 }
 
+const mbtaTerminalCache = new Map();
+
+// Stops where each direction terminates for a route. Used to drop arrivals
+// whose trip ends at the stop (they are arrivals, not departures).
+async function mbtaTerminals(routeId, useParent) {
+    const key = routeId + ":" + (useParent ? "p" : "s");
+    if (mbtaTerminalCache.has(key)) return mbtaTerminalCache.get(key);
+    const terminals = new Set();
+    try {
+        const { data: rp } = await mbtaGet("/route_patterns", {
+            "filter[route]": routeId
+        });
+        const patterns = ((rp && rp.data) || []).filter(p =>
+            p.relationships && p.relationships.route &&
+            p.relationships.route.data.id === routeId);
+        const byDir = new Map();
+        for (const p of patterns) {
+            const dir = p.attributes.direction_id;
+            const cur = byDir.get(dir);
+            if (!cur || (p.attributes.canonical && !cur.attributes.canonical))
+                byDir.set(dir, p);
+        }
+        for (const [dir, p] of byDir) {
+            const tripId = p.relationships.representative_trip &&
+                p.relationships.representative_trip.data.id;
+            if (!tripId) continue;
+            const stops = await mbtaTripStops(tripId, useParent);
+            if (stops.length)
+                terminals.add(`${dir}|${stops[stops.length - 1].StopID}`);
+        }
+    } catch (e) { /* no terminal filtering */ }
+    mbtaTerminalCache.set(key, terminals);
+    return terminals;
+}
+
 async function fetchMbtaPredictions(stopId) {
     const { data, error } = await mbtaGet("/predictions", {
         "filter[stop]": stopId,
@@ -1492,14 +1573,22 @@ async function fetchMbtaPredictions(stopId) {
             min: Math.max(0, Math.round((at - now) / 60000)),
             at,
             route: mbtaRouteShort(route).toUpperCase(),
+            routeRef: (routeRel && routeRel.id) || "",
             dir, dirNum: String(dir), heads, dirText: heads,
             vehicle: null,
             trip: (tripRel && tripRel.id) || null,
             status: mbtaPredictionStatus(a, now)
         });
     }
-    preds.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
-    return { name: allStopsName(stopId) || "", predictions: preds };
+    const routeIds = [...new Set(preds.map(p => p.routeRef).filter(Boolean))];
+    const terminals = new Map();
+    await Promise.all(routeIds.map(async id => {
+        terminals.set(id, await mbtaTerminals(id, false));
+    }));
+    const kept = preds.filter(p =>
+        !(terminals.get(p.routeRef) || new Set()).has(`${p.dirNum}|${stopId}`));
+    kept.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
+    return { name: allStopsName(stopId) || "", predictions: kept };
 }
 
 async function fetchPredictions(stopId) {
@@ -1531,7 +1620,22 @@ async function fetchPredictions(stopId) {
                      status: min === 0 ? "Arriving" : "" });
     }
     preds.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
-    return { name, predictions: preds };
+    // Drop arrivals whose published pattern terminates at this stop. Route
+    // details may not be cached yet on the first cycle; the next refresh
+    // applies the filter once they are.
+    const terminalDirs = new Set();
+    for (const r of new Set(preds.map(p => p.route))) {
+        const details = (typeof routeDetailsCache !== "undefined" && routeDetailsCache[r]) || null;
+        for (const dir of (details && details.directions) || []) {
+            const last = (dir.stops || [])[dir.stops.length - 1];
+            if (last && String(last.id) === String(stopId))
+                terminalDirs.add(String(dir.dirNum));
+        }
+    }
+    const out = terminalDirs.size
+        ? preds.filter(p => !terminalDirs.has(String(p.dirNum)))
+        : preds;
+    return { name, predictions: out };
 }
 
 // Recently departed buses: WMATA drops a prediction once the bus leaves the
@@ -2935,21 +3039,6 @@ function clearCityCaches() {
     boardToken++;
 }
 
-function ensureAirportDefaults() {
-    if (allSlotEntries("airport").length) return;
-    const defs = cityCfg().airportDefaults || {};
-    for (const kind of ["bus", "metro"]) {
-        const list = (defs[kind] || []).map(e => ({
-            id: String(e.id), name: e.name || "", route: e.route || ""
-        }));
-        if (!list.length) continue;
-        const cur = readShortcutsFor(kind);
-        cur.airport = list;
-        writeShortcutsFor(kind, cur);
-    }
-    shortcuts = readShortcutCookie();
-}
-
 function setCity(next, opts) {
     if (!CITIES[next]) return;
     if (next === city) {
@@ -2959,10 +3048,6 @@ function setCity(next, opts) {
     city = next;
     writeCityCookie();
     favorites = readFavorites();
-    if (isBoston() && !favorites.length) {
-        favorites = [defaultFavorite()];
-        writeFavorites();
-    }
     shortcuts = readShortcutCookie();
     ensureAirportDefaults();
     clearCityCaches();
@@ -3071,7 +3156,17 @@ async function fetchMbtaMetroLive(codes) {
             status: mbtaPredictionStatus(a, Date.now())
         });
     }
-    for (const c of codes) by[c].sort((a, b) => a.min - b.min);
+    const routes = [...new Set(Object.values(by).flat()
+        .map(t => t.route).filter(Boolean))];
+    const terminals = new Map();
+    await Promise.all(routes.map(async id => {
+        terminals.set(id, await mbtaTerminals(id, true));
+    }));
+    for (const c of codes) {
+        by[c] = by[c].filter(t =>
+            !(terminals.get(t.route) || new Set()).has(`${t.dirNum}|${c}`));
+        by[c].sort((a, b) => a.min - b.min);
+    }
     return by;
 }
 
@@ -3090,6 +3185,9 @@ async function fetchMetroLive(codes) {
         const dest = t.DestinationName || t.Destination || "";
         if (min == null || !code || !line || line === "NO" || /no passenger/i.test(dest))
             continue;
+        const stName = (metroStationsCache || []).find(s => s.Code === code);
+        if (dest && ((metroDestCode(dest) === code) ||
+            (stName && normHeads(dest) === normHeads(stName.Name)))) continue;
         (by[code] || (by[code] = [])).push({
             min, route: line,
             dir: dest, heads: dest,
