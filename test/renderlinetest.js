@@ -50,6 +50,8 @@ vm.runInContext(
    "function slotHas(kind, slot, id){ const v = shortcuts[slot]; const list = !v ? [] : (Array.isArray(v) ? v : (v.id ? [v] : [])); return list.some(e => String(e.id) === String(id)); }",
    extractFn("shortcutButtonsHtml"),
    extractFn("routeColor"), extractFn("esc"), extractFn("stopName"),
+   "var metroRoutesCache = null;",
+   extractFn("isCommuterRoute"),
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),

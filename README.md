@@ -2,7 +2,7 @@
 
 A tiny, single-file web app (no backend, no build step) that shows **live DC Metrobus
 arrival predictions** for a handful of bus stops around **Cleveland Park (20010)** — the
-Park Rd NW / 19 St NW corner — and now also supports **Boston** (MBTA bus + subway). It's
+Park Rd NW / 19 St NW corner — and now also supports **Boston** (MBTA bus, subway, light rail, and commuter rail). It's
 a static HTML page hosted on **GitHub Pages**, so it costs nothing to run.
 
 Open it: **https://tishtosh.github.io/MTA/mta26.html**
@@ -24,11 +24,11 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   and Metro stations. Adding one also adds it to favorites, but removing a favorite does
   not remove the Home/Work/Airport bookmark. Airports are seeded per city with a bus stop
   and a rail station.
-- **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Subway**, and
+- **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Rail**, and
   **Settings**. Settings includes the **City** selector (**Washington DC** or **Boston**),
   the **Maps app** choice (**Apple Maps** or **Google Maps**, default Google, used by the
   hero map button and route actions), auto-refresh, and Delete all favorites.
-- **Near me** lists bus stops and Metro/subway stations within 1,000 ft of the current
+- **Near me** lists bus stops and Metro/subway/commuter-rail stations within 1,000 ft of the current
   location, and auto-selects Boston or Washington DC from that location. Favorites and
   Home/Work bookmarks are stored separately per city.
 - The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
@@ -51,7 +51,8 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 | **Hero card** | The primary card for the selected stop/station: name, ID, and next bus/train with the colored top strip. Class `.hero-card`. |
 | **Nearby stop cards** | Cards for other stops within walking distance, below the hero card. They reuse the hero header line and top strip on a lighter tint of the same mode color, with their own departure rows underneath. Class `.nearby-stop-card`. |
 | **Route/departure rows** | The repeated rows inside a stop card: line badge, destination/headsign, and ETAs. Class `.board-row`. |
-| **Route / line badge** | The colored rectangle before a destination. It is a bus route number or a subway line name. In the hero it is also the disclosure button for the route's stop list. |
+| **Route / line badge** | The colored rectangle before a destination. It is a bus route number or a rail line name. In the hero it is also the disclosure button for the route's stop list. |
+| **Commuter-rail icon** | A train icon inside a circle. Subway and light rail use the plain train icon; MBTA commuter rail (`route_type=2`) uses the circled version. |
 | **Status chip** | The small pill before the ETA showing **Arriving**, **Boarding**, **Departing**, **NOW**, or **Departed**. `NOW` is the red uppercase chip at zero minutes; the row switches to `DEPARTING` when no live status exists. |
 | **Connection chips** | Small route or line badges at a stop in an expanded route list. The current route/line is excluded so the chips mean "you can transfer here". |
 | **Next stops…** | The label at the end of the **See route** line. The current stop is not repeated; only upcoming stops are listed, each with its own star and connection chips. |
@@ -79,7 +80,7 @@ The **Settings** section of the search dropdown selects the transport system:
 | City | Data source | Modes |
 |------|-------------|-------|
 | **Washington DC** | WMATA (`api.wmata.com`) | Metrobus + Metrorail |
-| **Boston** | MBTA v3 (`api-v3.mbta.com`) | MBTA bus + subway/light rail |
+| **Boston** | MBTA v3 (`api-v3.mbta.com`) | MBTA bus + subway/light rail + commuter rail |
 
 - The choice is stored in the `mta_city` cookie; the default is Washington DC.
 - Favorites and Home/Work bookmarks are per city (separate storage keys), so switching
@@ -151,7 +152,7 @@ API budget on static lookups.
 | Metro schedules | Per service day | Built from the rail GTFS feed and then cached. |
 | Repeated GETs | 6 s | In-memory memo for static resources; live prediction endpoints are excluded. |
 
-- Caches are stored in `localStorage` per city under `mta_cache_v1_<city>_<name>` and fall back to
+- Caches are stored in `localStorage` per city under `mta_cache_v2_<city>_<name>` and fall back to
   memory if storage is unavailable or full.
 - **Stale-while-revalidate:** a cached stop/route/terminal/connection is rendered first; if it is
   older than its TTL, a background refresh updates it for the next paint.
@@ -209,7 +210,7 @@ The MBTA v3 API uses JSON:API and an `api_key` query parameter:
 | `GET https://api-v3.mbta.com/predictions` | Live predictions by stop, route type, or location; `include=route,trip,stop` supplies line names and headsigns |
 
 - **Developer portal / docs / key sign-up:** <https://www.mbta.com/developers/v3-api>
-- Boston bus mode uses `route_type=3`; subway/light rail uses `route_type=0,1`.
+- Boston bus mode uses `route_type=3`; subway/light rail uses `route_type=0,1`; commuter rail uses `route_type=2`.
 - The MBTA key is encrypted in `MBTA_KEY_BLOB` and decrypted into `MBTA_KEY` after unlock
   (same client-side caveat as the WMATA key).
 - Boston transit data is provided by the MBTA (<https://www.mbta.com>).

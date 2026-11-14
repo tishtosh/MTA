@@ -89,7 +89,7 @@
             color: #fff; font-weight: 700; font-size: 12px; text-align: center;
         }
         .fav-badge.boston-bus { width: 65px; min-width: 65px; }
-        .fav-badge.line { width: 74px; min-width: 74px; }
+        .fav-badge.line { width: auto; min-width: 74px; max-width: 150px; }
         .fav-conns { display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: auto; }
         .fav-conns .fav-badge,
         .fav-conns .fav-badge.line,
@@ -405,6 +405,12 @@
             font: 600 15px/1.3 system-ui, -apple-system, sans-serif; color: inherit;
         }
         .nearby-mode-icon { margin-right: 5px; font-size: 13px; color: #2b2b2b; }
+        .nearby-mode-icon.commuter-rail-icon {
+            width: 18px; height: 18px; box-sizing: border-box;
+            display: inline-flex; align-items: center; justify-content: center;
+            border: 1.5px solid currentColor; border-radius: 50%;
+            font-size: 9px; vertical-align: -3px;
+        }
         .nearby-card-sub { margin: 1px 0 0; font-size: 12px; color: #3d3d3d; }
 
         .board-head {
@@ -428,7 +434,7 @@
         /* Metro line names share one rectangle width (fits "Orange"/"Yellow"
            plus the stop-list chevron). */
         .row-badge.metro-line {
-            width: 84px; box-sizing: border-box;
+            width: auto; min-width: 84px; max-width: 150px; box-sizing: border-box;
             display: inline-flex; align-items: center; justify-content: center;
             text-align: center;
         }
@@ -524,6 +530,12 @@
         .hero-title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .hero-mode-icon { flex: none; display: inline-flex; align-items: center; }
         .hero-mode-icon i { font-size: 17px; }
+        .hero-mode-icon.commuter-rail-icon {
+            width: 21px; height: 21px; box-sizing: border-box;
+            justify-content: center; border: 1.5px solid currentColor;
+            border-radius: 50%;
+        }
+        .hero-mode-icon.commuter-rail-icon i { font-size: 10px; }
         .hero-line-band {
             position: absolute; top: 0; left: 0; right: 0; height: 7px;
             border-radius: 10px 10px 0 0; pointer-events: none;
@@ -600,10 +612,17 @@
         .board-next .bt-next-rest { color: #5f5f5f; }
         .hero-verb { display: inline-flex; align-items: center; margin-right: 3px; }
         .hero-verb i { font-size: 18px; }
+        .hero-verb.commuter-rail-icon {
+            width: 21px; height: 21px; box-sizing: border-box;
+            justify-content: center; border: 1.5px solid currentColor;
+            border-radius: 50%;
+        }
+        .hero-verb.commuter-rail-icon i { font-size: 10px; }
         .hero-connections {
             display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
             margin-top: 5px; font: 11px/1.35 system-ui, -apple-system, sans-serif;
         }
+        .hero-connections[hidden] { display: none; }
         .hero-connections-label {
             flex: none; font: 600 10px/1.4 system-ui, -apple-system, sans-serif;
             letter-spacing: .05em; text-transform: uppercase;
@@ -744,7 +763,7 @@
         <div id="favBusRoutes" class="fav-list"></div>
     </div>
     <button type="button" class="fav-header" data-fav-panel="metro" aria-expanded="false">
-        <span>Subway</span>
+        <span>Rail</span>
         <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
     </button>
     <div id="favMetroBody" class="fav-body" hidden>
@@ -984,7 +1003,7 @@ function defaultFavorite() { return Object.assign({}, cityCfg().defaultFavorite)
 const TOPOLOGY_TTL_MS = 24 * 60 * 60 * 1000;
 const CONNECTION_TTL_MS = 24 * 60 * 60 * 1000;
 const API_MEMO_MS = 6000;
-const CACHE_PREFIX = "mta_cache_v1_";
+const CACHE_PREFIX = "mta_cache_v2_";
 
 function cacheStorageKey(name) {
     return `${CACHE_PREFIX}${city}_${name}`;
@@ -1128,7 +1147,7 @@ const METRO_LINE_NAMES = {
     RD: "Red", BL: "Blue", OR: "Orange",
     SV: "Silver", GR: "Green", YL: "Yellow"
 };
-// Boston subway/light-rail routes (loaded from MBTA /routes type 0,1).
+// Boston subway/light-rail/commuter-rail routes (loaded from MBTA /routes type 0,1,2).
 let metroRoutesCache = null;
 let metroRoutesCacheAt = 0;
 let metroRoutesLoad = null;
@@ -1155,6 +1174,16 @@ function metroLineName(line) {
         return m ? m.name : key;
     }
     return METRO_LINE_NAMES[key.toUpperCase()] || key;
+}
+
+// MBTA commuter rail is route_type 2. It shares the rail board with subway
+// and light rail but gets the circled train icon.
+function isCommuterRoute(line) {
+    const key = String(line || "");
+    if (!key) return false;
+    if (/^CR-/i.test(key)) return true;
+    const m = metroRoutesCache && metroRoutesCache[key];
+    return !!(m && Number(m.type) === 2);
 }
 
 // ── Mode (bus / metro) and shortcut locations ─────────────────────────
@@ -2658,17 +2687,20 @@ async function ensureCrossBusNearby(station) {
     }
 }
 
-function nearbyModeIcon(metro) {
-    return `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"} nearby-mode-icon" aria-hidden="true"></i>`;
+function nearbyModeIcon(metro, commuter) {
+    const label = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
+    return `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"} nearby-mode-icon${commuter ? " commuter-rail-icon" : ""}" role="img" aria-label="${label}" title="${label}"></i>`;
 }
 
 function crossMetroSectionHtml(st) {
     const dist = st.distFt == null ? "" : `${Math.round(st.distFt)} ft away`;
+    const primaryRoute = (st.next && st.next.route) || (st.Lines && st.Lines[0]) || "";
+    const commuter = isCommuterRoute(primaryRoute);
     const card = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0"`
         + ` data-cross="metro" data-stop="${esc(st.Code)}" data-name="${esc(st.Name || "")}">`
-        + `<span class="hero-line-band" style="background:${metroLineColor((st.Lines || [])[0] || "")}"></span>`
+        + `<span class="hero-line-band" style="background:${metroLineColor(primaryRoute)}"></span>`
         + `<div class="nearby-card-head"><div class="nearby-card-main">`
-        + `<div class="nearby-card-title">${nearbyModeIcon(true)}${esc(stopName(st.Name) || st.Code)}</div>`
+        + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter)}${esc(stopName(st.Name) || st.Code)}</div>`
         + `<div class="nearby-card-sub">${esc([dist, "#" + st.Code].filter(Boolean).join(" · "))}</div>`
         + `</div></div></div>`;
     const line = st.next ? nextArrivalHtml("metro", st.next)
@@ -3259,16 +3291,22 @@ function normalizeMetroStation(s) {
 
 function fetchMetroRoutesFresh() {
     if (metroRoutesLoad) return metroRoutesLoad;
-    metroRoutesLoad = mbtaGet("/routes", { "filter[type]": "0,1", "page[limit]": 50 })
+    metroRoutesLoad = mbtaGet("/routes", { "filter[type]": "0,1,2", "page[limit]": 100 })
         .then(({ data, error }) => {
             if (error) throw error;
             const map = {};
             for (const r of (data && data.data) || []) {
+                const type = Number(r.attributes.type);
+                const crName = String(r.attributes.long_name || "")
+                    .replace(/\s+Line$/i, "").trim();
                 map[r.id] = {
                     name: /^Green-/.test(r.id)
                         ? "Green " + (r.attributes.short_name || r.id.replace(/^Green-/, ""))
-                        : (r.attributes.short_name || r.id),
+                        : type === 2
+                            ? (crName || r.id.replace(/^CR-/, ""))
+                            : (r.attributes.short_name || r.id),
                     color: r.attributes.color || "5d4037",
+                    type,
                     destinations: r.attributes.direction_destinations || []
                 };
             }
@@ -3623,9 +3661,9 @@ function metroMin(v) {
 async function fetchMbtaMetroLive(codes) {
     const { data, error } = await mbtaGet("/predictions", {
         "filter[stop]": codes.join(","),
-        "filter[route_type]": "0,1",
+        "filter[route_type]": "0,1,2",
         "include": "route,trip,stop",
-        "page[limit]": 300
+        "page[limit]": 500
     });
     if (error) throw error;
     const inc = mbtaIncluded(data);
@@ -3780,30 +3818,15 @@ async function fetchMetroPath(from, to, line) {
 // Boston: use a representative trip for the line/direction whose ordered
 // stops contain both the boarding station and the destination.
 async function fetchMbtaMetroPath(from, to, line) {
-    const { data: rp, error } = await mbtaGet("/route_patterns", {
-        "filter[route]": line
-    });
-    if (error) throw error;
-    for (const p of (rp && rp.data) || []) {
-        const tripId = p.relationships && p.relationships.representative_trip &&
-            p.relationships.representative_trip.data.id;
-        if (!tripId) continue;
-        const { data: tr, error: e2 } = await mbtaGet(`/trips/${tripId}`, {
-            include: "stops"
-        });
-        if (e2 || !tr) continue;
-        const inc = new Map(((tr.included) || [])
-            .filter(i => i.type === "stop").map(s => [s.id, s]));
-        const rel = tr.data.relationships && tr.data.relationships.stops;
-        const ids = [];
-        for (const x of ((rel && rel.data) || [])) {
-            const s = inc.get(x.id);
-            const p = s && s.relationships && s.relationships.parent_station
-                && s.relationships.parent_station.data;
-            const id = p ? p.id : x.id;
-            if (ids[ids.length - 1] !== id) ids.push(id);
-        }
-        const a = ids.indexOf(from), b = ids.indexOf(to);
+    await mbtaPatternsForRoutes([line]);
+    const patterns = mbtaPatternCache.get(String(line)) || [];
+    const tripIds = [...new Set(patterns.map(p => p.tripId).filter(Boolean))];
+    const stopMap = await mbtaTripStopsMany(tripIds, true).catch(() => new Map());
+    for (const p of patterns) {
+        if (!p.tripId) continue;
+        const stops = stopMap.get(p.tripId) || [];
+        const ids = stops.map(s => String(s.StopID));
+        const a = ids.indexOf(String(from)), b = ids.indexOf(String(to));
         if (a < 0 || b < 0) continue;
         const slice = a <= b ? ids.slice(a, b + 1) : ids.slice(b, a + 1).reverse();
         return slice.map(id => {
@@ -3860,8 +3883,13 @@ async function refreshBoardStopConnections() {
     for (const el of [...hero, ...rows]) {
         const conns = await fetchStopConnections(
             el.dataset.connKind || "bus", el.dataset.conn);
-        if (el.parentNode) el.innerHTML = connectionBadgesHtml(conns,
-            el.dataset.connKind || "bus", el.dataset.connRoute || "");
+        if (el.parentNode) {
+            const html = connectionBadgesHtml(conns,
+                el.dataset.connKind || "bus", el.dataset.connRoute || "");
+            el.innerHTML = html;
+            const wrap = el.closest && el.closest(".hero-connections");
+            if (wrap) wrap.hidden = !html;
+        }
     }
 }
 
@@ -3956,13 +3984,16 @@ function renderMetro() {
         const dist = stn.distFt == null ? ""
             : (stn.distFt < 5280 ? `${Math.round(stn.distFt)} ft away`
                                  : `${(stn.distFt / 5280).toFixed(1)} mi away`);
+        const rows = metroRowsFor(stn);
+        const primaryRoute = (rows[0] && rows[0].route) ||
+            (stn.Lines && stn.Lines[0]) || "";
+        const commuter = isCommuterRoute(primaryRoute);
         let html = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
-            + `<span class="hero-line-band" style="background:${metroLineColor((stn.Lines || [])[0] || "")}"></span>`
+            + `<span class="hero-line-band" style="background:${metroLineColor(primaryRoute)}"></span>`
             + `<div class="nearby-card-head"><div class="nearby-card-main">`
-            + `<div class="nearby-card-title">${nearbyModeIcon(true)}${esc(stopName(stn.Name) || stn.Code)}</div>`
+            + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter)}${esc(stopName(stn.Name) || stn.Code)}</div>`
             + `<div class="nearby-card-sub">${esc([dist, "#" + stn.Code].filter(Boolean).join(" · "))}</div>`
             + `</div></div></div>`;
-        const rows = metroRowsFor(stn);
         if (rows.length)
             html += `<div class="nearby-board"><div class="board">${rowsHtml(rows)}</div></div>`;
         sections.push({ dist: stn.distFt == null ? Infinity : stn.distFt, html });
@@ -4856,7 +4887,7 @@ async function buildStopConnections(kind, id) {
             for (const r of (data && data.data) || []) {
                 const type = r.attributes.type;
                 if (type === 3) out.bus.push(String(r.attributes.short_name || r.id).toUpperCase());
-                else if (type === 0 || type === 1) out.metro.push(String(r.id));
+                else if (type === 0 || type === 1 || type === 2) out.metro.push(String(r.id));
             }
             // MBTA links bus routes to station IDs but not rail lines to bus
             // stops: add nearby stations' lines for a bus stop.
@@ -5400,7 +5431,8 @@ function bookmarkRows(slot) {
 }
 
 function nextArrivalHtml(kind, next) {
-    const verb = heroVerbHtml(kind === "metro");
+    const commuter = kind === "metro" && next && isCommuterRoute(next.route);
+    const verb = heroVerbHtml(kind === "metro", commuter);
     if (!next) return `${verb} <span class="text-muted">no arrival or departure</span>`;
     const color = kind === "metro" ? metroLineColor(next.route) : routeColor(next.route);
     const label = kind === "metro" ? metroLineName(next.route) : next.route;
@@ -6469,17 +6501,17 @@ function shortcutButtonsHtml(id) {
 }
 
 // Bus/train icon for the hero title row.
-function heroModeIcon(metro) {
-    const label = metro ? "Train" : "Bus";
-    return `<span class="hero-mode-icon" role="img" aria-label="${label}" title="${label}">`
+function heroModeIcon(metro, commuter) {
+    const label = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
+    return `<span class="hero-mode-icon${commuter ? " commuter-rail-icon" : ""}" role="img" aria-label="${label}" title="${label}">`
         + `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"}" aria-hidden="true"></i></span>`;
 }
 
 // "Next bus" / "Next train" is represented by the mode icon; the label is
 // kept for assistive technology and the hover tooltip.
-function heroVerbHtml(metro) {
-    const label = metro ? "Next train" : "Next bus";
-    return `<span class="hero-verb" role="img" aria-label="${label}" title="${label}">`
+function heroVerbHtml(metro, commuter) {
+    const label = commuter ? "Next commuter rail" : metro ? "Next train" : "Next bus";
+    return `<span class="hero-verb${commuter ? " commuter-rail-icon" : ""}" role="img" aria-label="${label}" title="${label}">`
         + `<i class="fa-solid ${metro ? "fa-train" : "fa-bus"}" aria-hidden="true"></i></span>`;
 }
 
@@ -6494,6 +6526,10 @@ function heroCardHtml(st, arrivals) {
     const list = (arrivals || []).slice().sort((a, b) => a.min - b.min);
     const next = (arrivals || []).slice()
         .sort((a, b) => predictionRank(a) - predictionRank(b) || a.min - b.min)[0] || null;
+    const displayRoute = next ? next.route :
+        ((st.MetroScheduledNext && st.MetroScheduledNext.route) ||
+         (st.Lines && st.Lines[0]) || "");
+    const commuter = st.Metro && isCommuterRoute(displayRoute);
     const badgeColor = (route) => st.Metro ? metroLineColor(route) : routeColor(route);
     const badgeLabel = (route) => st.Metro ? metroLineName(route) : route;
     let nextLine;
@@ -6551,18 +6587,18 @@ function heroCardHtml(st, arrivals) {
         }
     }
     const lineBand = st.Metro
-        ? `<span class="hero-line-band" style="background:${metroLineColor(next ? next.route : ((st.Lines || [])[0] || ""))}"></span>`
+        ? `<span class="hero-line-band" style="background:${metroLineColor(displayRoute)}"></span>`
         : `<span class="hero-line-band bus-band"${busBandAttr(next && next.route)}></span>`;
-    const heroRoute = String((next && next.route) ||
+    const heroRoute = String(displayRoute ||
         (st.Metro ? ((st.Lines || [])[0] || "") : ((st.Routes || [])[0] || "")));
     return `<div class="hero-card${st.Metro ? " hero-metro" : " hero-bus"}">`
         + lineBand
         + shortcutButtonsHtml(id)
         + `<div class="hero-title-row">`
-        + `${heroModeIcon(st.Metro)}`
+        + `${heroModeIcon(st.Metro, commuter)}`
         + `<span class="board-stopname">${esc(label)}</span>`
         + `</div>`
-        + `<div class="hero-connections">`
+        + `<div class="hero-connections" hidden>`
         + `<span class="hero-connections-label">Connections</span>`
         + `<span class="fav-conns" data-conn="${esc(id)}"`
         + ` data-conn-kind="${st.Metro ? "metro" : "bus"}"`
