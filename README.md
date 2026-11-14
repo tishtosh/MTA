@@ -27,8 +27,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 - **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Subway**, and
   **Settings**. Settings includes the **City** selector (**Washington DC** or **Boston**),
   the **Maps app** choice (**Apple Maps** or **Google Maps**, default Google, used by the
-  hero share icon),
-  auto-refresh, and Delete all favorites.
+  hero map button and route actions), auto-refresh, and Delete all favorites.
 - **Near me** lists bus stops and Metro/subway stations within 1,000 ft of the current
   location, and auto-selects Boston or Washington DC from that location. Favorites and
   Home/Work bookmarks are stored separately per city.
@@ -36,8 +35,12 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   each matching route to only the matching stops.
 - A selected stop opens its **hero card** plus **route/departure rows**; other stops
   within walking distance appear below as **nearby stop cards** with their own rows.
+- Each route row expands to **Next stops…**, with connection chips, a **See route** action,
+  and a share button that opens transit directions from the selected stop to that route's
+  terminal.
 - Live arrivals refresh automatically (default every 30 s), with a manual auto-refresh
-  pause/resume in Settings.
+  pause/resume in Settings. Nearby stops refresh on slower tiers and hidden tabs pause
+  fully.
 - If one stop's prediction request fails (e.g. a stop that no longer exists), the page
   still renders the others and shows a muted "predictions unavailable" row instead of
   going blank.
@@ -49,8 +52,26 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 | **Hero card** | The primary card for the selected stop/station: name, ID, and next bus/train with the colored top strip. Class `.hero-card`. |
 | **Nearby stop cards** | Cards for other stops within walking distance, below the hero card. They reuse the hero header line and top strip on a lighter tint of the same mode color, with their own departure rows underneath. Class `.nearby-stop-card`. |
 | **Route/departure rows** | The repeated rows inside a stop card: line badge, destination/headsign, and ETAs. Class `.board-row`. |
-| **Bookmark cards** | The cards shown in the Favorites / Home / Work views (saved locations). Class `.bookmark-card`. |
-| **Bookmark list view** | The main-panel view that replaces the board when Favorites, Home, or Work is selected. |
+| **Route / line badge** | The colored rectangle before a destination. It is a bus route number or a subway line name. In the hero it is also the disclosure button for the route's stop list. |
+| **Status chip** | The small pill before the ETA showing **Arriving**, **Boarding**, **Departing**, **NOW**, or **Departed**. `NOW` is the red uppercase chip at zero minutes; the row switches to `DEPARTING` when no live status exists. |
+| **Connection chips** | Small route or line badges at a stop in an expanded route list. The current route/line is excluded so the chips mean "you can transfer here". |
+| **Next stops…** | The label at the top of a route expansion. The current stop is not repeated; only upcoming stops are listed, each with its own star and connection chips. |
+| **See route / share** | Two actions at the top of a route expansion. Both open transit directions from the selected stop to that direction's terminal; the share icon uses the same map destination. |
+| **Selected-stop map button** | The share/arrow button in the hero card. It opens the selected stop/station in the configured Maps app. |
+| **Bookmark cards** | The cards shown in the Favorites / Home / Work / Airport views (saved locations). Class `.bookmark-card`. |
+| **Bookmark list view** | The main-panel view that replaces the board when Favorites, Home, Work, or Airport is selected. |
+
+### Maps launching
+
+- **Google Maps** is the default. The selected-stop button opens the place/search URL; **See route** opens
+  `/maps/dir/?api=1&origin=…&destination=…&travelmode=transit`.
+- **Apple Maps** uses the transit frame view:
+  `/frame?map=transit&center=…&span=…`. The route action frames both the selected stop and the
+  terminal; the selected-stop button frames the stop itself. If coordinates are unavailable, it falls
+  back to the nearest known point or a plain transit frame.
+- Route actions start at the **selected stop** and end at the **terminal stop of that direction**, not
+  at the vehicle's current position.
+
 
 ## Cities
 
@@ -103,11 +124,56 @@ The current 20010 corner stops (useful for building `?busstop=` links):
 
 ## Data loading
 
-- The ~800 KB `jStops` directory is fetched lazily — when the Bus filter, a stop
-  lookup, or **Near me** needs it — never on initial load, and once per page load.
-- Live arrivals are fetched per visible stop/station and refreshed on the configured
-  cycle (default 30 s).
+The page separates **live data** from **topology** so it can stay current without spending the
+API budget on static lookups.
+
+### Live refresh tiers
+
+| Data | Default cadence | Notes |
+|------|-----------------|-------|
+| Selected stop/station | Every `refresh` seconds (30 s default) | Always refreshed, even when its cached ETA is recent. |
+| Across-street stop | Same as selected | Part of the priority set. |
+| Nearest nearby stops (up to 3) | 60 s | `max(60 s, 2 × refresh)`. |
+| Remaining nearby stops | 180 s | `max(180 s, 4 × refresh)`. |
+| Hidden tab | Paused | Refresh resumes immediately when the tab becomes visible again. |
+| MBTA bus cluster | One batched request per cycle | MBTA accepts multiple stop IDs in `/predictions`. |
+| Metro nearby stations | One batched request per nearby tier | WMATA and MBTA both accept multiple station/stop codes. |
+| WMATA bus | One request per stop | No multi-stop prediction endpoint; tiering is the main saving. |
+
+### Topology and schedule cache
+
+| Data | Cache lifetime | Refresh behavior |
+|------|----------------|------------------|
+| Stop directory, stations, bus routes | 24 h | Cached copy paints immediately; stale copy refreshes in the background. |
+| Route details and stop sequences | 24 h | Stale-while-revalidate. |
+| MBTA route patterns and terminal stops | 24 h | One bulk route-pattern request, then cached; representative trip stops are batched. |
+| Connections at a stop | 24 h | Cached per stop/mode. |
+| Bus stop schedules | Per service day | Fetched only for priority stops, or nearby stops with no live prediction. |
+| Metro schedules | Per service day | Built from the rail GTFS feed and then cached. |
+| Repeated GETs | 6 s | In-memory memo for static resources; live prediction endpoints are excluded. |
+
+- Caches are stored in `localStorage` per city under `mta_cache_v1_<city>_<name>` and fall back to
+  memory if storage is unavailable or full.
+- **Stale-while-revalidate:** a cached stop/route/terminal/connection is rendered first; if it is
+  older than its TTL, a background refresh updates it for the next paint.
+- Route expansions are loaded on first open, then reused. The first open may still fetch one trip
+  stop list and per-stop connection data; later opens and reloads use the 24 h caches.
+- The stop directory is fetched lazily — when the Bus filter, a stop lookup, or **Near me**
+  needs it — never on initial load.
 - Favorite and bookmark cards fetch their own next arrival when the view opens.
+
+### API call strategy
+
+1. **Batch what the API supports** — MBTA bus predictions, MBTA route patterns, MBTA trip stops,
+   and Metro station predictions.
+2. **Tier what it does not** — WMATA bus predictions are polled at selected / near / far cadences.
+3. **Persist static topology** — a warm reload makes no stop/route/terminal/connection calls until
+   the 24 h TTL expires.
+4. **Revalidate rather than block** — stale topology renders immediately while a background request
+   refreshes it.
+5. **Coalesce and back off** — in-flight requests are deduped, identical static GETs are memoized for
+   6 s, a 429 stretches the next cycle 5×, and polling stops in hidden tabs.
+
 
 ---
 
@@ -187,8 +253,12 @@ politely on its own:
   (150 s at the 30 s default) and the status line shows "API rate limit hit, slowing
   refresh".
 - Keep `?refresh` reasonable. Don't run a 15 s interval against many stops with a shared
-  key. Each visible stop/station (including nearby cards and bookmark cards) costs one
-  prediction request per cycle.
+  key. The selected stop stays on that interval; nearby stops are polled at 60 s / 180 s
+  tiers, and hidden tabs stop polling entirely.
+- Static topology is reused for 24 h, so reloading the page or reopening a board does not
+  re-fetch stop lists, route details, terminal stops, or connection chips.
+- MBTA bus predictions and Metro station predictions are batched; a larger stop cluster
+  does not multiply the request count.
 
 ### If you'd rather the key never be public
 

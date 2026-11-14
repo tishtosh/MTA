@@ -974,6 +974,52 @@ function isBoston() { return city === "boston"; }
 function cityHome() { return cityCfg().center; }
 function defaultFavorite() { return Object.assign({}, cityCfg().defaultFavorite); }
 
+// ── Topology cache ───────────────────────────────────────────────────
+// Stops, stations, routes, route details, terminals, and connections change
+// rarely. Keep them in localStorage per city so a reload does not refetch
+// static data; live predictions stay on the short refresh cycle.
+const TOPOLOGY_TTL_MS = 24 * 60 * 60 * 1000;
+const CONNECTION_TTL_MS = 24 * 60 * 60 * 1000;
+const API_MEMO_MS = 6000;
+const CACHE_PREFIX = "mta_cache_v1_";
+
+function cacheStorageKey(name) {
+    return `${CACHE_PREFIX}${city}_${name}`;
+}
+
+function readCache(name) {
+    try {
+        if (typeof localStorage === "undefined") return null;
+        const raw = localStorage.getItem(cacheStorageKey(name));
+        if (!raw) return null;
+        const rec = JSON.parse(raw);
+        if (!rec || typeof rec !== "object" || rec.at == null) return null;
+        return rec;
+    } catch (e) { return null; }
+}
+
+function readFreshCache(name, ttlMs) {
+    const rec = readCache(name);
+    if (!rec) return null;
+    if (ttlMs != null && Date.now() - rec.at > ttlMs) return null;
+    return rec;
+}
+
+function writeCache(name, value) {
+    try {
+        if (typeof localStorage === "undefined") return;
+        localStorage.setItem(cacheStorageKey(name),
+            JSON.stringify({ at: Date.now(), v: value }));
+    } catch (e) { /* quota / private mode: memory cache still works */ }
+}
+
+function dropCache(name) {
+    try {
+        if (typeof localStorage !== "undefined")
+            localStorage.removeItem(cacheStorageKey(name));
+    } catch (e) { /* ignore */ }
+}
+
 function nearestCity(lat, lon) {
     let best = "dc", bestD = Infinity;
     for (const key of Object.keys(CITIES)) {
@@ -1011,6 +1057,11 @@ const urlPoint = hasLatLon
 
 const gRadius = num(params.get("radius"), 300);
 const REFRESH_MS = Math.min(Math.max(num(params.get("refresh"), 30), 15), 600) * 1000;
+// Selected/current rows stay on REFRESH_MS. Nearby rows and off-screen stops
+// are polled less often so one page does not consume the whole API budget.
+const NEAR_REFRESH_MS = Math.max(60 * 1000, REFRESH_MS * 2);
+const FAR_REFRESH_MS = Math.max(3 * 60 * 1000, REFRESH_MS * 4);
+
 
 // ════════════════════════════════════════════════════════════════════
 // State
@@ -1031,16 +1082,34 @@ const PAGE_LOADED_AT = Date.now();
 // The full jStops dump (812 KB, ~7.5k stops) is fetched once per page load
 // and feeds the shared entry field's autocomplete plus the route picture.
 let allStopsCache = null;     // the full stop dump, cached per page load
+let allStopsCacheAt = 0;      // when the directory was last fetched
 let stopDirLoad = null;       // in-flight loadStopDirectory() promise (dedupes the fetch)
+let busRoutesPopulated = false;
+{
+    const cached = readCache("stops");
+    if (cached && Array.isArray(cached.v)) {
+        allStopsCache = cached.v;
+        allStopsCacheAt = cached.at;
+    }
+}
 const nearbyStopObjs = new Map();   // StopID → shared stop object for nearby sections
 
 // Metro state. Stations/arrivals/schedules are kept separately from buses.
 let metroStationsCache = null;
+let metroStationsCacheAt = 0;
 let metroStationsLoad = null;
+{
+    const cached = readCache("stations");
+    if (cached && Array.isArray(cached.v)) {
+        metroStationsCache = cached.v;
+        metroStationsCacheAt = cached.at;
+    }
+}
 let metroAnchor = null;
 let metroNearby = [];
 let metroAnchorCode = null;
 let metroLive = {};                 // station Code → live trains
+let metroLiveAt = {};               // station Code → last live fetch (ms)
 let metroLiveError = {};            // station Code → error
 let metroSchedule = {};             // station Code → scheduled departures
 let metroRefreshInFlight = false, metroRefreshQueued = false;
@@ -1058,7 +1127,15 @@ const METRO_LINE_NAMES = {
 };
 // Boston subway/light-rail routes (loaded from MBTA /routes type 0,1).
 let metroRoutesCache = null;
+let metroRoutesCacheAt = 0;
 let metroRoutesLoad = null;
+{
+    const cached = readCache("metroroutes");
+    if (cached && cached.v && typeof cached.v === "object") {
+        metroRoutesCache = cached.v;
+        metroRoutesCacheAt = cached.at;
+    }
+}
 
 function metroLineColor(line) {
     const key = String(line || "");
@@ -1200,9 +1277,22 @@ function favoritesCookieName() {
 }
 let favorites = readFavorites();
 let busRouteDirectory = null;
+let busRouteDirectoryAt = 0;
 let busRouteLoad = null;
 let busRouteMbtaIds = {};
 let busRouteColors = {};
+{
+    const cached = readCache("busroutes");
+    if (cached && Array.isArray(cached.v)) {
+        busRouteDirectory = cached.v;
+        busRouteDirectoryAt = cached.at;
+        for (const r of cached.v) {
+            if (!r || !r.id) continue;
+            if (r.mbtaId) busRouteMbtaIds[r.id] = r.mbtaId;
+            if (r.color) busRouteColors[r.id] = r.color;
+        }
+    }
+}
 
 function readFavorites() {
     const key = favoritesCookieName();
@@ -1378,10 +1468,38 @@ const gShortcutBtns = {
 // ════════════════════════════════════════════════════════════════════
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Very short GET memo: a timer tick, a route expansion, and a hover can ask
+// for the same static resource together. Live prediction endpoints are
+// excluded so the board never shows a suppressed refresh.
+const apiMemo = new Map();
+function apiMemoKey(base, path, qs) {
+    return `${base}${path}?${qs.toString()}`;
+}
+function apiMemoGet(key) {
+    const hit = apiMemo.get(key);
+    if (!hit) return null;
+    if (Date.now() - hit.at > API_MEMO_MS) { apiMemo.delete(key); return null; }
+    return hit.data;
+}
+function apiMemoSet(key, data) {
+    apiMemo.set(key, { at: Date.now(), data });
+    if (apiMemo.size > 200) {
+        const cutoff = Date.now() - API_MEMO_MS;
+        for (const [k, v] of apiMemo)
+            if (v.at < cutoff) apiMemo.delete(k);
+    }
+}
+
 // One GET against the WMATA API. One retry after backoff on 429/timeout.
 // Never throws: returns { data, error } so callers decide how to surface it.
 async function apiGet(path, query, timeoutMs = 10000) {
     const qs = new URLSearchParams(Object.assign({ api_key: API_KEY }, query));
+    const memoKey = /jPredictions/i.test(path)
+        ? "" : apiMemoKey(WMATA_API, path, qs);
+    if (memoKey) {
+        const hit = apiMemoGet(memoKey);
+        if (hit) return { data: hit, error: null };
+    }
     for (let attempt = 0; ; attempt++) {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), timeoutMs);
@@ -1395,6 +1513,7 @@ async function apiGet(path, query, timeoutMs = 10000) {
             const error = res.ok ? null : Object.assign(
                 new Error(data.Message || `HTTP ${res.status}`),
                 { status: res.status, rateLimited: res.status === 429 });
+            if (!error && memoKey) apiMemoSet(memoKey, data);
             return { data, error };
         } catch (e) {                                     // network error / timeout
             if (attempt === 0) {
@@ -1411,6 +1530,12 @@ async function apiGet(path, query, timeoutMs = 10000) {
 // One GET against the MBTA v3 API (JSON:API). Same retry policy as apiGet.
 async function mbtaGet(path, query, timeoutMs = 15000) {
     const qs = new URLSearchParams(Object.assign({ api_key: MBTA_KEY }, query || {}));
+    const memoKey = /\/predictions/i.test(path)
+        ? "" : apiMemoKey(MBTA_API, path, qs);
+    if (memoKey) {
+        const hit = apiMemoGet(memoKey);
+        if (hit) return { data: hit, error: null };
+    }
     for (let attempt = 0; ; attempt++) {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), timeoutMs);
@@ -1422,6 +1547,7 @@ async function mbtaGet(path, query, timeoutMs = 15000) {
             const error = res.ok ? null : Object.assign(
                 new Error(detail || `HTTP ${res.status}`),
                 { status: res.status, rateLimited: res.status === 429 });
+            if (!error && memoKey) apiMemoSet(memoKey, data);
             return { data, error };
         } catch (e) {
             if (attempt === 0) { await sleep(1500); continue; }
@@ -1507,14 +1633,35 @@ async function fetchAllStops() {
 }
 
 // The stop directory, deduped: concurrent callers (the entry field, the
-// picture) share one in-flight fetch, and failures are not retried.
-function loadStopDirectory() {
-    if (!stopDirLoad) {
-        stopDirLoad = fetchAllStops()
-            .then(stops => { allStopsCache = stops; populateBusRoutes(stops); return stops; })
-            .catch(err => { stopDirLoad = null; throw err; });   // allow a later retry
-    }
+// picture) share one in-flight fetch, and failures are not retried. Cached
+// copies are rendered immediately; a stale copy refreshes in the background.
+function fetchDirectoryFresh() {
+    if (stopDirLoad) return stopDirLoad;
+    stopDirLoad = fetchAllStops()
+        .then(stops => {
+            allStopsCache = stops;
+            allStopsCacheAt = Date.now();
+            writeCache("stops", stops);
+            populateBusRoutes(stops);
+            busRoutesPopulated = true;
+            return stops;
+        })
+        .catch(err => { stopDirLoad = null; throw err; })
+        .finally(() => { stopDirLoad = null; });
     return stopDirLoad;
+}
+
+function loadStopDirectory() {
+    if (allStopsCache) {
+        if (!busRoutesPopulated) {
+            populateBusRoutes(allStopsCache);
+            busRoutesPopulated = true;
+        }
+        if (Date.now() - allStopsCacheAt > TOPOLOGY_TTL_MS)
+            fetchDirectoryFresh().catch(() => {});
+        return Promise.resolve(allStopsCache);
+    }
+    return fetchDirectoryFresh();
 }
 
 // StopID → Name index over the directory dump (built lazily once): the
@@ -1555,65 +1702,146 @@ function mbtaPredictionStatus(a, now) {
 }
 
 const mbtaTerminalCache = new Map();
+const mbtaTerminalAt = new Map();
+const mbtaPatternCache = new Map();
+{
+    const cached = readCache("terminals");
+    if (cached && Array.isArray(cached.v)) {
+        for (const row of cached.v) {
+            if (!Array.isArray(row) || row.length < 2) continue;
+            const key = String(row[0] || "");
+            const stops = Array.isArray(row[1]) ? row[1] : [];
+            if (!key) continue;
+            mbtaTerminalCache.set(key, new Set(stops.map(String)));
+            mbtaTerminalAt.set(key, Number(row[2]) || cached.at || 0);
+        }
+    }
+}
+
+function persistMbtaTerminals() {
+    const rows = [];
+    for (const [key, set] of mbtaTerminalCache)
+        rows.push([key, [...set], mbtaTerminalAt.get(key) || 0]);
+    writeCache("terminals", rows);
+}
+
+// One route_patterns request can describe every route at a stop. The route
+// profiles are static, so keep them for the page and batch the initial load.
+async function mbtaPatternsForRoutes(routeIds) {
+    const missing = [...new Set((routeIds || []).map(String).filter(Boolean))]
+        .filter(id => !mbtaPatternCache.has(id));
+    if (!missing.length) return;
+    const { data, error } = await mbtaGet("/route_patterns", {
+        "filter[route]": missing.join(",")
+    });
+    if (error) throw error;
+    const grouped = new Map(missing.map(id => [id, []]));
+    for (const p of (data && data.data) || []) {
+        const rel = p.relationships || {};
+        const routeId = rel.route && rel.route.data && rel.route.data.id;
+        if (!grouped.has(routeId)) continue;
+        grouped.get(routeId).push({
+            dir: p.attributes.direction_id,
+            canonical: !!(p.attributes && p.attributes.canonical),
+            name: (p.attributes && p.attributes.name) || "",
+            tripId: rel.representative_trip && rel.representative_trip.data
+                ? rel.representative_trip.data.id : null
+        });
+    }
+    for (const id of missing) mbtaPatternCache.set(id, grouped.get(id) || []);
+}
+
+async function buildMbtaTerminals(routeIds, useParent) {
+    const ids = [...new Set((routeIds || []).map(String).filter(Boolean))];
+    const out = new Map();
+    if (!ids.length) return out;
+    await mbtaPatternsForRoutes(ids);
+    const plan = [];
+    for (const id of ids) {
+        const byDir = new Map();
+        for (const p of mbtaPatternCache.get(id) || []) {
+            const cur = byDir.get(p.dir);
+            if (!cur || (p.canonical && !cur.canonical)) byDir.set(p.dir, p);
+        }
+        for (const [dir, p] of byDir) {
+            if (p.tripId) plan.push({ route: id, dir, tripId: p.tripId });
+        }
+    }
+    const tripIds = [...new Set(plan.map(p => p.tripId))];
+    let stopMap = new Map();
+    if (tripIds.length) {
+        try {
+            stopMap = await mbtaTripStopsMany(tripIds, useParent);
+        } catch (e) { /* fall back below */ }
+    }
+    for (const p of plan) {
+        if (stopMap.has(p.tripId)) continue;
+        const stops = await mbtaTripStops(p.tripId, useParent);
+        stopMap.set(p.tripId, stops);
+    }
+    for (const id of ids) {
+        const terminals = new Set();
+        for (const p of plan) {
+            if (p.route !== id) continue;
+            const stops = stopMap.get(p.tripId) || [];
+            if (stops.length)
+                terminals.add(`${p.dir}|${stops[stops.length - 1].StopID}`);
+        }
+        const key = id + ":" + (useParent ? "p" : "s");
+        mbtaTerminalCache.set(key, terminals);
+        mbtaTerminalAt.set(key, Date.now());
+        out.set(id, terminals);
+    }
+    persistMbtaTerminals();
+    return out;
+}
 
 // Stops where each direction terminates for a route. Used to drop arrivals
 // whose trip ends at the stop (they are arrivals, not departures).
-async function mbtaTerminals(routeId, useParent) {
-    const key = routeId + ":" + (useParent ? "p" : "s");
-    if (mbtaTerminalCache.has(key)) return mbtaTerminalCache.get(key);
-    const terminals = new Set();
-    try {
-        const { data: rp } = await mbtaGet("/route_patterns", {
-            "filter[route]": routeId
-        });
-        const patterns = ((rp && rp.data) || []).filter(p =>
-            p.relationships && p.relationships.route &&
-            p.relationships.route.data.id === routeId);
-        const byDir = new Map();
-        for (const p of patterns) {
-            const dir = p.attributes.direction_id;
-            const cur = byDir.get(dir);
-            if (!cur || (p.attributes.canonical && !cur.attributes.canonical))
-                byDir.set(dir, p);
-        }
-        for (const [dir, p] of byDir) {
-            const tripId = p.relationships.representative_trip &&
-                p.relationships.representative_trip.data.id;
-            if (!tripId) continue;
-            const stops = await mbtaTripStops(tripId, useParent);
-            if (stops.length)
-                terminals.add(`${dir}|${stops[stops.length - 1].StopID}`);
-        }
-    } catch (e) { /* no terminal filtering */ }
-    mbtaTerminalCache.set(key, terminals);
-    return terminals;
+async function mbtaTerminalsForRoutes(routeIds, useParent) {
+    const ids = [...new Set((routeIds || []).map(String).filter(Boolean))];
+    const out = new Map();
+    if (!ids.length) return out;
+    const missing = [], stale = [];
+    for (const id of ids) {
+        const key = id + ":" + (useParent ? "p" : "s");
+        const set = mbtaTerminalCache.get(key);
+        if (!set) { missing.push(id); continue; }
+        out.set(id, set);
+        if (Date.now() - (mbtaTerminalAt.get(key) || 0) > TOPOLOGY_TTL_MS)
+            stale.push(id);
+    }
+    if (missing.length) {
+        const built = await buildMbtaTerminals(missing, useParent);
+        for (const [id, set] of built) out.set(id, set);
+    }
+    if (stale.length)
+        buildMbtaTerminals(stale, useParent).catch(() => {});
+    return out;
 }
 
-async function fetchMbtaPredictions(stopId) {
-    const { data, error } = await mbtaGet("/predictions", {
-        "filter[stop]": stopId,
-        "filter[route_type]": 3,
-        "include": "route,trip",
-        "sort": "departure_time",
-        "page[limit]": 200
-    });
-    if (error) throw error;
-    const inc = mbtaIncluded(data);
-    const now = Date.now();
-    const preds = [];
-    for (const p of (data && data.data) || []) {
-        const a = p.attributes || {};
-        const at = Date.parse(a.departure_time || a.arrival_time || "");
-        if (!Number.isFinite(at)) continue;
-        const rels = p.relationships || {};
-        const routeRel = rels.route && rels.route.data;
-        const tripRel = rels.trip && rels.trip.data;
-        const route = inc.get("route:" + (routeRel && routeRel.id));
-        const trip = inc.get("trip:" + (tripRel && tripRel.id));
-        const dir = Number(a.direction_id) || 0;
-        const heads = (trip && trip.attributes && trip.attributes.headsign) ||
-            ((route && route.attributes && (route.attributes.direction_destinations || [])[dir]) || "");
-        preds.push({
+async function mbtaTerminals(routeId, useParent) {
+    const map = await mbtaTerminalsForRoutes([routeId], useParent);
+    return map.get(String(routeId)) || new Set();
+}
+
+
+function mbtaPredictionRow(p, inc, now) {
+    const a = p.attributes || {};
+    const at = Date.parse(a.departure_time || a.arrival_time || "");
+    if (!Number.isFinite(at)) return null;
+    const rels = p.relationships || {};
+    const routeRel = rels.route && rels.route.data;
+    const tripRel = rels.trip && rels.trip.data;
+    const stopRel = rels.stop && rels.stop.data;
+    const route = inc.get("route:" + (routeRel && routeRel.id));
+    const trip = inc.get("trip:" + (tripRel && tripRel.id));
+    const dir = Number(a.direction_id) || 0;
+    const heads = (trip && trip.attributes && trip.attributes.headsign) ||
+        ((route && route.attributes && (route.attributes.direction_destinations || [])[dir]) || "");
+    return {
+        stopId: (stopRel && stopRel.id) || null,
+        pred: {
             min: Math.max(0, Math.round((at - now) / 60000)),
             at,
             route: mbtaRouteShort(route).toUpperCase(),
@@ -1622,17 +1850,52 @@ async function fetchMbtaPredictions(stopId) {
             vehicle: null,
             trip: (tripRel && tripRel.id) || null,
             status: mbtaPredictionStatus(a, now)
-        });
+        }
+    };
+}
+
+// MBTA accepts multiple stop IDs in one predictions request. Bus boards use
+// this so a stop cluster costs one request instead of one per stop.
+async function fetchMbtaPredictionsBatch(stopIds) {
+    const ids = [...new Set((stopIds || []).map(String).filter(Boolean))];
+    const out = new Map();
+    if (!ids.length) return out;
+    const { data, error } = await mbtaGet("/predictions", {
+        "filter[stop]": ids.join(","),
+        "filter[route_type]": 3,
+        "include": "route,trip,stop",
+        "sort": "departure_time",
+        "page[limit]": Math.min(1000, Math.max(200, ids.length * 80))
+    });
+    if (error) throw error;
+    const inc = mbtaIncluded(data);
+    const now = Date.now();
+    const by = new Map(ids.map(id => [id, []]));
+    for (const p of (data && data.data) || []) {
+        const row = mbtaPredictionRow(p, inc, now);
+        if (!row) continue;
+        const sid = row.stopId;
+        if (!sid || !by.has(sid)) continue;
+        by.get(sid).push(row.pred);
     }
-    const routeIds = [...new Set(preds.map(p => p.routeRef).filter(Boolean))];
-    const terminals = new Map();
-    await Promise.all(routeIds.map(async id => {
-        terminals.set(id, await mbtaTerminals(id, false));
-    }));
-    const kept = preds.filter(p =>
-        !(terminals.get(p.routeRef) || new Set()).has(`${p.dirNum}|${stopId}`));
-    kept.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
-    return { name: allStopsName(stopId) || "", predictions: kept };
+    const routeIds = [...new Set([...by.values()].flat()
+        .map(p => p.routeRef).filter(Boolean))];
+    let terminals = new Map();
+    try {
+        terminals = await mbtaTerminalsForRoutes(routeIds, false);
+    } catch (e) { /* keep predictions even if terminal filtering fails */ }
+    for (const id of ids) {
+        const kept = by.get(id).filter(p =>
+            !(terminals.get(p.routeRef) || new Set()).has(`${p.dirNum}|${id}`));
+        kept.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
+        out.set(id, { name: allStopsName(id) || "", predictions: kept });
+    }
+    return out;
+}
+
+async function fetchMbtaPredictions(stopId) {
+    const map = await fetchMbtaPredictionsBatch([stopId]);
+    return map.get(String(stopId)) || { name: allStopsName(stopId) || "", predictions: [] };
 }
 
 async function fetchPredictions(stopId) {
@@ -1725,6 +1988,15 @@ function updateDeparted(stop, nextPreds, at) {
 // prediction can fall back to its next scheduled arrival ("not seen").
 const stopScheduleCache = {};      // StopID → { day, arrivals, ok, at }
 const stopScheduleInflight = {};   // StopID → in-flight promise
+{
+    const cached = readCache("stopschedule");
+    if (cached && cached.v && typeof cached.v === "object") {
+        for (const id of Object.keys(cached.v)) {
+            const rec = cached.v[id];
+            if (rec && rec.day) stopScheduleCache[id] = rec;
+        }
+    }
+}
 const SCHEDULE_RETRY_MS = 5 * 60000;
 
 function scheduleDayKey() {
@@ -1758,10 +2030,12 @@ function ensureStopSchedule(stopId) {
     stopScheduleInflight[id] = fetchStopSchedule(id)
         .then(arrivals => {
             stopScheduleCache[id] = { day, arrivals, ok: true, at: Date.now() };
+            writeCache("stopschedule", stopScheduleCache);
             return arrivals;
         })
         .catch(() => {
             stopScheduleCache[id] = { day, arrivals: [], ok: false, at: Date.now() };
+            writeCache("stopschedule", stopScheduleCache);
             return [];
         })
         .finally(() => { delete stopScheduleInflight[id]; });
@@ -1804,7 +2078,30 @@ function fmtScheduleTime(ms) {
 // fetch. Failures return null (never throw) so the board can fall back to a
 // compact "Route details unavailable" row, and they retry on the next call.
 const routeDetailsCache = {};      // routeId -> normalized route or null
+const routeDetailsAt = {};         // routeId -> last successful fetch (ms)
 const routeDetailsInflight = {};   // routeId -> in-flight promise
+{
+    const cached = readCache("routedetails");
+    const map = cached && cached.v;
+    if (map && typeof map === "object") {
+        for (const id of Object.keys(map)) {
+            const rec = map[id];
+            if (rec && rec.d) {
+                routeDetailsCache[id] = rec.d;
+                routeDetailsAt[id] = rec.at || cached.at;
+            }
+        }
+    }
+}
+
+function persistRouteDetails() {
+    const out = {};
+    for (const id of Object.keys(routeDetailsCache)) {
+        const d = routeDetailsCache[id];
+        if (d) out[id] = { at: routeDetailsAt[id] || 0, d };
+    }
+    writeCache("routedetails", out);
+}
 
 function normalizeRouteDetails(routeId, raw) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -1857,14 +2154,30 @@ async function fetchRouteDetails(routeId) {
     if (isBoston()) return null;   // MBTA profiles do not expose WMATA-style patterns
     routeId = String(routeId || "").toUpperCase();
     if (!routeId) return null;
-    if (routeDetailsCache[routeId] !== undefined) return routeDetailsCache[routeId];
+    const cached = routeDetailsCache[routeId];
+    const age = Date.now() - (routeDetailsAt[routeId] || 0);
+    if (cached && age <= TOPOLOGY_TTL_MS) return cached;
+    if (cached) {
+        // Stale-while-revalidate: keep drawing with the known pattern while
+        // a fresh route profile is fetched for the next render.
+        refreshRouteDetails(routeId).catch(() => {});
+        return cached;
+    }
+    return refreshRouteDetails(routeId);
+}
+
+function refreshRouteDetails(routeId) {
     if (routeDetailsInflight[routeId]) return routeDetailsInflight[routeId];
     routeDetailsInflight[routeId] = (async () => {
         try {
             const { data, error } = await apiGet("/Bus.svc/json/jRouteDetails", { RouteID: routeId });
             if (error) return null;
             const out = normalizeRouteDetails(routeId, data);
-            if (out) routeDetailsCache[routeId] = out;
+            if (out) {
+                routeDetailsCache[routeId] = out;
+                routeDetailsAt[routeId] = Date.now();
+                persistRouteDetails();
+            }
             return out;
         } finally {
             delete routeDetailsInflight[routeId];
@@ -2934,9 +3247,7 @@ function normalizeMetroStation(s) {
              Lat: Number(s.Lat), Lon: Number(s.Lon), Lines: lines, distFt: null };
 }
 
-function loadMetroRoutes() {
-    if (!isBoston()) return Promise.resolve(null);
-    if (metroRoutesCache) return Promise.resolve(metroRoutesCache);
+function fetchMetroRoutesFresh() {
     if (metroRoutesLoad) return metroRoutesLoad;
     metroRoutesLoad = mbtaGet("/routes", { "filter[type]": "0,1", "page[limit]": 50 })
         .then(({ data, error }) => {
@@ -2952,14 +3263,25 @@ function loadMetroRoutes() {
                 };
             }
             metroRoutesCache = map;
+            metroRoutesCacheAt = Date.now();
+            writeCache("metroroutes", map);
             return map;
         })
         .finally(() => { metroRoutesLoad = null; });
     return metroRoutesLoad;
 }
 
-function loadMetroStations() {
-    if (metroStationsCache) return Promise.resolve(metroStationsCache);
+function loadMetroRoutes() {
+    if (!isBoston()) return Promise.resolve(null);
+    if (metroRoutesCache) {
+        if (Date.now() - metroRoutesCacheAt > TOPOLOGY_TTL_MS)
+            fetchMetroRoutesFresh().catch(() => {});
+        return Promise.resolve(metroRoutesCache);
+    }
+    return fetchMetroRoutesFresh();
+}
+
+function fetchMetroStationsFresh() {
     if (metroStationsLoad) return metroStationsLoad;
     if (isBoston()) {
         metroStationsLoad = (async () => {
@@ -2991,6 +3313,8 @@ function loadMetroStations() {
             const order = Object.keys(lines);
             for (const st of metroStationsCache)
                 st.Lines.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+            metroStationsCacheAt = Date.now();
+            writeCache("stations", metroStationsCache);
             return metroStationsCache;
         })().finally(() => { metroStationsLoad = null; });
         return metroStationsLoad;
@@ -3001,10 +3325,21 @@ function loadMetroStations() {
             metroStationsCache = ((data && data.Stations) || [])
                 .map(normalizeMetroStation)
                 .filter(s => s.Code && Number.isFinite(s.Lat) && Number.isFinite(s.Lon));
+            metroStationsCacheAt = Date.now();
+            writeCache("stations", metroStationsCache);
             return metroStationsCache;
         })
         .finally(() => { metroStationsLoad = null; });
     return metroStationsLoad;
+}
+
+function loadMetroStations() {
+    if (metroStationsCache) {
+        if (Date.now() - metroStationsCacheAt > TOPOLOGY_TTL_MS)
+            fetchMetroStationsFresh().catch(() => {});
+        return Promise.resolve(metroStationsCache);
+    }
+    return fetchMetroStationsFresh();
 }
 
 function metroRefPoint() {
@@ -3056,19 +3391,110 @@ function setMode(next) {
 
 // City switching: every city has its own data caches, favorites, and
 // Home/Work bookmarks. Called from Settings and from "Near me".
+function hydrateCityCaches() {
+    const stops = readCache("stops");
+    if (stops && Array.isArray(stops.v)) {
+        allStopsCache = stops.v;
+        allStopsCacheAt = stops.at;
+    }
+    const routes = readCache("busroutes");
+    if (routes && Array.isArray(routes.v)) {
+        busRouteDirectory = routes.v;
+        busRouteDirectoryAt = routes.at;
+        for (const r of routes.v) {
+            if (!r || !r.id) continue;
+            if (r.mbtaId) busRouteMbtaIds[r.id] = r.mbtaId;
+            if (r.color) busRouteColors[r.id] = r.color;
+        }
+    }
+    const stations = readCache("stations");
+    if (stations && Array.isArray(stations.v)) {
+        metroStationsCache = stations.v;
+        metroStationsCacheAt = stations.at;
+    }
+    const metroRoutes = readCache("metroroutes");
+    if (metroRoutes && metroRoutes.v && typeof metroRoutes.v === "object") {
+        metroRoutesCache = metroRoutes.v;
+        metroRoutesCacheAt = metroRoutes.at;
+    }
+    const details = readCache("routedetails");
+    if (details && details.v && typeof details.v === "object") {
+        for (const id of Object.keys(details.v)) {
+            const rec = details.v[id];
+            if (!rec || !rec.d) continue;
+            routeDetailsCache[id] = rec.d;
+            routeDetailsAt[id] = rec.at || details.at;
+        }
+    }
+    const terminals = readCache("terminals");
+    if (terminals && Array.isArray(terminals.v)) {
+        for (const row of terminals.v) {
+            if (!Array.isArray(row) || row.length < 2) continue;
+            const key = String(row[0] || "");
+            if (!key) continue;
+            mbtaTerminalCache.set(key, new Set((row[1] || []).map(String)));
+            mbtaTerminalAt.set(key, Number(row[2]) || terminals.at || 0);
+        }
+    }
+    const conns = readCache("connections");
+    if (conns && Array.isArray(conns.v)) {
+        for (const row of conns.v) {
+            if (!Array.isArray(row) || row.length < 2) continue;
+            const key = String(row[0] || "");
+            const rec = row[1] || {};
+            if (!key || !rec.v) continue;
+            stopConnections.set(key, rec.v);
+            stopConnectionsAt.set(key, Number(rec.at) || conns.at || 0);
+        }
+    }
+    const routeStops = readCache("mbta_route_stops");
+    if (routeStops && Array.isArray(routeStops.v)) {
+        for (const row of routeStops.v) {
+            if (!Array.isArray(row) || row.length < 2) continue;
+            const key = String(row[0] || "");
+            const rec = row[1] || {};
+            if (!key || !Array.isArray(rec.v)) continue;
+            mbtaRouteStopsCache.set(key, {
+                at: Number(rec.at) || routeStops.at || 0,
+                groups: rec.v
+            });
+        }
+    }
+    const stopSched = readCache("stopschedule");
+    if (stopSched && stopSched.v && typeof stopSched.v === "object") {
+        for (const id of Object.keys(stopSched.v)) {
+            const rec = stopSched.v[id];
+            if (rec && rec.day) stopScheduleCache[id] = rec;
+        }
+    }
+    const metroSched = readCache("metroschedule");
+    if (metroSched && metroSched.v && typeof metroSched.v === "object") {
+        for (const id of Object.keys(metroSched.v)) {
+            const rec = metroSched.v[id];
+            if (rec && rec.day) metroScheduleCache[id] = rec;
+        }
+    }
+}
+
 function clearCityCaches() {
     allStopsCache = null;
+    allStopsCacheAt = 0;
     stopDirLoad = null;
+    busRoutesPopulated = false;
     dirNameIndex = null;
     busRouteDirectory = null;
+    busRouteDirectoryAt = 0;
     busRouteLoad = null;
     busRouteMbtaIds = {};
     busRouteColors = {};
     metroStationsCache = null;
+    metroStationsCacheAt = 0;
     metroStationsLoad = null;
     metroRoutesCache = null;
+    metroRoutesCacheAt = 0;
     metroRoutesLoad = null;
     metroLive = {};
+    metroLiveAt = {};
     metroLiveError = {};
     metroSchedule = {};
     metroAnchor = null;
@@ -3076,10 +3502,21 @@ function clearCityCaches() {
     metroAnchorCode = null;
     for (const k of Object.keys(metroPathCache)) delete metroPathCache[k];
     for (const k of Object.keys(routeDetailsCache)) delete routeDetailsCache[k];
+    for (const k of Object.keys(routeDetailsAt)) delete routeDetailsAt[k];
     for (const k of Object.keys(stopScheduleCache)) delete stopScheduleCache[k];
+    for (const k of Object.keys(metroScheduleCache)) delete metroScheduleCache[k];
     nearbyStopObjs.clear();
     expandedStops.clear();
     stopConnections.clear();
+    stopConnectionsAt.clear();
+    stopConnectionsInflight.clear();
+    mbtaTerminalCache.clear();
+    mbtaTerminalAt.clear();
+    mbtaPatternCache.clear();
+    mbtaTripStopCache.clear();
+    mbtaRouteStopsCache.clear();
+    apiMemo.clear();
+    hydrateCityCaches();
     crossNearbyKey = "";
     crossMetroNearby = [];
     crossBusNearby = [];
@@ -3211,10 +3648,10 @@ async function fetchMbtaMetroLive(codes) {
     }
     const routes = [...new Set(Object.values(by).flat()
         .map(t => t.route).filter(Boolean))];
-    const terminals = new Map();
-    await Promise.all(routes.map(async id => {
-        terminals.set(id, await mbtaTerminals(id, true));
-    }));
+    let terminals = new Map();
+    try {
+        terminals = await mbtaTerminalsForRoutes(routes, true);
+    } catch (e) { /* keep predictions even if terminal filtering fails */ }
     for (const c of codes) {
         by[c] = by[c].filter(t =>
             !(terminals.get(t.route) || new Set()).has(`${t.dirNum}|${c}`));
@@ -3542,19 +3979,24 @@ async function refreshMetro() {
     if (!anchor) { metroRefreshInFlight = false; return; }
     const anchorCode = String(anchor.Code);
     const nearby = metroNearby.filter(s => String(s.Code) !== anchorCode);
+    let saw429 = false;
     try {
-        const setLive = async (code) => {
-            try {
-                const live = await fetchMetroLive([code]);
-                metroLive[code] = live[code] || [];
-                delete metroLiveError[code];
-            } catch (e) {
-                metroLive[code] = [];
-                metroLiveError[code] = e;
-            }
+        const setLive = (code, live) => {
+            metroLive[code] = live || [];
+            metroLiveAt[code] = Date.now();
+            delete metroLiveError[code];
+        };
+        const setError = (code, e) => {
+            metroLive[code] = [];
+            metroLiveAt[code] = Date.now();
+            metroLiveError[code] = e;
+            if (e && e.rateLimited) saw429 = true;
         };
         // 1) The current station's trains first, then its connections.
-        await setLive(anchorCode);
+        try {
+            const live = await fetchMetroLive([anchorCode]);
+            setLive(anchorCode, live[anchorCode]);
+        } catch (e) { setError(anchorCode, e); }
         if (mode !== "metro" || !metroAnchor || String(metroAnchor.Code) !== anchorCode)
             return;
         lastRefreshAt = Date.now();
@@ -3569,25 +4011,43 @@ async function refreshMetro() {
             return;
         renderMetro();
 
-        // 2) Nearby stations in distance order.
-        for (const stn of nearby) {
-            if (mode !== "metro" || !metroAnchor || String(metroAnchor.Code) !== anchorCode)
-                return;
-            await setLive(String(stn.Code));
+        // 2) Nearby stations in one batch, and only on their slower tier.
+        const due = nearby.filter(stn => {
+            const code = String(stn.Code);
+            return !metroLiveAt[code] ||
+                Date.now() - metroLiveAt[code] >= NEAR_REFRESH_MS;
+        });
+        if (due.length) {
+            try {
+                const live = await fetchMetroLive(due.map(s => String(s.Code)));
+                for (const stn of due) {
+                    const code = String(stn.Code);
+                    setLive(code, live[code]);
+                }
+            } catch (e) {
+                for (const stn of due) setError(String(stn.Code), e);
+            }
+            if (mode !== "metro" || !metroAnchor ||
+                String(metroAnchor.Code) !== anchorCode) return;
             lastRefreshAt = Date.now();
             renderMetro();
             tickClock();
         }
 
         // 3) Schedules are secondary; then cross-mode nearby bus stops.
-        try {
-            const sched = await ensureMetroSchedule(nearby.map(s => s.Code));
-            Object.assign(metroSchedule, sched || {});
-        } catch (e) { /* no schedule fallback */ }
+        const needSched = nearby.filter(stn =>
+            !(metroLive[String(stn.Code)] || []).length).map(s => s.Code);
+        if (needSched.length) {
+            try {
+                const sched = await ensureMetroSchedule(needSched);
+                Object.assign(metroSchedule, sched || {});
+            } catch (e) { /* no schedule fallback */ }
+        }
         if (mode === "metro" && metroAnchor && String(metroAnchor.Code) === anchorCode) {
             renderMetro();
             ensureCrossBusNearby(anchor).catch(() => {});
         }
+        rateLimited = saw429;
         scheduleRefresh();
     } finally {
         metroRefreshInFlight = false;
@@ -3599,6 +4059,10 @@ async function refreshMetro() {
 }
 
 function refreshActive() {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        scheduleRefresh();
+        return;
+    }
     return mode === "metro" ? refreshMetro() : refreshPredictions();
 }
 
@@ -3608,6 +4072,15 @@ function refreshActive() {
 let metroGtfs = null;
 let metroGtfsLoad = null;
 const metroScheduleCache = {};
+{
+    const cached = readCache("metroschedule");
+    if (cached && cached.v && typeof cached.v === "object") {
+        for (const id of Object.keys(cached.v)) {
+            const rec = cached.v[id];
+            if (rec && rec.day) metroScheduleCache[id] = rec;
+        }
+    }
+}
 const GTFS_LINES = { RED: "RD", BLUE: "BL", ORANGE: "OR",
                      SILVER: "SV", GREEN: "GR", YELLOW: "YL" };
 
@@ -3756,6 +4229,7 @@ async function ensureMetroSchedule(codes) {
         metroScheduleCache[c] = { day, departures: by[c] };
         out[c] = by[c];
     }
+    writeCache("metroschedule", metroScheduleCache);
     return out;
 }
 
@@ -3792,19 +4266,28 @@ async function refreshPredictions() {
             .filter(s => priorityIds.has(String(s.StopID)));
 
         let saw429 = false;
+        const applyResult = (stop, result) => {
+            const { name, predictions } = result;
+            if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
+            const at = Date.now();
+            updateDeparted(stop, predictions, at);
+            stop.Arrivals = predictions;
+            stop.ArrivalsAt = at;
+            stop.Error = null;
+        };
+        const applyError = (stop, e) => {
+            stop.Arrivals = [];
+            stop.Error = e;                                 // rendered as a muted row
+            if (e && e.rateLimited) saw429 = true;
+        };
         const fetchOne = async (stop) => {
             try {
-                const { name, predictions } = await fetchPredictions(stop.StopID);
-                if (name && !stop.Name) stop.Name = name;      // ?busstop= mode learns names here
-                const at = Date.now();
-                updateDeparted(stop, predictions, at);
-                stop.Arrivals = predictions;
-                stop.ArrivalsAt = at;
-                stop.Error = null;
+                const result = await fetchPredictions(stop.StopID);
+                applyResult(stop, result);
+                return result.predictions || [];
             } catch (e) {
-                stop.Arrivals = [];
-                stop.Error = e;                                 // rendered as a muted row
-                if (e.rateLimited) saw429 = true;
+                applyError(stop, e);
+                return [];
             }
         };
         const paint = () => {
@@ -3813,36 +4296,66 @@ async function refreshPredictions() {
             tickClock();
         };
 
-        // 1) The current stop (and its across-the-street counterpart) first.
-        await Promise.all(priority.map(fetchOne));
-        if (v !== selectionVersion) { scheduleRefresh(); return; }
-        lastRefreshAt = Date.now();
-        paint();
-        // Hero connections are the next priority after the current arrivals.
-        await refreshBoardStopConnections();
-        if (v !== selectionVersion) { scheduleRefresh(); return; }
-        // Schedule fallback for the current stop can arrive after the live rows.
-        await Promise.all(priority.map(s => ensureStopSchedule(s.StopID)))
-            .catch(() => {});
-        if (v !== selectionVersion) { scheduleRefresh(); return; }
-        paint();
-
-        // 2) Then work through nearby stops in distance order.
-        const nearbyIds = new Set(nearby.map(s => String(s.StopID)));
-        const ordered = [...target.values()].filter(s =>
-            !priorityIds.has(String(s.StopID)));
-        ordered.sort((a, b) => {
-            const ai = nearbyIds.has(String(a.StopID)) ? nearby.indexOf(a) : 1e9;
-            const bi = nearbyIds.has(String(b.StopID)) ? nearby.indexOf(b) : 1e9;
-            return (ai < 0 ? 1e9 : ai) - (bi < 0 ? 1e9 : bi);
-        });
-        for (const stop of ordered) {
-            if (v !== selectionVersion) { scheduleRefresh(); return; }
-            await fetchOne(stop);
-            await ensureStopSchedule(stop.StopID).catch(() => {});
+        if (isBoston()) {
+            // One MBTA predictions request covers the whole stop cluster.
+            try {
+                const batch = await fetchMbtaPredictionsBatch([...target.keys()]);
+                for (const stop of target.values()) {
+                    const result = batch.get(String(stop.StopID));
+                    if (result) applyResult(stop, result);
+                    else applyError(stop, new Error("missing prediction result"));
+                }
+            } catch (e) {
+                for (const stop of target.values()) applyError(stop, e);
+            }
             if (v !== selectionVersion) { scheduleRefresh(); return; }
             lastRefreshAt = Date.now();
             paint();
+            await refreshBoardStopConnections();
+            if (v !== selectionVersion) { scheduleRefresh(); return; }
+            paint();
+        } else {
+            // 1) The current stop (and its across-the-street counterpart) first.
+            await Promise.all(priority.map(fetchOne));
+            if (v !== selectionVersion) { scheduleRefresh(); return; }
+            lastRefreshAt = Date.now();
+            paint();
+            // Hero connections are the next priority after the current arrivals.
+            await refreshBoardStopConnections();
+            if (v !== selectionVersion) { scheduleRefresh(); return; }
+            // Schedule fallback for the current stop can arrive after the live rows.
+            await Promise.all(priority.map(s => ensureStopSchedule(s.StopID)))
+                .catch(() => {});
+            if (v !== selectionVersion) { scheduleRefresh(); return; }
+            paint();
+
+            // 2) Then work through nearby stops in distance order. A stop is
+            // polled on its own tier: selected rows every cycle, the nearest
+            // nearby rows a minute or two, the rest only every few minutes.
+            const nearbyIds = new Set(nearby.map(s => String(s.StopID)));
+            const ordered = [...target.values()].filter(s =>
+                !priorityIds.has(String(s.StopID)));
+            ordered.sort((a, b) => {
+                const ai = nearbyIds.has(String(a.StopID)) ? nearby.indexOf(a) : 1e9;
+                const bi = nearbyIds.has(String(b.StopID)) ? nearby.indexOf(b) : 1e9;
+                return (ai < 0 ? 1e9 : ai) - (bi < 0 ? 1e9 : bi);
+            });
+            for (const stop of ordered) {
+                if (v !== selectionVersion) { scheduleRefresh(); return; }
+                const ni = nearby.findIndex(s =>
+                    String(s.StopID) === String(stop.StopID));
+                const wait = ni >= 0 && ni < 3 ? NEAR_REFRESH_MS : FAR_REFRESH_MS;
+                if (stop.ArrivalsAt && Date.now() - stop.ArrivalsAt < wait)
+                    continue;
+                const predictions = await fetchOne(stop);
+                // Schedules are a fallback, not a first choice: only ask for
+                // one when this stop has no live predictions for its rows.
+                if (!predictions.length)
+                    await ensureStopSchedule(stop.StopID).catch(() => {});
+                if (v !== selectionVersion) { scheduleRefresh(); return; }
+                lastRefreshAt = Date.now();
+                paint();
+            }
         }
 
         rateLimited = saw429;          // → next refresh is delayed (self-throttling)
@@ -3850,7 +4363,7 @@ async function refreshPredictions() {
         if (mode !== "bus") { scheduleRefresh(); return; }
         // Cross-mode nearby stops load after the same-mode current/nearby set.
         if (anchor) ensureCrossMetroNearby(anchor).catch(() => {});
-        scheduleRefresh();             // re-arm: the 30-second cycle continues after every tick
+        scheduleRefresh();             // re-arm: the refresh cycle continues after every tick
         tickClock();                   // reflect this update + the new countdown at once
         gStatus.textContent = rateLimited
             ? "API rate limit hit, slowing refresh"
@@ -3872,7 +4385,14 @@ function scheduleRefresh() {
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = null;
     if (!refreshEnabled) { nextRefreshAt = 0; return; }
-    const wait = rateLimited ? 5 * REFRESH_MS : REFRESH_MS;
+    // Hidden tabs do not poll. Returning to the tab triggers an immediate
+    // refresh from the visibilitychange handler below.
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        nextRefreshAt = 0;
+        return;
+    }
+    const base = rateLimited ? 5 * REFRESH_MS : REFRESH_MS;
+    const wait = Math.max(1000, Math.round(base * (0.94 + Math.random() * 0.12)));
     nextRefreshAt = Date.now() + wait;
     refreshTimer = setTimeout(() => {
         refreshTimer = null;
@@ -3882,6 +4402,12 @@ function scheduleRefresh() {
 
 // Background tabs get throttled timers; refresh promptly when we come back.
 document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+        if (refreshTimer) clearTimeout(refreshTimer);
+        refreshTimer = null;
+        nextRefreshAt = 0;
+        return;
+    }
     const haveData = mode === "metro" ? !!metroAnchor : stops.length > 0;
     if (document.visibilityState === "visible" && refreshEnabled && !busy && haveData) {
         if (Date.now() - lastRefreshAt > REFRESH_MS / 2) {
@@ -4154,28 +4680,39 @@ async function openRouteInMaps(ds) {
 }
 
 // ── Add Favorite picker ──────────────────────────────────────────────
-function loadBusRouteDirectory() {
-    if (busRouteDirectory) return Promise.resolve(busRouteDirectory);
+function applyBusRouteDirectory(list) {
+    busRouteDirectory = list;
+    busRouteDirectoryAt = Date.now();
+    busRouteMbtaIds = {};
+    busRouteColors = {};
+    for (const r of list || []) {
+        if (!r || !r.id) continue;
+        if (r.mbtaId) busRouteMbtaIds[r.id] = r.mbtaId;
+        if (r.color) busRouteColors[r.id] = r.color;
+    }
+    if (list && list.length) writeCache("busroutes", list);
+    return list;
+}
+
+function fetchBusRouteDirectoryFresh() {
     if (busRouteLoad) return busRouteLoad;
     if (isBoston()) {
         busRouteLoad = mbtaGet("/routes", { "filter[type]": 3, "page[limit]": 500 })
             .then(({ data, error }) => {
                 if (error) throw error;
                 const seen = new Set();
-                busRouteMbtaIds = {};
-                busRouteColors = {};
-                busRouteDirectory = ((data && data.data) || []).map(r => {
+                const list = ((data && data.data) || []).map(r => {
                     const id = String(r.attributes.short_name || r.id).toUpperCase();
-                    busRouteMbtaIds[id] = r.id;
-                    if (r.attributes.color) busRouteColors[id] = r.attributes.color;
                     return {
                         id,
                         name: r.attributes.long_name || r.id,
-                        desc: r.attributes.long_name || r.attributes.description || ""
+                        desc: r.attributes.long_name || r.attributes.description || "",
+                        mbtaId: r.id,
+                        color: r.attributes.color || ""
                     };
                 }).filter(r => r.id && !seen.has(r.id) && seen.add(r.id))
                   .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-                return busRouteDirectory;
+                return applyBusRouteDirectory(list);
             })
             .finally(() => { busRouteLoad = null; });
         return busRouteLoad;
@@ -4183,13 +4720,13 @@ function loadBusRouteDirectory() {
     busRouteLoad = apiGet("/Bus.svc/json/jRoutes", {})
         .then(({ data, error }) => {
             if (error) throw error;
-            busRouteDirectory = ((data && data.Routes) || [])
+            const list = ((data && data.Routes) || [])
                 .map(r => ({ id: String(r.RouteID || "").toUpperCase(),
                              name: r.Name || "",
                              desc: r.LineDescription || r.Name || "" }))
                 .filter(r => r.id)
                 .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-            return busRouteDirectory;
+            return applyBusRouteDirectory(list);
         })
         .catch(() => {
             const m = new Map();
@@ -4198,12 +4735,21 @@ function loadBusRouteDirectory() {
                     const id = String(r || "").toUpperCase();
                     if (id && !m.has(id)) m.set(id, { id, name: id, desc: "" });
                 }
-            busRouteDirectory = [...m.values()]
+            const list = [...m.values()]
                 .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-            return busRouteDirectory;
+            return applyBusRouteDirectory(list);
         })
         .finally(() => { busRouteLoad = null; });
     return busRouteLoad;
+}
+
+function loadBusRouteDirectory() {
+    if (busRouteDirectory) {
+        if (Date.now() - busRouteDirectoryAt > TOPOLOGY_TTL_MS)
+            fetchBusRouteDirectoryFresh().catch(() => {});
+        return Promise.resolve(busRouteDirectory);
+    }
+    return fetchBusRouteDirectoryFresh();
 }
 
 function favGotoHtml(kind, id, name, label) {
@@ -4265,10 +4811,33 @@ function favSelectedMark(kind, id) {
 // Connecting bus routes / metro lines at a stop, cached per page load.
 const CROSS_CONNECTION_FT = 500;
 const stopConnections = new Map();
+const stopConnectionsAt = new Map();
+const stopConnectionsInflight = new Map();
+{
+    const cached = readCache("connections");
+    if (cached && Array.isArray(cached.v)) {
+        for (const row of cached.v) {
+            if (!Array.isArray(row) || row.length < 2) continue;
+            const key = String(row[0] || "");
+            const rec = row[1] || {};
+            if (!key || !rec.v) continue;
+            stopConnections.set(key, rec.v);
+            stopConnectionsAt.set(key, Number(rec.at) || cached.at || 0);
+        }
+    }
+}
 
-async function fetchStopConnections(kind, id) {
+function persistConnections() {
+    const rows = [];
+    for (const [key, value] of stopConnections) {
+        if (!value) continue;
+        rows.push([key, { at: stopConnectionsAt.get(key) || 0, v: value }]);
+    }
+    writeCache("connections", rows);
+}
+
+async function buildStopConnections(kind, id) {
     const key = kind + ":" + String(id);
-    if (stopConnections.has(key)) return stopConnections.get(key);
     const out = { bus: [], metro: [] };
     try {
         if (isBoston()) {
@@ -4330,11 +4899,40 @@ async function fetchStopConnections(kind, id) {
     } catch (e) { /* show no connections on failure */ }
     out.bus = [...new Set(out.bus)].slice(0, 6);
     out.metro = [...new Set(out.metro)].slice(0, 6);
-    // Don't cache an empty DC result before its directory has loaded.
-    const missingDc = !isBoston() && ((kind === "metro" && !metroStationsCache) ||
-        (kind !== "metro" && !allStopsCache));
-    if (!missingDc) stopConnections.set(key, out);
     return out;
+}
+
+async function refreshStopConnections(kind, id) {
+    const key = kind + ":" + String(id);
+    if (stopConnectionsInflight.has(key)) return stopConnectionsInflight.get(key);
+    const job = buildStopConnections(kind, id)
+        .then(out => {
+            // Don't cache an empty DC result before its directory has loaded.
+            const missingDc = !isBoston() &&
+                ((kind === "metro" && !metroStationsCache) ||
+                 (kind !== "metro" && !allStopsCache));
+            if (!missingDc) {
+                stopConnections.set(key, out);
+                stopConnectionsAt.set(key, Date.now());
+                persistConnections();
+            }
+            return out;
+        })
+        .catch(() => ({ bus: [], metro: [] }))
+        .finally(() => { stopConnectionsInflight.delete(key); });
+    stopConnectionsInflight.set(key, job);
+    return job;
+}
+
+async function fetchStopConnections(kind, id) {
+    const key = kind + ":" + String(id);
+    const hit = stopConnections.get(key);
+    if (hit) {
+        if (Date.now() - (stopConnectionsAt.get(key) || 0) > CONNECTION_TTL_MS)
+            refreshStopConnections(kind, id).catch(() => {});
+        return hit;
+    }
+    return refreshStopConnections(kind, id);
 }
 
 function connectionBadgesHtml(conns, kind, route) {
@@ -4390,10 +4988,10 @@ function favOrderedBusRow(s, route, conns) {
 
 // Ordered stops for a Boston route: one representative trip per direction,
 // read from the trip's ordered `stops` relationship.
-async function mbtaTripStops(tripId, useParent) {
-    if (!tripId) return [];
-    const { data: tr, error } = await mbtaGet(`/trips/${tripId}`, { include: "stops" });
-    if (error || !tr) return [];
+const mbtaTripStopCache = new Map();   // "tripId:parent" -> { at, stops }
+
+function mbtaTripStopsFromTrip(tr, useParent) {
+    if (!tr || !tr.data) return [];
     const inc = new Map(((tr.included) || [])
         .filter(i => i.type === "stop").map(s => [s.id, s]));
     const rel = tr.data.relationships && tr.data.relationships.stops;
@@ -4413,6 +5011,59 @@ async function mbtaTripStops(tripId, useParent) {
         });
     }
     return out;
+}
+
+async function fetchMbtaTripStopsRemote(tripId, useParent) {
+    const { data: tr, error } = await mbtaGet(`/trips/${tripId}`, { include: "stops" });
+    if (error || !tr) return [];
+    const out = mbtaTripStopsFromTrip(tr, useParent);
+    mbtaTripStopCache.set(`${tripId}:${useParent ? "p" : "s"}`,
+        { at: Date.now(), stops: out });
+    return out;
+}
+
+// Batch representative-trip stop sequences. MBTA's filter[id] is used when
+// available; a failed request falls back to individual trip lookups.
+async function mbtaTripStopsMany(tripIds, useParent) {
+    const ids = [...new Set((tripIds || []).map(String).filter(Boolean))];
+    const out = new Map();
+    const need = [];
+    for (const id of ids) {
+        const hit = mbtaTripStopCache.get(`${id}:${useParent ? "p" : "s"}`);
+        if (hit && Date.now() - hit.at <= TOPOLOGY_TTL_MS) out.set(id, hit.stops);
+        else need.push(id);
+    }
+    if (!need.length) return out;
+    let batch = null;
+    try {
+        const { data, error } = await mbtaGet("/trips", {
+            "filter[id]": need.join(","),
+            "include": "stops"
+        });
+        if (!error && data) batch = data.data || [];
+    } catch (e) { /* fall back to one trip at a time */ }
+    if (batch) {
+        const wanted = new Set(need);
+        for (const tr of batch) {
+            const id = tr && tr.id;
+            if (!id || !wanted.has(id)) continue;
+            const stops = mbtaTripStopsFromTrip(tr, useParent);
+            out.set(id, stops);
+            mbtaTripStopCache.set(`${id}:${useParent ? "p" : "s"}`,
+                { at: Date.now(), stops });
+        }
+    }
+    for (const id of need) {
+        if (out.has(id)) continue;
+        out.set(id, await fetchMbtaTripStopsRemote(id, useParent));
+    }
+    return out;
+}
+
+async function mbtaTripStops(tripId, useParent) {
+    if (!tripId) return [];
+    const map = await mbtaTripStopsMany([tripId], useParent);
+    return map.get(String(tripId)) || [];
 }
 
 function heroRouteListHtml(stops, kind, route, anchor, connsMap) {
@@ -4500,32 +5151,65 @@ async function toggleHeroRouteStops(btn) {
     applyStopNameWidth(box);
 }
 
+const mbtaRouteStopsCache = new Map();
+{
+    const cached = readCache("mbta_route_stops");
+    if (cached && Array.isArray(cached.v)) {
+        for (const row of cached.v) {
+            if (!Array.isArray(row) || row.length < 2) continue;
+            const key = String(row[0] || "");
+            const rec = row[1] || {};
+            if (!key || !Array.isArray(rec.v)) continue;
+            mbtaRouteStopsCache.set(key, {
+                at: Number(rec.at) || cached.at || 0,
+                groups: rec.v
+            });
+        }
+    }
+}
+
+function persistMbtaRouteStops() {
+    const rows = [];
+    for (const [key, rec] of mbtaRouteStopsCache)
+        rows.push([key, { at: rec.at || 0, v: rec.groups || [] }]);
+    writeCache("mbta_route_stops", rows);
+}
+
+async function refreshMbtaRouteStops(routeKey, useParent) {
+    const routeId = busRouteMbtaIds[routeKey] || routeKey;
+    const key = routeId + ":" + (useParent ? "p" : "s");
+    await mbtaPatternsForRoutes([routeId]);
+    const byDir = new Map();
+    for (const p of mbtaPatternCache.get(routeId) || []) {
+        const cur = byDir.get(p.dir);
+        if (!cur || (p.canonical && !cur.canonical)) byDir.set(p.dir, p);
+    }
+    const plan = [...byDir.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .filter(([, p]) => p.tripId);
+    const stopMap = await mbtaTripStopsMany(
+        plan.map(([, p]) => p.tripId), !!useParent).catch(() => new Map());
+    const groups = [];
+    for (const [dir, p] of plan) {
+        const stops = stopMap.get(p.tripId) || [];
+        if (stops.length)
+            groups.push({ dir, name: p.name || "", stops });
+    }
+    mbtaRouteStopsCache.set(key, { at: Date.now(), groups });
+    persistMbtaRouteStops();
+    return groups;
+}
+
 async function fetchMbtaRouteStops(routeKey, useParent) {
     const routeId = busRouteMbtaIds[routeKey] || routeKey;
-    const { data: rp, error } = await mbtaGet("/route_patterns", {
-        "filter[route]": routeId
-    });
-    if (error) throw error;
-    const patterns = ((rp && rp.data) || []).filter(p =>
-        p.relationships && p.relationships.route &&
-        p.relationships.route.data.id === routeId);
-    const byDir = new Map();
-    for (const p of patterns) {
-        const dir = p.attributes.direction_id;
-        const cur = byDir.get(dir);
-        if (!cur || (p.attributes.canonical && !cur.attributes.canonical))
-            byDir.set(dir, p);
+    const key = routeId + ":" + (useParent ? "p" : "s");
+    const hit = mbtaRouteStopsCache.get(key);
+    if (hit) {
+        if (Date.now() - (hit.at || 0) > TOPOLOGY_TTL_MS)
+            refreshMbtaRouteStops(routeKey, useParent).catch(() => {});
+        return hit.groups;
     }
-    const groups = [];
-    for (const [dir, p] of [...byDir.entries()].sort((a, b) => a[0] - b[0])) {
-        const tripId = p.relationships.representative_trip &&
-            p.relationships.representative_trip.data.id;
-        if (!tripId) continue;
-        const stops = await mbtaTripStops(tripId, !!useParent);
-        if (stops.length)
-            groups.push({ dir, name: p.attributes.name || "", stops });
-    }
-    return groups;
+    return refreshMbtaRouteStops(routeKey, useParent);
 }
 
 let favBusFilterToken = 0;
@@ -6134,12 +6818,12 @@ function renderLines() {
     if (!allStopsCache)
         loadStopDirectory()
             .then(() => {
-                if (token !== boardToken) return;
-                renderLines();
+                if (token === boardToken) renderLines();
                 // The directory just gave the anchor coordinates, so nearby
                 // stops may be visible for the first time. Fetch their live
                 // arrivals now rather than showing scheduled fallbacks until
-                // the next 30-second tick.
+                // the next tick. This runs even if another render won the
+                // token race: the current anchor still needs its neighbors.
                 const a = anchorStop();
                 if (a && nearbyStops(a).some(n => !nearbyStopObj(n).ArrivalsAt))
                     refreshPredictions();
