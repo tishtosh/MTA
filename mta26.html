@@ -452,6 +452,7 @@
         .status-boarding { color: #0d47a1; background: #bbdefb; }
         .status-departing { color: #8a4b00; background: #ffe0b2; }
         .status-departed { color: #495057; background: #e0e0e0; }
+        .status-now { color: #b71c1c; background: #ffcdd2; }
 
         .bt-allstops {
             flex: none; padding: 0 7px;
@@ -2436,10 +2437,10 @@ function startHeroCountdown(st, arrivals) {
             if (/arriving|boarding/i.test(chipText)) {
                 // The API still says the vehicle is arriving/boarding; the
                 // local timer is only an estimate. Keep the server status and
-                // show "Now" until the feed changes or drops the trip.
+                // mark the time as NOW until the feed changes or drops it.
                 chip.style.display = "";
                 el.style.display = "";
-                el.className = "bt-next-eta soon hero-countdown";
+                el.className = "status-chip status-now hero-countdown";
                 el.textContent = "Now";
                 return;
             }
@@ -2479,6 +2480,30 @@ function startHeroCountdown(st, arrivals) {
 
 function etaToken(m) {
     return m === 0 ? "Due" : String(m);
+}
+
+function predictionRank(p) {
+    if (!p || p.min > 1) return 3;
+    const s = String(p.status || "").toLowerCase();
+    if (/departing/.test(s)) return 0;
+    if (/arriving/.test(s)) return 1;
+    if (/boarding/.test(s)) return 2;
+    return 3;
+}
+
+function heroStatusRank(row) {
+    const s = String((row && row.status) || "").toLowerCase();
+    if (row && row.departed) return 0;
+    if (/departing/.test(s)) return 1;
+    if (/arriving/.test(s)) return 2;
+    if (/boarding/.test(s)) return 2;
+    return 3;
+}
+
+function sortHeroRows(rows, anchorId, now) {
+    sortRowsBySoonest(rows, anchorId, now);
+    rows.sort((a, b) => heroStatusRank(a) - heroStatusRank(b));
+    return rows;
 }
 
 function statusReplacesDue(status) {
@@ -3248,6 +3273,7 @@ function renderMetro() {
             + list + `</div>`;
     }).join("");
     const mainRows = metroRowsFor(station, true);
+    sortHeroRows(mainRows, station.Code, Date.now());
     const mainHtml = mainRows.length
         ? `<div class="main-board metro-board"><div class="board">${rowsHtml(mainRows)}</div></div>`
         : "";
@@ -5411,7 +5437,8 @@ function heroCardHtml(st, arrivals) {
     const id = String(st.StopID || "");
     const label = st.Name ? stopName(st.Name) : `#${id}`;
     const list = (arrivals || []).slice().sort((a, b) => a.min - b.min);
-    const next = list[0] || null;
+    const next = (arrivals || []).slice()
+        .sort((a, b) => predictionRank(a) - predictionRank(b) || a.min - b.min)[0] || null;
     const badgeColor = (route) => st.Metro ? metroLineColor(route) : routeColor(route);
     const badgeLabel = (route) => st.Metro ? metroLineName(route) : route;
     let nextLine;
@@ -5591,8 +5618,8 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     const serviceKey = p => p.route + "|" +
         ((p.dirNum == null || p.dirNum === "") ? "?" : String(p.dirNum)) + "|" +
         (p.heads || "");
-    const heroNext = (arrivals || []).reduce((best, p) =>
-        p && (!best || p.min < best.min) ? p : best, null);
+    const heroNext = (arrivals || []).slice()
+        .sort((a, b) => predictionRank(a) - predictionRank(b) || a.min - b.min)[0] || null;
     const heroKey = heroNext ? serviceKey(heroNext) : null;
     const rowPreds = heroKey
         ? (arrivals || []).filter(p => serviceKey(p) !== heroKey)
@@ -5602,7 +5629,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     // so their stop-list dropdown can slice from here.
     if (typeof isBoston === "function" && isBoston())
         liveRows.forEach(r => { if (!r.anchorId) r.anchorId = anchorId; });
-    sortRowsBySoonest(liveRows, anchorId, nowMs);
+    sortHeroRows(liveRows, anchorId, nowMs);
     const mainRows = [...departedRows, ...liveRows];
     // Merge the across-the-street counterpart into the nearby list (first)
     // so it is never shown twice.
