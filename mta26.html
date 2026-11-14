@@ -5433,16 +5433,13 @@ function bookmarkRows(slot) {
 }
 
 function nextArrivalHtml(kind, next) {
-    const commuter = kind === "metro" && next && isCommuterRoute(next.route);
-    const railColor = kind === "metro" && next ? metroLineColor(next.route) : "";
-    const verb = heroVerbHtml(kind === "metro", commuter, railColor);
-    if (!next) return `${verb} <span class="text-muted">no arrival or departure</span>`;
+    if (!next) return `<span class="text-muted">no arrival or departure</span>`;
     const color = kind === "metro" ? metroLineColor(next.route) : routeColor(next.route);
     const label = kind === "metro" ? metroLineName(next.route) : next.route;
     const status = next.min <= 1
         ? (next.status || (next.min === 0 ? "Arriving" : "")) : "";
     const showEta = !(next.min === 0 && statusReplacesDue(status));
-    return `${verb} <span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
+    return `<span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
         + ` style="background:${color};color:${kind === "metro" ? "#fff" : busTextColor(next.route)}">${esc(label)}</span> `
         + `${esc(next.heads || next.dir || "")}`
         + statusChipHtml(status)
