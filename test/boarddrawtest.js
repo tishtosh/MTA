@@ -74,7 +74,7 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   const h = ctx.boardEtasHtml([3, 14, 40]);
   t("A4 soon highlight, rest uniform",
     h.includes('class="board-eta-soon">3 min') &&
-    h.includes("and then 14, 40 min"), h.slice(0, 120));
+    h.includes("then 14, 40 min"), h.slice(0, 120));
 }
 
 // ── boardHtml: header layout + compact rows + stop list ──────────────

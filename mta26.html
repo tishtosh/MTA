@@ -1765,7 +1765,8 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
         let v = variants.get(key);
         if (!v) {
             v = { route: p.route, dirNum, heads: p.heads || "", mins: [], vehicles: [], preds: [],
-                  status: p.status || (p.min === 0 ? "Arriving" : ""),
+                  status: p.min <= 1
+                      ? (p.status || (p.min === 0 ? "Arriving" : "")) : "",
                   rep: { route: p.route, dirNum, heads: p.heads || "",
                          trip: p.trip || "", vehicle: p.vehicle || "" } };
             variants.set(key, v);
@@ -2416,7 +2417,7 @@ function clearHeroCountdown() {
 function startHeroCountdown(st, arrivals) {
     const next = (arrivals || []).slice().sort((a, b) => a.min - b.min)[0];
     const span = document.querySelector("#boardHeader .hero-countdown");
-    if (!next || next.min !== 0 || !span) { clearHeroCountdown(); return; }
+    if (!next || next.min > 1 || !span) { clearHeroCountdown(); return; }
     const id = st && (st.Code || st.StopID);
     const key = [mode, id, next.route, next.trip || "", next.heads || next.dir || ""].join("|");
     if (key !== heroCountdownKey) {
@@ -2429,8 +2430,14 @@ function startHeroCountdown(st, arrivals) {
         const el = document.querySelector("#boardHeader .hero-countdown");
         if (!el) { clearHeroCountdown(); return; }
         const ms = heroCountdownDeadline - Date.now();
-        el.textContent = ms <= 0 ? "Departing"
-            : `0:${String(Math.max(0, Math.ceil(ms / 1000))).padStart(2, "0")}`;
+        if (ms <= 0) {
+            el.textContent = "Departing";
+            const chip = document.querySelector("#boardHeader .status-chip");
+            if (chip) chip.style.display = "none";
+            return;
+        }
+        const secs = Math.max(0, Math.ceil(ms / 1000));
+        el.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
     };
     tick();
     heroCountdownTimer = setInterval(tick, 1000);
@@ -2478,7 +2485,7 @@ function boardEtasHtml(mins, scheduled, departedAt, status) {
     const soon = Number.isFinite(first) && first <= 5;
     let h = `<span class="${soon ? "board-eta-soon" : "board-eta"}">${esc(fmtEta(first))}</span>`;
     if (list.length > 1) {
-        h += ` <span class="board-eta">and then `
+        h += ` <span class="board-eta">then `
             + `${list.slice(1).map(etaToken).join(", ")} min</span>`;
     }
     return h;
@@ -4324,7 +4331,8 @@ function nextArrivalHtml(kind, next) {
     if (!next) return `${verb} <span class="text-muted">no arrival or departure</span>`;
     const color = kind === "metro" ? metroLineColor(next.route) : routeColor(next.route);
     const label = kind === "metro" ? metroLineName(next.route) : next.route;
-    const status = next.status || (next.min === 0 ? "Arriving" : "");
+    const status = next.min <= 1
+        ? (next.status || (next.min === 0 ? "Arriving" : "")) : "";
     const showEta = !(next.min === 0 && statusReplacesDue(status));
     return `${verb} <span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
         + ` style="background:${color};color:${kind === "metro" ? "#fff" : busTextColor(next.route)}">${esc(label)}</span> `
@@ -5412,16 +5420,17 @@ function heroCardHtml(st, arrivals) {
             next.heads || next.dir
                 ? `<span class="board-dest">${esc(next.heads || next.dir)}</span>` : ""
         ].filter(Boolean).join(" ");
-        const heroStatus = next.status || (next.min === 0 ? "Arriving" : "");
+        const heroStatus = next.min <= 1
+            ? (next.status || (next.min === 0 ? "Arriving" : "")) : "";
         const showEta = !(mins[0] === 0 && statusReplacesDue(heroStatus));
-        const etaHtml = next.min === 0
+        const etaHtml = next.min <= 1
             ? ` <span class="bt-next-eta soon hero-countdown">0:59</span>`
             : (showEta ? ` <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>` : "");
         nextLine = `${bits}`
             + statusChipHtml(heroStatus)
             + etaHtml;
         if (mins.length > 1)
-            nextLine += ` <span class="bt-next-rest">and then ${mins.slice(1).map(etaToken).join(", ")} min</span>`;
+            nextLine += ` <span class="bt-next-rest">then ${mins.slice(1).map(etaToken).join(", ")} min</span>`;
     } else if (st.Error) {
         nextLine = `<span class="text-muted">arrivals unavailable — retrying</span>`;
     } else {
