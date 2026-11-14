@@ -200,13 +200,11 @@
         .hero-card.bookmark-card.hero-metro:hover { background: #e4d7c1; }
         .bookmark-card:focus-visible { outline: 2px solid #2e7d32; outline-offset: 1px; }
         .bookmark-title-line { display: flex; align-items: center; flex-wrap: wrap; }
-        .bookmark-drag {
-            flex: none; display: inline-flex; align-items: center;
-            padding: 2px 4px 2px 0; color: #8a6f69;
-            cursor: grab; touch-action: none; font-size: 12px;
+        .bookmark-title-line .nearby-mode-icon.bookmark-drag {
+            cursor: grab; touch-action: none;
         }
-        .bookmark-drag:hover { color: #2c1a16; }
-        .bookmark-drag:active { cursor: grabbing; }
+        .bookmark-title-line .nearby-mode-icon.bookmark-drag:hover { filter: brightness(.85); }
+        .bookmark-title-line .nearby-mode-icon.bookmark-drag:active { cursor: grabbing; }
         .bookmark-card.dragging { opacity: .55; }
         .bookmark-card .board-shortcuts { top: 8px; right: 10px; }
         .bookmark-card .fav-star {
@@ -2715,10 +2713,11 @@ async function ensureCrossBusNearby(station) {
     }
 }
 
-function nearbyModeIcon(metro, commuter, color) {
-    const label = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
+function nearbyModeIcon(metro, commuter, color, drag) {
+    const base = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
+    const label = drag ? `${base} — drag to reorder` : base;
     const style = metro && color ? ` style="color:${esc(color)}"` : "";
-    return `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"} nearby-mode-icon${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}"></i>`;
+    return `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"} nearby-mode-icon${commuter ? " commuter-rail-icon" : ""}${drag ? " bookmark-drag" : ""}"${style} role="img" aria-label="${label}" title="${label}"></i>`;
 }
 
 function crossMetroSectionHtml(st) {
@@ -5526,7 +5525,7 @@ function bookmarkCardHtml(row) {
     const route = row.route || shortcutRoute(row.kind, row.id);
     const commuter = row.kind === "metro" && isCommuterRoute(route);
     const modeIcon = nearbyModeIcon(row.kind === "metro", commuter,
-        row.kind === "metro" ? metroLineColor(route) : "");
+        row.kind === "metro" ? metroLineColor(route) : "", true);
     const band = row.kind === "metro"
         ? `<span class="hero-line-band" data-band="${esc(row.kind)}:${esc(row.id)}"`
           + ` style="background:${metroLineColor(route)}"></span>`
@@ -5541,8 +5540,6 @@ function bookmarkCardHtml(row) {
         + `${bmSlotHtml(row, "home")}${bmSlotHtml(row, "work")}${bmSlotHtml(row, "airport")}`
         + `${favStarHtml(row.kind, row.id, row.name, row.route)}</div>`
         + `<div class="bookmark-title-line">`
-        + `<span class="bookmark-drag" role="img" aria-label="Drag to reorder" title="Drag to reorder">`
-        + `<i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></span>`
         + `${modeIcon}<span class="board-stopname">${esc(label)}</span>`
         + (row.name ? `<span class="board-stopid">#${esc(row.id)}</span>` : "")
         + `</div>`
@@ -5595,7 +5592,7 @@ async function fillBookmarkArrivals(rows, token) {
                 const metro = row.kind === "metro";
                 const commuter = metro && isCommuterRoute(next.route);
                 icon.outerHTML = nearbyModeIcon(metro, commuter,
-                    metro ? metroLineColor(next.route) : "");
+                    metro ? metroLineColor(next.route) : "", true);
             }
         }
     }));

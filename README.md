@@ -23,7 +23,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 - Home, Work, and Airport are multi-bookmark categories: each can hold several bus stops
   and Metro stations. Adding one also adds it to favorites; removing a favorite removes
   it from Home, Work, and Airport too.
-- Bookmark cards can be dragged by the grip handle to reorder them. Favorites, Home,
+- Bookmark cards can be dragged by their bus/train/commuter icon to reorder them. Favorites, Home,
   Work, and Airport each keep their own order per city.
 - Airports are seeded per city with a bus stop and a rail station.
 - **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Rail**, and
