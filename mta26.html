@@ -136,6 +136,25 @@
             font: 600 10px/1.4 system-ui, -apple-system, sans-serif;
             letter-spacing: .05em; text-transform: uppercase; color: #6c757d;
         }
+        .route-actions {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            margin: 2px 0 4px;
+        }
+        .route-action {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 4px 8px; border: 1px solid #ced4da; border-radius: 6px;
+            background: #fff; color: #0b5ed7; cursor: pointer;
+            font: 600 12px/1.2 system-ui, -apple-system, sans-serif;
+        }
+        .route-action:hover { background: #f1f3f5; }
+        .route-action:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .route-action i { font-size: 12px; }
+        .route-action-share { padding: 4px 7px; color: #495057; }
+        .bt-stoplist .route-actions-item {
+            list-style: none; padding: 0; margin: 0; cursor: default;
+        }
+        .bt-stoplist .route-actions-item:hover { background: none; }
+        .hero-route-stops .route-actions { margin: 2px 2px 2px; }
         .fav-empty { padding: 4px; color: #6c757d; font-size: 12px; }
         .fav-dist { flex: none; color: #6c757d; font-size: 11px; white-space: nowrap; }
         .fav-setting {
@@ -1278,6 +1297,15 @@ function resetFavorites() {
     }
     shortcuts = readShortcutCookie();
     ensureAirportDefaults();
+    // The city's default favorite (Dulles in DC) is also an Airport bookmark.
+    const defFav = defaultFavorite();
+    const defList = slotEntries(defFav.kind, "airport");
+    if (!defList.some(e => String(e.id) === String(defFav.id))) {
+        defList.push({
+            id: String(defFav.id), name: defFav.name || "", route: defFav.route || ""
+        });
+        setSlotEntries(defFav.kind, "airport", defList);
+    }
     const list = [];
     const seen = new Set();
     const add = (e) => {
@@ -2774,16 +2802,25 @@ function boardHtml(geom, rows) {
               + `</ul>`
             : "";
         const list = g && g.hasTrack && (g.stops || []).length >= 2
-            ? `<ul class="bt-stoplist"${open ? "" : " hidden"}>`
-              + g.stops.map(s => {
-                  const mark = s.anchor ? ` <b class="bt-mark">your stop</b>`
-                     : s.terminal ? ` <b class="bt-mark">terminal</b>` : "";
-                  return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(s.id)}">`
-                      + `${favStarHtml("bus", s.id, s.name, row.route)}`
-                      + `<span class="bt-stop-name">${esc(stopName(s.name) || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</span>`
-                      + `<span class="fav-conns" data-conn="${esc(s.id)}" data-conn-kind="bus" data-conn-route="${esc(row.route)}"></span></li>`;
-                }).join("") + `</ul>`
-            : mbtaList;
+            ? (() => {
+                const term = g.stops.find(s => s.terminal)
+                    || g.stops[g.stops.length - 1];
+                const originRow = g.stops.find(s => s.anchor)
+                    || g.stops.find(s => String(s.id) === String(row.anchorId));
+                const actions = term ? routeActionsHtml("bus", row.route,
+                    row.anchorId, originRow ? originRow.name : "",
+                    term.id, term.name) : "";
+                return `<ul class="bt-stoplist"${open ? "" : " hidden"}>`
+                  + (actions ? `<li class="route-actions-item">${actions}</li>` : "")
+                  + g.stops.map(s => {
+                      const mark = s.anchor ? ` <b class="bt-mark">your stop</b>`
+                         : s.terminal ? ` <b class="bt-mark">terminal</b>` : "";
+                      return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(s.id)}">`
+                          + `${favStarHtml("bus", s.id, s.name, row.route)}`
+                          + `<span class="bt-stop-name">${esc(stopName(s.name) || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</span>`
+                          + `<span class="fav-conns" data-conn="${esc(s.id)}" data-conn-kind="bus" data-conn-route="${esc(row.route)}"></span></li>`;
+                }).join("") + `</ul>`;
+              })() : mbtaList;
         const rowClass = row.departed ? " is-departed" : (scheduled ? " is-scheduled" : "");
         out += `<div class="board-row${rowClass}" data-rowkey="${encodeURIComponent(k)}">`
             + `${boardRowHead(row, color, g, k, scheduled)}${list}</div>`;
@@ -3345,8 +3382,14 @@ async function loadMbtaRowStops(ul) {
         const conns = await loadStopConnections(
             shown.map(s => ({ StopID: s.StopID, kind: "bus" })));
         const line = ul.dataset.line || "";
+        const anchorRow = stops.find(s => String(s.StopID) === anchor);
+        const terminal = stops[stops.length - 1];
+        const actions = routeActionsHtml("bus", line, anchor,
+            anchorRow ? anchorRow.Name : "", terminal ? terminal.StopID : "",
+            terminal ? terminal.Name : "");
         const label = at >= 0 ? `<li class="bt-next-label">Next stops…</li>` : "";
-        ul.innerHTML = label + (shown.length ? shown.map(s => {
+        ul.innerHTML = (actions ? `<li class="route-actions-item">${actions}</li>` : "")
+            + label + (shown.length ? shown.map(s => {
             const id = String(s.StopID);
             const badges = connectionBadgesHtml(conns.get(id), "bus", line);
             return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(id)}">`
@@ -3387,8 +3430,14 @@ async function loadMetroStops(ul) {
         await Promise.all(next.map(async p => {
             conns.set(p.StationCode, await fetchStopConnections("metro", p.StationCode));
         }));
+        const fromRow = path[0];
+        const toRow = path[path.length - 1];
+        const actions = routeActionsHtml("metro", line, from,
+            fromRow ? fromRow.StationName : "",
+            to, toRow ? toRow.StationName : "");
         const label = path.length ? `<li class="bt-next-label">Next stops…</li>` : "";
-        ul.innerHTML = label + (next.length ? next.map(p => {
+        ul.innerHTML = (actions ? `<li class="route-actions-item">${actions}</li>` : "")
+            + label + (next.length ? next.map(p => {
             const mark = p.StationCode === to ? ` <b class="bt-mark">terminal</b>` : "";
             const badges = connectionBadgesHtml(conns.get(p.StationCode), "metro", line);
             return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(p.StationCode)}">`
@@ -4001,6 +4050,108 @@ function openSelectedInMaps() {
     window.open(url, "_blank", "noopener");
 }
 
+// Resolve a stop/station to a maps point. Coordinates make the route start
+// and end exactly at the stops; the name is the fallback when none are known.
+async function stopMapPoint(kind, id, name, line) {
+    id = String(id || "");
+    let label = stopName(name) || allStopsName(id) || id;
+    let lat = null, lon = null;
+    const fromCache = kind === "metro"
+        ? (metroStationsCache || []).find(s => String(s.Code) === id)
+        : (allStopsCache || []).find(s => String(s.StopID) === id);
+    if (fromCache) {
+        lat = Number(fromCache.Lat); lon = Number(fromCache.Lon);
+        label = stopName(fromCache.Name) || label;
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        lat = null; lon = null;
+        try {
+            if (isBoston()) {
+                const { data } = await mbtaGet(`/stops/${id}`);
+                const a = (data && data.data && data.data.attributes) || null;
+                if (a) {
+                    lat = Number(a.latitude); lon = Number(a.longitude);
+                    label = a.name || label;
+                }
+            } else if (kind === "metro") {
+                await loadMetroStations();
+                const st = (metroStationsCache || [])
+                    .find(s => String(s.Code) === id);
+                if (st) { lat = Number(st.Lat); lon = Number(st.Lon); }
+            } else if (line) {
+                const details = await fetchRouteDetails(line);
+                for (const d of (details && details.directions) || []) {
+                    const s = d.byId && d.byId[id];
+                    if (!s) continue;
+                    if (Number.isFinite(s.lat) && Number.isFinite(s.lon)) {
+                        lat = s.lat; lon = s.lon;
+                        label = stopName(s.name) || label;
+                    }
+                    break;
+                }
+            }
+        } catch (e) { /* name-only directions */ }
+    }
+    return { id, label, lat, lon };
+}
+
+function routeActionsHtml(kind, line, originId, originName, destId, destName) {
+    if (!originId || !destId || String(originId) === String(destId)) return "";
+    const attrs = `data-route-kind="${esc(kind)}" data-route-line="${esc(line || "")}"`
+        + ` data-route-origin="${esc(originId)}"`
+        + ` data-route-origin-name="${esc(originName || "")}"`
+        + ` data-route-dest="${esc(destId)}"`
+        + ` data-route-dest-name="${esc(destName || "")}"`;
+    return `<div class="route-actions">`
+        + `<button type="button" class="route-action" ${attrs} data-route-action="see">`
+        + `<i class="fa-solid fa-route" aria-hidden="true"></i>See route</button>`
+        + `<button type="button" class="route-action route-action-share" ${attrs}`
+        + ` data-route-action="share" title="Share transit directions"`
+        + ` aria-label="Share transit directions">`
+        + `<i class="fa-solid fa-share-nodes" aria-hidden="true"></i></button>`
+        + `</div>`;
+}
+
+// Apple's frame endpoint shows a transit map covering both ends of the trip.
+function appleFrameUrl(from, to) {
+    const has = p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
+    if (!has(from) && !has(to))
+        return "https://maps.apple.com/frame?map=transit";
+    if (!has(from) || !has(to)) {
+        const p = has(from) ? from : to;
+        return `https://maps.apple.com/frame?map=transit&center=${p.lat},${p.lon}`
+            + `&span=0.03,0.03`;
+    }
+    const lat = (from.lat + to.lat) / 2;
+    const lon = (from.lon + to.lon) / 2;
+    const span = Math.max(0.01,
+        Math.abs(from.lat - to.lat) * 1.6,
+        Math.abs(from.lon - to.lon) * 1.6);
+    const n = v => Number(v.toFixed(5));
+    return `https://maps.apple.com/frame?map=transit&center=${n(lat)},${n(lon)}`
+        + `&span=${n(span)},${n(span)}`;
+}
+
+// Transit directions from the selected stop to the route's terminal stop.
+async function openRouteInMaps(ds) {
+    const kind = ds.routeKind || "bus";
+    const line = ds.routeLine || "";
+    const [from, to] = await Promise.all([
+        stopMapPoint(kind, ds.routeOrigin, ds.routeOriginName, line),
+        stopMapPoint(kind, ds.routeDest, ds.routeDestName, line)
+    ]);
+    const point = p => (p.lat != null && p.lon != null)
+        ? `${p.lat},${p.lon}`
+        : (p.label || p.id);
+    const origin = encodeURIComponent(point(from));
+    const dest = encodeURIComponent(point(to));
+    const url = mapsProvider === "apple"
+        ? appleFrameUrl(from, to)
+        : `https://www.google.com/maps/dir/?api=1&origin=${origin}`
+          + `&destination=${dest}&travelmode=transit`;
+    window.open(url, "_blank", "noopener");
+}
+
 // ── Add Favorite picker ──────────────────────────────────────────────
 function loadBusRouteDirectory() {
     if (busRouteDirectory) return Promise.resolve(busRouteDirectory);
@@ -4268,9 +4419,15 @@ function heroRouteListHtml(stops, kind, route, anchor, connsMap) {
     // Start after the selected stop; the current stop is not repeated.
     const at = stops.findIndex(s => String(s.StopID || s.id) === String(anchor));
     const list = at >= 0 ? stops.slice(at + 1) : stops;
+    const anchorStopRow = at >= 0 ? stops[at] : null;
+    const terminal = stops[stops.length - 1] || null;
+    const actions = terminal ? routeActionsHtml(kind, route, anchor,
+        (anchorStopRow && (anchorStopRow.Name || anchorStopRow.name)) || "",
+        terminal.StopID || terminal.id,
+        terminal.Name || terminal.name) : "";
     const label = at >= 0 ? `<div class="next-stops-label">Next stops…</div>` : "";
-    if (!list.length) return label + `<div class="fav-empty">no further stops</div>`;
-    return label + list.map(s => {
+    if (!list.length) return actions + label + `<div class="fav-empty">no further stops</div>`;
+    return actions + label + list.map(s => {
         const id = String(s.StopID || s.id || "");
         const name = s.Name || s.name || "";
         const conns = connsMap && connsMap.get(id);
@@ -4818,10 +4975,18 @@ async function populateFavStops(container, kind, key) {
                         .map(s => ({ StopID: s.StopID, kind: "bus" }));
                     conns = await loadStopConnections(rows);
                 }
-                container.innerHTML = groups.length ? groups.map(g =>
-                    `<div class="fav-dir-label">${esc(g.name || ("Direction " + g.dir))}</div>`
-                    + g.stops.map(s => favOrderedBusRow(s, key, conns.get(String(s.StopID)))).join("")
-                ).join("") : `<div class="fav-empty">no stops for this route</div>`;
+                container.innerHTML = groups.length ? groups.map(g => {
+                    const term = g.stops[g.stops.length - 1];
+                    const selRow = g.stops.find(s =>
+                        String(s.StopID) === String(pickedStop || ""));
+                    const actions = selRow && term
+                        ? routeActionsHtml("bus", key, selRow.StopID, selRow.Name,
+                            term.StopID, term.Name)
+                        : "";
+                    return (actions || "")
+                        + `<div class="fav-dir-label">${esc(g.name || ("Direction " + g.dir))}</div>`
+                        + g.stops.map(s => favOrderedBusRow(s, key, conns.get(String(s.StopID)))).join("");
+                }).join("") : `<div class="fav-empty">no stops for this route</div>`;
                 return;
             }
             let list;
@@ -4883,6 +5048,12 @@ if (gFavBusFilter) gFavBusFilter.addEventListener("input", () => {
     favBusDebounce = setTimeout(() => renderFavBusRoutes(gFavBusFilter.value), 250);
 });
 if (gFavPanel) gFavPanel.addEventListener("click", async e => {
+    const routeAction = e.target.closest ? e.target.closest(".route-action") : null;
+    if (routeAction) {
+        e.preventDefault();
+        openRouteInMaps(routeAction.dataset);
+        return;
+    }
     const star = e.target.closest ? e.target.closest(".fav-star") : null;
     if (star) {
         e.preventDefault();
@@ -5044,6 +5215,12 @@ function syncHeaderShortcuts() {
 // star toggles membership in the master favorites list, so it matches the
 // star's color everywhere else.
 gBoardHeader.addEventListener("click", e => {
+    const routeAction = e.target.closest ? e.target.closest(".route-action") : null;
+    if (routeAction) {
+        e.preventDefault();
+        openRouteInMaps(routeAction.dataset);
+        return;
+    }
     const routeBtn = e.target.closest ? e.target.closest(".hero-route-toggle") : null;
     if (routeBtn) {
         e.preventDefault();
@@ -5473,6 +5650,12 @@ function selectStop(id, keepPicker) {
 // (the redraw puts it first, then the view glides up). A stop in the expanded
 // "View all stops" list re-anchors the board on that stop and refreshes it.
 gLinesScroll.addEventListener("click", e => {
+    const routeAction = e.target.closest ? e.target.closest(".route-action") : null;
+    if (routeAction) {
+        e.preventDefault();
+        openRouteInMaps(routeAction.dataset);
+        return;
+    }
     const star = e.target.closest ? e.target.closest(".fav-star") : null;
     if (star) {
         e.preventDefault();
