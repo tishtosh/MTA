@@ -329,10 +329,11 @@
         },
         labels: {
             nextBus: "Next bus", nextTrain: "Next train",
-            stop: "stop", station: "station", towards: "towards", platform: "Platform",
+            stop: "stop", station: "station", towards: "towards", platform: "Platform", railSection: "Subway", commuterSection: "Commuter rail",
             railNoun: "train",
         },
         capabilities: {
+            commuter: true,
             bus: false,                 // MTA Bus Time is a later phase
             batchDepartures: false,
             scheduleFallback: false,

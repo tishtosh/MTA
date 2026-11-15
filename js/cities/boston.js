@@ -747,8 +747,9 @@
             bus: [{ id: "17091", name: "Boston Logan Airport Terminal A", route: "SL1" }],
             metro: [{ id: "place-aport", name: "Airport", route: "Blue" }],
         },
-        labels: { nextBus: "Next bus", nextTrain: "Next train", stop: "stop", station: "station" },
+        labels: { nextBus: "Next bus", nextTrain: "Next train", stop: "stop", station: "station", railSection: "Subway", commuterSection: "Commuter rail" },
         capabilities: {
+            commuter: true,
             batchDepartures: true,
             scheduleFallback: false,
             patterns: false,

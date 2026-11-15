@@ -1002,12 +1002,19 @@
                placeholder="Filter bus routes…" autocomplete="off" aria-label="Filter bus routes">
         <div id="favBusRoutes" class="fav-list"></div>
     </div>
-    <button type="button" class="fav-header" data-fav-panel="metro" aria-expanded="false">
-        <span>Rail</span>
+    <button type="button" class="fav-header" id="favMetroHeader" data-fav-panel="metro" aria-expanded="false">
+        <span id="railSectionLabel">Rail</span>
         <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
     </button>
     <div id="favMetroBody" class="fav-body" hidden>
         <div id="favMetroLines" class="fav-list"></div>
+    </div>
+    <button type="button" class="fav-header" id="favCommuterHeader" data-fav-panel="commuter" aria-expanded="false" hidden>
+        <span id="commuterSectionLabel">Commuter rail</span>
+        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+    </button>
+    <div id="favCommuterBody" class="fav-body" hidden>
+        <div id="favCommuterLines" class="fav-list"></div>
     </div>
     <button type="button" class="fav-header" data-fav-panel="settings" aria-expanded="false">
         <span>Settings</span>
@@ -1704,6 +1711,12 @@ const gFavBusFilter = document.getElementById("favBusFilter");
 const gFavBusRoutes = document.getElementById("favBusRoutes");
 const gFavMetroBody = document.getElementById("favMetroBody");
 const gFavMetroLines = document.getElementById("favMetroLines");
+const gFavMetroHeader = document.getElementById("favMetroHeader");
+const gRailSectionLabel = document.getElementById("railSectionLabel");
+const gFavCommuterBody = document.getElementById("favCommuterBody");
+const gFavCommuterLines = document.getElementById("favCommuterLines");
+const gFavCommuterHeader = document.getElementById("favCommuterHeader");
+const gCommuterSectionLabel = document.getElementById("commuterSectionLabel");
 const gShortcutBtns = {
     home: document.getElementById("btnHome"),
     work: document.getElementById("btnWork"),
@@ -2911,8 +2924,8 @@ function cityCapability(name) {
 // route badge (piece 11).
 function boardRowHead(row, color, g, k, scheduled) {
     const dest = (row.kind === "track" || row.kind === "service")
-        ? (row.dest ? esc(row.dest) : "")
-        : esc(row.dest || row.dir || "");
+        ? (row.dest ? esc(stopName(row.dest)) : "")
+        : esc(stopName(row.dest || row.dir || ""));
     const departed = !!row.departed;
     const badgeText = row.metro ? metroLineName(row.routeRef || row.route) : row.route;
     const hasMbtaTrip = typeof cityProvider().tripStops === "function" &&
@@ -3342,12 +3355,19 @@ function renderCityMark() {
 // Cities with no bus feed (NYC in phase 0) hide the Bus section and stay in
 // Metro mode; the provider's bus calls return empty results rather than throw.
 function applyCityCapabilities() {
-    const hasBus = cityCfg().capabilities.bus !== false;
+    const cfg = cityCfg();
+    const hasBus = cfg.capabilities.bus !== false;
     const head = document.querySelector
         ? document.querySelector('[data-fav-panel="bus"]') : null;
     if (head) head.hidden = !hasBus;
     if (gFavBusBody && !hasBus) gFavBusBody.hidden = true;
     if (!hasBus && mode === "bus") applyMode("metro");
+    // Rail section name and the optional commuter section follow the city.
+    if (gRailSectionLabel) gRailSectionLabel.textContent = railSectionName();
+    const hasCommuter = cfg.capabilities.commuter === true;
+    if (gFavCommuterHeader) gFavCommuterHeader.hidden = !hasCommuter;
+    if (gCommuterSectionLabel) gCommuterSectionLabel.textContent = commuterSectionName();
+    if (gFavCommuterBody && !hasCommuter) gFavCommuterBody.hidden = true;
 }
 
 function setCity(next, opts) {
@@ -4152,7 +4172,9 @@ function esc(s) {
 
 // Stop names use "+" in the WMATA feed; display it as " and ".
 function stopName(name) {
-    return String(name || "").replace(/\s*\+\s*/g, " and ");
+    return String(name || "")
+        .replace(/\s*\+\s*/g, " and ")
+        .replace(/\s*[-–]\s*/g, " - ");
 }
 
 // The stops the board tracks. No pick: the nearby / ?busstop= list.
@@ -4927,20 +4949,28 @@ async function renderFavMetroLines() {
             + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
             + `<div class="fav-stops" data-fav-stops="metro" data-line="${line}" hidden></div>`;
     };
-    // Two settings categories for every city: rapid transit (metro/subway/tube)
-    // and commuter rail. Empty groups are omitted.
+    // Two top-level settings sections: rapid transit (metro/subway/tube) and
+    // commuter rail. The commuter header is hidden for cities without one.
     const rapid = lines.filter(line => !isCommuterRoute(line));
     const commuter = lines.filter(line => isCommuterRoute(line));
-    let html = "";
-    if (rapid.length) {
-        html += `<div class="fav-dir-label">Metro/Subway/Tube</div>`;
-        html += rapid.map(row).join("");
+    if (gFavMetroLines) {
+        gFavMetroLines.innerHTML = rapid.map(row).join("")
+            || `<div class="fav-empty">no ${esc(railSectionName().toLowerCase())} lines</div>`;
     }
-    if (commuter.length) {
-        html += `<div class="fav-dir-label">Commuter</div>`;
-        html += commuter.map(row).join("");
+    if (gFavCommuterLines) {
+        gFavCommuterLines.innerHTML = commuter.map(row).join("");
     }
-    gFavMetroLines.innerHTML = html;
+    if (gFavCommuterHeader) gFavCommuterHeader.hidden = !commuter.length;
+    if (commuter.length && gCommuterSectionLabel)
+        gCommuterSectionLabel.textContent = commuterSectionName();
+}
+
+// "Metro" (DC), "Subway" (Boston/NYC), "Tube" (London).
+function railSectionName() {
+    return cityCfg().labels.railSection || "Rail";
+}
+function commuterSectionName() {
+    return cityCfg().labels.commuterSection || "Commuter rail";
 }
 
 // The master likes list is shared by both modes: bus likes first,
@@ -5048,7 +5078,7 @@ function nextArrivalHtml(kind, next) {
         + `<span class="bt-next-times">${statusChipHtml(status)}`
         + (showEta ? `<span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>` : "")
         + `</span>`
-        + (dest ? `<span class="board-dest">${esc(dest)}</span>` : "");
+        + (dest ? `<span class="board-dest">${esc(stopName(dest))}</span>` : "");
 }
 
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
@@ -5629,6 +5659,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     const body = which === "likes" ? gFavFavBody
         : which === "near" ? gFavNearBody
         : which === "bus" ? gFavBusBody
+        : which === "commuter" ? gFavCommuterBody
         : which === "metro" ? gFavMetroBody : gFavSettingsBody;
     const open = body.hidden;
     if (open) {
@@ -5651,7 +5682,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
                         })
                         .catch(() => {});
                 }
-            } else if (which === "metro") {
+            } else if (which === "metro" || which === "commuter") {
                 await loadMetroStations();
                 await renderFavMetroLines();
             }

@@ -201,7 +201,10 @@ t("A3b no prediction + schedule → time + not seen", (() => {
     ctx.badgeTextColor("#F589A6") === "#111" &&
     ctx.badgeTextColor("#DC241F") === "#fff" &&
     ctx.badgeTextColor("#0019A8") === "#fff");
-  t("G3 slash in a line name gets air around it",
+  t("G3 station names get air around the hyphen",
+    ctx.stopName("Flatbush Av-Brooklyn College") === "Flatbush Av - Brooklyn College" &&
+    ctx.stopName("Park Rd NW + 19 St NW") === "Park Rd NW and 19 St NW");
+  t("G3b slash in a line name gets air around it",
     ctx.lineDisplayName("Framingham/Worcester") === "Framingham / Worcester" &&
     ctx.lineDisplayName("Framingham / Worcester") === "Framingham / Worcester" &&
     ctx.lineDisplayName("Hammersmith & City") === "Hammersmith & City");

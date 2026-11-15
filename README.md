@@ -26,16 +26,16 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 - Bookmark cards can be dragged by their bus/train/commuter icon to reorder them. Likes, Home,
   Work, and Airport each keep their own order per city.
 - Airports are seeded per city with a bus stop and a rail station.
-- **Search** opens a dropdown with **Near me**, **Bus**, **Rail**, and
-  **Settings**. Settings includes the **City** selector (**Washington DC**, **Boston**,
-  **London**, **New York City**), the **Maps app** choice (**Apple Maps** or
-  **Google Maps**, default Google, used by the hero map button and route actions),
+- **Search** opens a dropdown with **Near me**, **Bus**, the city's rail section
+  (**Metro**, **Subway** or **Tube**), an optional **Commuter rail** section (Boston,
+  NYC), and **Settings**. Settings includes the **City** selector (**Washington DC**,
+  **Boston**, **London**, **New York City**), the **Maps app** choice (**Apple Maps**
+  or **Google Maps**, default Google, used by the hero map button and route actions),
   the **Near me radius** (1,000 feet, 1 mile, or 10 miles), auto-refresh, and Delete
   all likes.
 - **Near me** lists bus stops and Metro/subway/commuter-rail stations within the
   chosen radius of the current location, and auto-selects the nearest city from that
-  location. Rails are grouped as Metro/Subway/Tube and Commuter in Settings. Likes and
-  Home/Work bookmarks are stored separately per city.
+  location. Likes and Home/Work bookmarks are stored separately per city.
 - The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
   each matching route to only the matching stops.
 - A selected stop opens a compact **hero card** plus **route/departure rows**; the first departure is the first row, so every departure uses the same format. Other stops

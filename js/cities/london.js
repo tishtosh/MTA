@@ -508,7 +508,7 @@
         },
         labels: {
             nextBus: "Next bus", nextTrain: "Next train",
-            stop: "stop", station: "station", towards: "towards", platform: "Platform",
+            stop: "stop", station: "station", towards: "towards", platform: "Platform", railSection: "Tube",
         },
         capabilities: {
             batchDepartures: false,

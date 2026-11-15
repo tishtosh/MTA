@@ -155,13 +155,16 @@ async function settle(board) {
     boston.sandbox.lineBandClass("Red") === "");
   await boston.sandbox.renderFavMetroLines();
   const bPanel = boston.els.favMetroLines.innerHTML;
-  check(bres, "boston: Rail panel lists subway and commuter routes",
-    bPanel.includes('data-fav-line="Red"') &&
-    bPanel.includes('data-fav-line="CR-Framingham"'));
-  check(bres, "boston: commuter line name gets slash spacing",
-    bPanel.includes("Framingham / Worcester"));
-  check(bres, "boston: settings separate subway from commuter",
-    bPanel.includes("Metro/Subway/Tube") && bPanel.includes("Commuter"));
+  const bCommuter = boston.els.favCommuterLines.innerHTML;
+  check(bres, "boston: Subway section lists the Red line",
+    bPanel.includes('data-fav-line="Red"'));
+  check(bres, "boston: Commuter section lists the CR line and spaces the slash",
+    bCommuter.includes('data-fav-line="CR-Framingham"') &&
+    bCommuter.includes("Framingham / Worcester"));
+  check(bres, "boston: rail sections are named per city",
+    boston.els.railSectionLabel.textContent === "Subway" &&
+    boston.els.commuterSectionLabel.textContent === "Commuter rail" &&
+    boston.els.favCommuterHeader.hidden === false);
   check(bres, "boston: no WMATA calls",
     bostonCalls.every(u => !u.includes("api.wmata.com")));
 
@@ -225,9 +228,9 @@ async function settle(board) {
     london.sandbox.lineBandClass("overground") === " railcar" &&
     london.sandbox.lineBandClass("victoria") === "");
   await london.sandbox.renderFavMetroLines();
-  const lPanel = london.els.favMetroLines.innerHTML;
-  check(lres, "london: settings show only the rapid-transit category",
-    lPanel.includes("Metro/Subway/Tube") && !lPanel.includes("Commuter"));
+  check(lres, "london: settings name the rail section Tube and hide commuter",
+    london.els.railSectionLabel.textContent === "Tube" &&
+    london.els.favCommuterHeader.hidden === true);
   check(lres, "london: no WMATA/MBTA calls",
     londonCalls.every(u => !u.includes("api.wmata.com") && !u.includes("api-v3.mbta.com")));
   check(lres, "london: registered app_key is used",
@@ -295,9 +298,9 @@ async function settle(board) {
   if (process.env.DEBUG) console.log("NHEADER>>>", nHeader, "NBOARD>>>", nBoard);
   check(nres, "nyc: hero painted", nHeader.length > 0);
   check(nres, "nyc: station named from GTFS static",
-    nAll.includes("Times Sq-42 St"));
+    nAll.includes("Times Sq - 42 St"));
   check(nres, "nyc: headsign is the terminus name",
-    nAll.includes("Van Cortlandt Park-242 St"));
+    nAll.includes("Van Cortlandt Park - 242 St"));
   check(nres, "nyc: route bullet 1 rendered", nAll.includes(">1<"));
   check(nres, "nyc: bullet is circular", nAll.includes("route-bullet") && nAll.includes("circle"));
   check(nres, "nyc: route drop-downs are available",
@@ -333,13 +336,17 @@ async function settle(board) {
   const nycCards = String(nyc.els.bookmarkList.innerHTML);
   await nyc.sandbox.renderFavMetroLines();
   const nLines = nyc.els.favMetroLines.innerHTML;
+  const nCommuter = nyc.els.favCommuterLines.innerHTML;
   check(nres, "nyc: rail list reuses the circular bullet",
     nLines.includes("route-bullet") && nLines.includes("sm circle"));
-  check(nres, "nyc: rail list omits the train noun", !/train/i.test(nLines));
-  check(nres, "nyc: settings split rapid transit from commuter",
-    nLines.includes("Metro/Subway/Tube") && nLines.includes("Commuter"));
+  check(nres, "nyc: rail list omits the train noun",
+    !/train/i.test(nLines) && !/train/i.test(nCommuter));
+  check(nres, "nyc: settings name the sections Subway and Commuter rail",
+    nyc.els.railSectionLabel.textContent === "Subway" &&
+    nyc.els.commuterSectionLabel.textContent === "Commuter rail" &&
+    nyc.els.favCommuterHeader.hidden === false);
   check(nres, "nyc: commuter lines are named rectangles",
-    /route-bullet[^"]*\brect\b/.test(nLines) && nLines.includes("Babylon"));
+    /route-bullet[^"]*\brect\b/.test(nCommuter) && nCommuter.includes("Babylon"));
   check(nres, "nyc: default favorites are LGA and JFK",
     nycCards.includes("LGA/Terminal B") && nycCards.includes("Howard Beach-JFK Airport"));
   nyc.sandbox.setCity("dc");

@@ -336,7 +336,7 @@
                 { id: "N10", name: "Washington Dulles International Airport", route: "SV" },
             ],
         },
-        labels: { nextBus: "Next bus", nextTrain: "Next train", stop: "stop", station: "station" },
+        labels: { nextBus: "Next bus", nextTrain: "Next train", stop: "stop", station: "station", railSection: "Metro" },
         capabilities: {
             batchDepartures: false,
             scheduleFallback: true,
