@@ -51,7 +51,7 @@ vm.runInContext(
    extractFn("shortcutButtonsHtml"),
    "function cityCfg(){ return { defaultStopId: '1002135' }; }",
    "function cityTheme(){ return { routeColor: (id) => { let h=0; for (const c of String(id||\'\')) h=(h*31+c.charCodeAt(0))>>>0; return ROUTE_COLORS[h % ROUTE_COLORS.length]; }, routeTextColor: () => \'#fff\', badgeClass: () => \'\', metroColor: () => \'#c62828\', metroName: (l) => l, isCommuter: () => false }; }",
-   extractFn("routeColor"), extractFn("esc"), extractFn("stopName"),
+   extractFn("busBandClass"), extractFn("routeColor"), extractFn("esc"), extractFn("stopName"),
    "var metroRoutesCache = null;",
    extractFn("isCommuterRoute"),
    extractFn("etaAtOf"), extractFn("etaMinutes"), extractFn("refreshEtaMinutes"),

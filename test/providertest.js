@@ -171,7 +171,13 @@ responses.push({
     railConn.places["metro:ELIZABETH"].stopId === "910GHTRWAPT");
 
   // ── Theme + icons ────────────────────────────────────────────────
-  check("london: Victoria line color", cities.london.theme.metroColor("victoria") === "#0098D4");
+  check("london: Victoria line color", cities.london.theme.metroColor("victoria") === "#039BE5");
+  check("london: Piccadilly line color", cities.london.theme.metroColor("piccadilly") === "#0019A8");
+  check("london: Elizabeth line color", cities.london.theme.metroColor("elizabeth") === "#60399E");
+  check("london: Central line color", cities.london.theme.metroColor("central") === "#DC241F");
+  check("london: District line color", cities.london.theme.metroColor("district") === "#007D32");
+  check("london: Overground color", cities.london.theme.metroColor("overground") === "#FA7B05");
+  check("london: DLR color", cities.london.theme.metroColor("dlr") === "#00AFAD");
   check("london: bus badge is TfL red", cities.london.theme.routeColor("38") === "#DC241F");
   check("boston: badge class", cities.boston.theme.badgeClass().includes("boston-bus"));
   check("dc: metro color", cities.dc.theme.metroColor("RD") === "#c62828");

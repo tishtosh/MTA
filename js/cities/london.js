@@ -26,14 +26,18 @@
         });
     }
 
+    // TfL colour references (RGB values from the London Underground and
+    // mode colour sheets). Keep these in sync with the brand guide.
     const LINE_COLORS = {
-        bakerloo: "#B36305", central: "#E32017", circle: "#FFD300",
-        district: "#00782A", "hammersmith-city": "#F3A9BB", jubilee: "#A0A5A9",
-        metropolitan: "#9B0056", northern: "#000000", piccadilly: "#003688",
-        victoria: "#0098D4", "waterloo-city": "#95CDBA",
-        elizabeth: "#6950A1", "elizabeth-line": "#6950A1",
-        overground: "#EE7C0E", "london-overground": "#EE7C0E",
-        dlr: "#00A4A7", tram: "#84B817",
+        bakerloo: "#B26300", central: "#DC241F", circle: "#FFC80A",
+        district: "#007D32", "hammersmith-city": "#F589A6", jubilee: "#838D93",
+        metropolitan: "#9B0058", northern: "#000000", piccadilly: "#0019A8",
+        victoria: "#039BE5", "waterloo-city": "#76D0BD",
+        elizabeth: "#60399E", overground: "#FA7B05", dlr: "#00AFAD",
+        tram: "#5FB526",
+        bus: "#DC241F", "cable-car": "#DC241F", coaches: "#FFA600",
+        "dial-a-ride": "#C028B9", "river-services": "#039BE5",
+        "santander-cycles": "#EC0000", underground: "#0019A8",
     };
     const LINE_NAMES = {
         bakerloo: "Bakerloo", central: "Central", circle: "Circle",
@@ -41,9 +45,36 @@
         jubilee: "Jubilee", metropolitan: "Metropolitan", northern: "Northern",
         piccadilly: "Piccadilly", victoria: "Victoria",
         "waterloo-city": "Waterloo & City", elizabeth: "Elizabeth line",
-        "elizabeth-line": "Elizabeth line", overground: "Overground",
-        "london-overground": "Overground", dlr: "DLR", tram: "Tram",
+        overground: "London Overground", dlr: "DLR", tram: "London Trams",
+        bus: "London Buses", "cable-car": "London Cable Car",
+        coaches: "London Coaches", "dial-a-ride": "London Dial-a-Ride",
+        "river-services": "London River Services",
+        "santander-cycles": "Santander Cycles", underground: "London Underground",
     };
+    const LINE_ALIASES = {
+        "london overground": "overground",
+        "docklands light railway": "dlr",
+        "elizabeth": "elizabeth",
+        "elizabeth line": "elizabeth",
+        "london trams": "tram",
+        "london buses": "bus",
+        "london river services": "river-services",
+        "london cable car": "cable-car",
+        "london coaches": "coaches",
+        "london dial-a-ride": "dial-a-ride",
+        "santander cycles": "santander-cycles",
+        "hammersmith & city": "hammersmith-city",
+        "waterloo & city": "waterloo-city",
+        "london underground": "underground",
+    };
+
+    function lineKey(lineId) {
+        let key = String(lineId || "").toLowerCase().trim();
+        if (!key) return "";
+        key = key.replace(/\s+underground station$/, "").replace(/\s+line$/, "");
+        return LINE_ALIASES[key] || key;
+    }
+
     const RAIL_MODES = new Set([
         "tube", "overground", "dlr", "elizabeth-line", "tram", "national-rail",
     ]);
@@ -431,16 +462,16 @@
     }
 
     function themeName(lineId) {
-        const key = String(lineId || "").toLowerCase();
+        const key = lineKey(lineId);
         return LINE_NAMES[key] || String(lineId || "");
     }
 
     function metroColor(line) {
-        return LINE_COLORS[String(line || "").toLowerCase()] || "#5d4037";
+        return LINE_COLORS[lineKey(line)] || "#5d4037";
     }
 
     function routeColor(routeId) {
-        const key = String(routeId || "").toLowerCase();
+        const key = lineKey(routeId);
         if (LINE_COLORS[key]) return LINE_COLORS[key];
         return "#DC241F";                       // London bus red
     }
@@ -501,6 +532,7 @@
             routeColor,
             routeTextColor: () => "#fff",
             badgeClass: () => " london-bus",
+            bandStyle: "solid",
             metroColor,
             metroName: themeName,
             isCommuter: () => false,

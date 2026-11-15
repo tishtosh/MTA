@@ -46,7 +46,8 @@ let src = [names.map(constBlock).join("\n"),
   extractFn("noteSelectionChange"),
   extractFn("boardRowHead"), extractFn("boardHtml"),
   extractFn("busBadgeClass"), extractFn("busTextColor"),
-  extractFn("statusReplacesDue"), extractFn("etaToken"), extractFn("statusChipHtml")].join("\n");
+  extractFn("statusReplacesDue"), extractFn("isImminentRow"),
+  extractFn("etaToken"), extractFn("statusChipHtml")].join("\n");
 // const/let bindings stay in the script's lexical scope, not on ctx — expose
 // the two piece-11 ones so the tests can poke them.
 src += "\nglobalThis.__expandedStops = expandedStops;\nglobalThis.__rowKey = rowKey;\nglobalThis.__stopScheduleCache = stopScheduleCache;";
@@ -173,6 +174,25 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   ];
   ctx.sortRowsBySoonest(live, "no-schedule", now);
   t("F2 predicted rows sort by soonest ETA", live[0].route === "B" && live[1].route === "A");
+}
+
+// ── imminent rows (first ETA <= 2 min) get the wash + rail class ───────
+{
+  const d = 1000 * dlon(1);
+  const pat = { stops: [S("i","I",40,-77), S("j","J",40,-77+d)], shape: [] };
+  const rows = [
+    { kind: "track", route: "N1", dest: "Two", mins: [2],
+      pattern: pat, anchorIdx: 0, anchorPatStop: pat.stops[0] },
+    { kind: "track", route: "N2", dest: "Three", mins: [3],
+      pattern: pat, anchorIdx: 0, anchorPatStop: pat.stops[0] },
+    { kind: "track", route: "N3", dest: "Gone", mins: [0], departed: true,
+      departedAt: Date.now() - 60000, pattern: pat, anchorIdx: 0, anchorPatStop: pat.stops[0] },
+  ];
+  const html = ctx.boardHtml(ctx.boardGeometry(rows), rows);
+  const tagged = html.split('<div class="board-row').slice(1);
+  t("G1 2-min row is imminent, 3-min and departed rows are not",
+    /\bis-imminent/.test(tagged[0]) && !/imminent/.test(tagged[1]) &&
+    !/imminent/.test(tagged[2]));
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");
