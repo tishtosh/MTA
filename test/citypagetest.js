@@ -305,7 +305,7 @@ async function settle(board) {
   nyc.sandbox.setCity("dc");
   await wait(150);
   check(nres, "nyc: city mark follows the switch",
-    String(nyc.els.cityMark.innerHTML).includes(">M<"));
+    String(nyc.els.cityMark.innerHTML).includes("img/dc.svg"));
   nyc.sandbox.setCity("nyc");
   const nycCards2 = await settle(() => nyc.els.bookmarkList.innerHTML);
   check(nres, "nyc: switching DC → NYC swaps favorites (no Dulles)",

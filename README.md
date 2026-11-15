@@ -385,7 +385,7 @@ export default {
 | `js/cities/nyc-data.js` | Generated NYC stations/routes/platform map. |
 | `scripts/build-nyc-data.mjs` | Regenerates `nyc-data.js` from the MTA static GTFS zip. |
 | `js/ui/icons.js` | Standalone SVG transit marks per city. |
-| `img/london.svg`, `img/nyc.png` | Top-bar city marks: TfL roundel (no text) from Wikimedia Commons; MTA icon from Flaticon (free licence, attribution required). |
+| `img/dc.svg`, `img/london.svg`, `img/nyc.png` | Top-bar city marks: WMATA Metro logo and TfL roundel (no text) from Wikimedia Commons; MTA icon from Flaticon (free licence, attribution required). |
 | `mta4a.html` | Previous version (kept for reference). |
 | `mta2.html` | Earlier iteration (kept for reference). |
 | `scratchpad.html` | Scratch / experiments. |

@@ -150,6 +150,8 @@ const board = () => els.linesScroll.innerHTML;
   check("header: home/work/like shortcut icons",
     h.includes('data-shortcut="home"') && h.includes('data-shortcut="work"') && h.includes('data-shortcut="fav"'));
   check("header: no stop-count line", !/^\d+ stops?/.test(els.statusmessage.textContent));
+  check("header: city mark is the WMATA logo",
+    els.cityMark.innerHTML.includes("img/dc.svg"));
 
   check("board painted into linesScroll", b !== "");
   check("board: no SVG track graphic", !b.includes("board-tracksvg"));
