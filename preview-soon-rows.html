@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soon-row treatments — preview</title>
+<style>
+  :root { --accent: #2e7d32; --ink: #182338; --mute: #6c757d; }
+  body {
+    margin: 0; padding: 24px; background: #f4f5f7;
+    font-family: system-ui, -apple-system, sans-serif; color: var(--ink);
+  }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .sub { font-size: 12px; color: var(--mute); margin: 0 0 20px; }
+  section { margin-bottom: 26px; }
+  h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+       color: var(--mute); margin: 0 0 8px; }
+  .note { font-size: 12px; color: var(--mute); margin: 6px 0 0; }
+
+  /* container mimics the real boards */
+  .main-board { border: 1px solid #c9c9c9; border-radius: 0 0 10px 10px;
+                background: #d8d8d8; overflow: hidden; }
+  .main-board.metro { background: #ece1cd; border-color: #dccdb6; }
+  .board-row {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+    padding: 8px 16px; border-top: 1px solid #dee2e6;
+    background: #fff; transition: background .3s ease;
+  }
+  .board-row:first-child { border-top: 0; }
+  .badge {
+    flex: none; min-width: 58px; padding: 2px 9px; border-radius: 5px;
+    color: #fff; font-weight: 700; font-size: 13px; text-align: center;
+    background: var(--route, #00843d);
+  }
+  .dest { font-weight: 700; background: #e9ecef; padding: 1px 6px; border-radius: 3px; }
+  .etas { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .eta { font-size: 15px; color: #343a40; }
+  .eta-note { font-size: 12px; color: var(--mute); }
+
+  /* ── current behaviour: font + colour bump only ───────────────── */
+  .v-current .eta-soon { font-size: 20px; font-weight: 700; color: var(--accent); }
+
+  /* ── A: tinted wash + inset rail ──────────────────────────────── */
+  .v-a .eta-soon { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .v-a .is-imminent {
+    background: linear-gradient(90deg, #e8f7ea 0%, #f3fbf4 55%, #fff 100%);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+
+  /* ── B: rail only, no fill ───────────────────────────────────── */
+  .v-b .is-imminent { box-shadow: inset 4px 0 0 var(--accent); }
+
+  /* ── C: ETA as a pill, same type size ────────────────────────── */
+  .v-c .eta-soon {
+    font-size: 15px; font-weight: 700; color: #1b5e20;
+    background: #c8e6c9; padding: 0 8px; border-radius: 999px;
+  }
+
+  /* ── D: tiering — one strong accent, one weak ────────────────── */
+  .v-d .is-imminent {
+    background: linear-gradient(90deg, #e8f7ea 0%, #f3fbf4 55%, #fff 100%);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .v-d .is-next {
+    background: linear-gradient(90deg, #f2faf3 0%, #fff 45%);
+    box-shadow: inset 3px 0 0 #a5d6a7;
+  }
+  .v-d .eta-soon { font-weight: 700; color: #1b5e20; }
+  .v-d .eta-next { font-weight: 600; color: #2e7d32; }
+
+  /* ── E: pulse dot (respects reduced motion) ──────────────────── */
+  .v-e .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+              background: var(--accent); margin-right: 5px; vertical-align: middle;
+              animation: pulse 2s ease-in-out infinite; }
+  .v-e .is-imminent { box-shadow: inset 3px 0 0 var(--accent); }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); }
+                     50% { opacity: .35; transform: scale(.8); } }
+  @media (prefers-reduced-motion: reduce) { .v-e .dot { animation: none; } }
+
+  .swatches { display: flex; gap: 14px; font-size: 11px; color: var(--mute); margin-top: 8px; }
+  .swatch { display: inline-flex; align-items: center; gap: 5px; }
+  .chip { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.08); }
+</style>
+</head>
+<body>
+<h1>Rows arriving soon — treatment preview</h1>
+<p class="sub">Same 4 rows each time (9 / 5 / 2 min / Due). Row 3 is the "&le; 2 min" case.</p>
+
+<section class="v-current">
+  <h2>Current — bigger font + green only</h2>
+  <div class="main-board">
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta">9 min</span></span></div>
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta">5 min</span></span></div>
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta-soon">2 min</span></span></div>
+    <div class="board-row"><span class="badge" style="--route:#c62828">R</span><span class="dest">SILVER SPRING</span><span class="etas"><span class="eta-note">Due</span></span></div>
+  </div>
+  <p class="note">Row height and ETA column width change → the board shifts every time a minute ticks over.</p>
+</section>
+
+<section class="v-a">
+  <h2>A — tinted wash + inset rail (recommended)</h2>
+  <div class="main-board">
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta">9 min</span></span></div>
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta-soon">5 min</span></span></div>
+    <div class="board-row is-imminent"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta-soon">2 min</span></span></div>
+    <div class="board-row is-imminent"><span class="badge" style="--route:#c62828">R</span><span class="dest">SILVER SPRING</span><span class="etas"><span class="eta-note">Due</span></span></div>
+  </div>
+  <p class="note">Translucent fill works on both the grey bus board and the tan metro board; rail gives the cue at small sizes.</p>
+</section>
+
+<section class="v-b">
+  <h2>B — rail only</h2>
+  <div class="main-board metro">
+    <div class="board-row"><span class="badge" style="--route:#c62828">Red</span><span class="dest">GLENMONT</span><span class="etas"><span class="eta">7 min</span></span></div>
+    <div class="board-row is-imminent"><span class="badge" style="--route:#c62828">Red</span><span class="dest">GLENMONT</span><span class="etas"><span class="eta">2 min</span></span></div>
+    <div class="board-row"><span class="badge" style="--route:#1565c0">Blue</span><span class="dest">LARGO</span><span class="etas"><span class="eta">11 min</span></span></div>
+  </div>
+  <p class="note">No fill at all — cheapest, no risk of clashing with route colours.</p>
+</section>
+
+<section class="v-c">
+  <h2>C — ETA pill, type size unchanged</h2>
+  <div class="main-board">
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta">14 min</span></span></div>
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta">6 min</span></span></div>
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta-soon">2 min</span></span></div>
+  </div>
+  <p class="note">Reuses the existing <code>.status-arriving</code> chip colours, so "Arriving" chips and ETAs agree.</p>
+</section>
+
+<section class="v-d">
+  <h2>D — tiering: one strong, one weak</h2>
+  <div class="main-board">
+    <div class="board-row is-imminent"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta-soon">2 min</span></span></div>
+    <div class="board-row is-next"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta-next">4 min</span></span></div>
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta">13 min</span></span></div>
+    <div class="board-row"><span class="badge">H4</span><span class="dest">BROOKLAND</span><span class="etas"><span class="eta">9 min</span></span></div>
+  </div>
+  <p class="note">Stops the "everything is green" failure when four routes are all under 3 minutes.</p>
+</section>
+
+<section class="v-e">
+  <h2>E — pulse dot (optional, motion-gated)</h2>
+  <div class="main-board">
+    <div class="board-row"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="eta">9 min</span></span></div>
+    <div class="board-row is-imminent"><span class="badge">D72</span><span class="dest">TENLEYTOWN</span><span class="etas"><span class="dot"></span><span class="eta">2 min</span></span></div>
+  </div>
+  <p class="note">Turns off under <code>prefers-reduced-motion: reduce</code>.</p>
+</section>
+
+<div class="swatches">
+  <span class="swatch"><span class="chip" style="background:#e8f7ea"></span>wash #e8f7ea</span>
+  <span class="swatch"><span class="chip" style="background:#c8e6c9"></span>pill #c8e6c9</span>
+  <span class="swatch"><span class="chip" style="background:#2e7d32"></span>rail #2e7d32</span>
+  <span class="swatch"><span class="chip" style="background:#d8d8d8"></span>bus board</span>
+  <span class="swatch"><span class="chip" style="background:#ece1cd"></span>metro board</span>
+</div>
+</body>
+</html>
