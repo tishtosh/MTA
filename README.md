@@ -101,12 +101,14 @@ The **Settings** section of the search dropdown selects the transport system:
 - **New York City** is a rail-only phase 0: subway + Staten Island Railway from the
   keyless MTA GTFS-Realtime feeds (protobuf, decoded in `js/core/gtfsrt.js`). Station,
   route and platform data come from the generated `js/cities/nyc-data.js`
-  (`node scripts/build-nyc-data.mjs`). Default likes are LGA (M60 at Terminal B — the
-  bus feed is deferred, so the card says so) and JFK (A to Howard Beach). MTA Bus Time
-  needs a free key and is deferred; NJ Transit, PATH, AirTrain and NY Waterway are out
-  of scope. The MTA logo/roundel is licensed, so the city uses the neutral subway glyph.
-  Feed ids need `%2F` in the path, and LIRR/Metro-North have no JSON mirror — hence the
-  protobuf reader.
+  (`node scripts/build-nyc-data.mjs`). Colours come from the NYC Core Framework palette
+  (`#181A7B` primary, `#e6ecf7` light); the route bullets keep the MTA line colours.
+  Default likes are LGA (M60 at Terminal B — the bus feed is deferred, so the card says
+  so) and JFK (A to Howard Beach). MTA Bus Time needs a free key and is deferred; NJ
+  Transit, PATH, AirTrain and NY Waterway are out of scope. The MTA logo/roundel is
+  licensed, so the city uses the neutral subway glyph for mode icons. Feed ids need
+  `%2F` in the path, and LIRR/Metro-North have no JSON mirror — hence the protobuf
+  reader.
 - Nearby stop cards show stops/stations within **1,000 ft**, nearest first. Bus hero
   stripes use the route color (MBTA route color in Boston, TfL red in London, the app
   palette in DC) sliced at 45° into medium grey.
@@ -383,6 +385,7 @@ export default {
 | `js/cities/nyc-data.js` | Generated NYC stations/routes/platform map. |
 | `scripts/build-nyc-data.mjs` | Regenerates `nyc-data.js` from the MTA static GTFS zip. |
 | `js/ui/icons.js` | Standalone SVG transit marks per city. |
+| `img/london.svg`, `img/nyc.png` | Top-bar city marks: TfL roundel (no text) from Wikimedia Commons; MTA icon from Flaticon (free licence, attribution required). |
 | `mta4a.html` | Previous version (kept for reference). |
 | `mta2.html` | Earlier iteration (kept for reference). |
 | `scratchpad.html` | Scratch / experiments. |

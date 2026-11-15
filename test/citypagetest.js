@@ -217,8 +217,8 @@ async function settle(board) {
   check(lres, "london: destination from TfL", lAll.includes("Brixton"));
   check(lres, "london: roundel SVG, not Font Awesome",
     lAll.includes("<circle") && !lAll.includes("fa-train-subway"));
-  check(lres, "london: city mark is the roundel",
-    london.els.cityMark.innerHTML.includes("<circle"));
+  check(lres, "london: city mark is the local roundel file",
+    london.els.cityMark.innerHTML.includes("img/london.svg"));
   check(lres, "london: Overground band is a railcar strip",
     london.sandbox.lineBandClass("overground") === " railcar" &&
     london.sandbox.lineBandClass("victoria") === "");
@@ -269,8 +269,8 @@ async function settle(board) {
   await wait(300);
   check(nres, "nyc: registered in the city selector",
     String(nyc.els.citySelect.innerHTML).includes("New York City"));
-  check(nres, "nyc: city mark is the MTA wordmark",
-    String(nyc.els.cityMark.innerHTML).includes("MTA"));
+  check(nres, "nyc: city mark is the local MTA icon",
+    String(nyc.els.cityMark.innerHTML).includes("img/nyc.png"));
   check(nres, "nyc: no bus feed → Metro mode",
     nyc.els.btnHome.title === "Nearest Metro station");
   await nyc.sandbox.loadMetroStations();

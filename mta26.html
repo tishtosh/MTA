@@ -107,10 +107,9 @@
             overflow-wrap: anywhere;
         }
         .fav-conns { display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: auto; }
-        /* Connection badges take their own full-width line under the stop
-           name, instead of trailing it and colliding with it on narrow rows. */
-        .fav-stop > .fav-conns:not(:empty),
-        .bt-stoplist .bt-stop-item > .fav-conns:not(:empty) {
+        /* Settings/hero route lists put connection badges on their own line;
+           board stop rows keep them inline with the stop name, right-aligned. */
+        .fav-stop > .fav-conns:not(:empty) {
             flex: 0 0 100%; margin-left: 0;
         }
         .fav-conns .fav-badge,
@@ -780,6 +779,7 @@
             width: 44px; height: 40px; color: #3f2b1e;
         }
         .city-mark .mode-svg { width: 34px; height: 34px; }
+        .city-mark-img { width: 32px; height: 32px; object-fit: contain; display: block; }
         .hero-connections .fav-conns { margin-left: 0; }
         .hero-route-toggle { border: 0; cursor: pointer; font: inherit; }
         .hero-route-toggle .bt-chevron { font-size: 9px; margin-left: 4px; transition: transform .15s ease; }
@@ -815,6 +815,7 @@
             .navbar .container { flex-wrap: nowrap; gap: 2px; }
             .city-mark { width: 32px; height: 34px; }
             .city-mark .mode-svg { width: 26px; height: 26px; }
+            .city-mark-img { width: 24px; height: 24px; }
             .fa-xl-mta { font-size: 2em; width: 42px; }
             .nav-shortcut i { font-size: 1.4em; width: 30px; }
             .nav-refresh i { font-size: 1.2em; }
@@ -864,6 +865,9 @@
         <div class="container d-flex align-items-center">
             <div class="d-flex align-items-center" style="gap: 6px">
                 <span id="cityMark" class="city-mark" role="img"></span>
+                <button id="btnSettings" class="navicon nav-shortcut" title="Settings" aria-label="Open settings">
+                    <i class="fa-solid fa-square-caret-down" aria-hidden="true"></i>
+                </button>
                 <button id="btnBack" class="navicon nav-back" title="Back" aria-label="Back" disabled>
                     <i class="fa-regular fa-circle-left" aria-hidden="true"></i>
                 </button>
@@ -1602,6 +1606,7 @@ const gRefreshState = document.getElementById("refreshState");
 const gClearLikes = document.getElementById("btnClearLikes");
 const gCitySelect = document.getElementById("citySelect");
 const gCityMark = document.getElementById("cityMark");
+const gBtnSettings = document.getElementById("btnSettings");
 const gMapsSelect = document.getElementById("mapsSelect");
 const gFavBusBody = document.getElementById("favBusBody");
 const gFavBusFilter = document.getElementById("favBusFilter");
@@ -3202,13 +3207,21 @@ function clearCityCaches() {
     boardToken++;
 }
 
+const CITY_MARK_IMG = {
+    london: "img/london.svg",
+    nyc: "img/nyc.png",
+};
+
 // Display-only: the active city's transit mark in the top-left of the bar.
-// Uses the same standalone SVGs as the mode icons (no MTA-style Font Awesome).
+// Local brand files where we have them, otherwise the standalone SVG marks.
 function renderCityMark() {
     if (!gCityMark) return;
     const cfg = cityCfg();
     const icons = (cfg.theme && cfg.theme.icons) || "dc";
-    gCityMark.innerHTML = MTA.icons.html(icons, "subway");
+    const img = CITY_MARK_IMG[icons];
+    gCityMark.innerHTML = img
+        ? `<img class="city-mark-img" src="${img}" alt="">`
+        : MTA.icons.html(icons, "subway");
     gCityMark.setAttribute("aria-label", cfg.name || "");
     gCityMark.title = cfg.name || "";
 }
@@ -5365,6 +5378,20 @@ if (gAddFavBtn) gAddFavBtn.addEventListener("click", () => {
     if (!gFavPanel.hidden) { closeFavPanel(); return; }
     gFavPanel.hidden = false;
     gAddFavBtn.setAttribute("aria-expanded", "true");
+});
+// Settings shortcut in the top bar: open the search panel with the Settings
+// section expanded (the section itself is the disclosure control).
+if (gBtnSettings) gBtnSettings.addEventListener("click", () => {
+    if (gFavPanel.hidden) {
+        gFavPanel.hidden = false;
+        if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "true");
+    }
+    const head = gFavPanel.querySelector
+        ? gFavPanel.querySelector('[data-fav-panel="settings"]') : null;
+    if (!head) return;
+    if (head.getAttribute && head.getAttribute("aria-expanded") !== "true")
+        head.click();
+    if (head.scrollIntoView) head.scrollIntoView({ block: "nearest" });
 });
 if (gFavBusFilter) gFavBusFilter.addEventListener("input", () => {
     clearTimeout(favBusDebounce);
