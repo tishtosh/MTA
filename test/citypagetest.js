@@ -291,6 +291,11 @@ async function settle(board) {
   nyc.sandbox.setNearRadius("100mi");
   check(nres, "nyc: near-me radius setting switches to 100 miles",
     nyc.sandbox.nearRadius().ft === 528000);
+  check(nres, "nyc: near-me distance switches to miles after half a mile",
+    nyc.sandbox.nearDistanceLabel(1200) === "1200 ft" &&
+    nyc.sandbox.nearDistanceLabel(2639) === "2639 ft" &&
+    nyc.sandbox.nearDistanceLabel(2640) === "0.5 mi" &&
+    nyc.sandbox.nearDistanceLabel(6336) === "1.2 mi");
   check(nres, "nyc: no bus feed → Metro mode",
     nyc.els.btnHome.title === "Nearest Metro station");
   await nyc.sandbox.loadMetroStations();

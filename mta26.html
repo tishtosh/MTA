@@ -2,7 +2,7 @@
 <html>
 <head>
     <link rel="icon" href="favicon.ico">
-    <title>like a bus plus</title>
+    <title>like a bus</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="./css/all.css" rel="stylesheet">
@@ -669,7 +669,7 @@
             color: #343a40; font-variant-numeric: tabular-nums;
         }
         .bt-stoplist .bt-stop-item {
-            display: flex; align-items: center; flex-wrap: wrap; row-gap: 2px; gap: 4px;
+            display: flex; align-items: center; flex-wrap: nowrap; row-gap: 2px; gap: 4px;
             width: 100%; min-width: 100%; box-sizing: border-box;
             padding: 2px 6px; margin: 1px 0; border-radius: 4px;
             cursor: pointer;
@@ -5453,6 +5453,13 @@ function setNearRadius(id) {
     if (gNearRadiusSelect) gNearRadiusSelect.value = nearRadiusId;
 }
 const MAX_NEAR_ROWS = 100;
+
+// Near-me distances switch to miles from half a mile up (one decimal).
+function nearDistanceLabel(ft) {
+    const d = Number(ft);
+    if (!Number.isFinite(d)) return "";
+    return d >= 2640 ? `${(d / 5280).toFixed(1)} mi` : `${Math.round(d)} ft`;
+}
 let favNearToken = 0;
 
 function getUserPosition() {
@@ -5507,10 +5514,10 @@ async function populateNearMe() {
         rows.sort((a, b) => a.dist - b.dist);
         const shown = rows.slice(0, MAX_NEAR_ROWS);
         gFavNearList.innerHTML = shown.length ? shown.map(r =>
-            `<div class="fav-stop">${favBadgeHtml(r.kind, r.route)}`
-            + `${favStarHtml(r.kind, r.id, r.name, r.route)}`
+            `<div class="fav-stop">${favStarHtml(r.kind, r.id, r.name, r.route)}`
+            + `${favBadgeHtml(r.kind, r.route)}`
             + `${favGotoHtml(r.kind, r.id, r.name, stopName(r.name) || "#" + r.id)}`
-            + `<small class="fav-dist">${Math.round(r.dist)} ft</small></div>`
+            + `<small class="fav-dist">${nearDistanceLabel(r.dist)}</small></div>`
         ).join("") + (rows.length > shown.length
             ? `<div class="fav-empty">showing the ${MAX_NEAR_ROWS} nearest of ${rows.length}</div>`
             : "") : `<div class="fav-empty">nothing within ${radius.label}</div>`;
