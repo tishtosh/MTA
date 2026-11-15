@@ -78,6 +78,14 @@
         <circle cx="17" cy="20" r="1.7"/>
     </g>`;
 
+    // New York: the MTA wordmark in a roundel (city mark; the subway itself has
+    // no single logo, only the route bullets).
+    const NYC_MARK = `<g ${STROKE}>
+        <circle cx="12" cy="12" r="9.4"/>
+        <text x="12" y="15" text-anchor="middle" font-family="system-ui,sans-serif"
+              font-size="6.6" font-weight="800" fill="currentColor" stroke="none">MTA</text>
+    </g>`;
+
     const CITY = {
         dc: {
             bus: GENERIC.bus,
@@ -105,11 +113,12 @@
             tram: GENERIC.tram,
             ferry: GENERIC.ferry,
         },
-        // MTA marks are licensed, so NYC uses the neutral subway/bus glyphs.
+        // NYC carries the MTA wordmark as its city mark; buses/rail use the
+        // neutral glyphs, and the route bullets do the wayfinding.
         nyc: {
             bus: GENERIC.bus,
-            subway: GENERIC.subway,
-            rail: GENERIC.subway,
+            subway: NYC_MARK,
+            rail: NYC_MARK,
             commuter: GENERIC.commuter,
             tram: GENERIC.tram,
             ferry: GENERIC.ferry,

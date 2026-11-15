@@ -402,9 +402,7 @@
         }
         .main-board.bus-board .board-row,
         .main-board.metro-board .board-row { background: transparent; }
-        .main-board.bus-board .board-row.is-scheduled,
         .main-board.bus-board .board-row.is-departed,
-        .main-board.metro-board .board-row.is-scheduled,
         .main-board.metro-board .board-row.is-departed {
             background: rgba(0, 0, 0, .035);
         }
@@ -413,11 +411,9 @@
             background: #e7e7e7; border-color: #d8d8d8; border-radius: 0;
         }
         .nearby-board .board-row { background: transparent; }
-        .nearby-board .board-row.is-scheduled,
         .nearby-board .board-row.is-departed { background: rgba(0, 0, 0, .035); }
-        /* A row with no live prediction: its scheduled fallback sits on a
-           quieter surface so it reads as timetable information. */
-        .board-row.is-scheduled { background: #f8f9fa; }
+        /* Departed rows read as "already gone"; scheduled fallbacks keep the
+           normal row surface. */
         .board-row.is-departed { background: #f8f9fa; }
         /* A live row whose first arrival is <= 2 min away: one wash recipe for
            the main departures and the summary cards — a green tint that fades
@@ -658,7 +654,19 @@
             clip-path: polygon(0 0, calc(66.666% + 7px) 0, 66.666% 100%, 0 100%);
         }
         /* Metro, Overground and commuter rail keep the full-width strip (no
-           bus-band class, so no clip-path). */
+           bus-band class, so no clip-path). Overground/commuter strips read as
+           coupled railcars: two evenly spaced gaps show the card background
+           between three cars. */
+        .hero-line-band.railcar {
+            -webkit-mask-image: linear-gradient(90deg,
+                #000 0 calc(33.333% - 3px), transparent calc(33.333% - 3px) calc(33.333% + 3px),
+                #000 calc(33.333% + 3px) calc(66.666% - 3px), transparent calc(66.666% - 3px) calc(66.666% + 3px),
+                #000 calc(66.666% + 3px));
+            mask-image: linear-gradient(90deg,
+                #000 0 calc(33.333% - 3px), transparent calc(33.333% - 3px) calc(33.333% + 3px),
+                #000 calc(33.333% + 3px) calc(66.666% - 3px), transparent calc(66.666% - 3px) calc(66.666% + 3px),
+                #000 calc(66.666% + 3px));
+        }
         .hero-card.hero-bus .board-stopid,
         .hero-card.hero-metro .board-stopid { color: #85706a; }
         .hero-card.hero-bus .bt-next-rest,
@@ -765,6 +773,13 @@
             letter-spacing: .05em; text-transform: uppercase;
             color: inherit; opacity: .65;
         }
+        /* Display-only mark for the active city (WMATA M, MBTA T, TfL roundel,
+           MTA wordmark). Not a control: no hover, no click. */
+        .city-mark {
+            flex: none; display: inline-flex; align-items: center; justify-content: center;
+            width: 44px; height: 40px; color: #3f2b1e;
+        }
+        .city-mark .mode-svg { width: 34px; height: 34px; }
         .hero-connections .fav-conns { margin-left: 0; }
         .hero-route-toggle { border: 0; cursor: pointer; font: inherit; }
         .hero-route-toggle .bt-chevron { font-size: 9px; margin-left: 4px; transition: transform .15s ease; }
@@ -798,6 +813,8 @@
            tighter gaps, and hide the secondary clock meta on narrow screens. */
         @media (max-width: 640px) {
             .navbar .container { flex-wrap: nowrap; gap: 2px; }
+            .city-mark { width: 32px; height: 34px; }
+            .city-mark .mode-svg { width: 26px; height: 26px; }
             .fa-xl-mta { font-size: 2em; width: 42px; }
             .nav-shortcut i { font-size: 1.4em; width: 30px; }
             .nav-refresh i { font-size: 1.2em; }
@@ -846,6 +863,7 @@
     <nav class="navbar fixed-top navbar-light bg-light">
         <div class="container d-flex align-items-center">
             <div class="d-flex align-items-center" style="gap: 6px">
+                <span id="cityMark" class="city-mark" role="img"></span>
                 <button id="btnBack" class="navicon nav-back" title="Back" aria-label="Back" disabled>
                     <i class="fa-regular fa-circle-left" aria-hidden="true"></i>
                 </button>
@@ -1208,6 +1226,12 @@ const nearbyStopObjs = new Map();   // StopID → shared stop object for nearby 
 let metroStationsCache = null;
 let metroStationsCacheAt = 0;
 let metroStationsLoad = null;
+// Route metadata (id → {name, color}) and its in-flight load. These were
+// assigned without a declaration, which threw a ReferenceError the first time
+// the Rail panel opened on a cold page (Boston/commuter lists stayed empty).
+let metroRoutesCache = null;
+let metroRoutesCacheAt = 0;
+let metroRoutesLoad = null;
 {
     const cached = readCache("stations");
     if (cached && Array.isArray(cached.v)) {
@@ -1237,6 +1261,16 @@ function lineDisplayName(name) {
 }
 function metroLineName(line) { return lineDisplayName(cityTheme().metroName(line)); }
 function isCommuterRoute(line) { return cityTheme().isCommuter(line); }
+
+// Overground and commuter-rail strips read as coupled railcars (two evenly
+// spaced gaps); subway/metro strips stay solid.
+function isRailcarLine(line) {
+    const id = String(line || "");
+    if (!id) return false;
+    if (id.toLowerCase() === "overground") return true;
+    return isCommuterRoute(id);
+}
+function lineBandClass(line) { return isRailcarLine(line) ? " railcar" : ""; }
 
 // ── Mode (bus / metro) and shortcut locations ─────────────────────────
 // Bookmarks are stored per mode; home/work/like are not shared.
@@ -1567,6 +1601,7 @@ const gFavSettingsBody = document.getElementById("favSettingsBody");
 const gRefreshState = document.getElementById("refreshState");
 const gClearLikes = document.getElementById("btnClearLikes");
 const gCitySelect = document.getElementById("citySelect");
+const gCityMark = document.getElementById("cityMark");
 const gMapsSelect = document.getElementById("mapsSelect");
 const gFavBusBody = document.getElementById("favBusBody");
 const gFavBusFilter = document.getElementById("favBusFilter");
@@ -2332,7 +2367,7 @@ function crossMetroSectionHtml(st) {
     const commuter = isCommuterRoute(primaryRoute);
     const card = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0"`
         + ` data-cross="metro" data-stop="${esc(st.Code)}" data-name="${esc(st.Name || "")}">`
-        + `<span class="hero-line-band" style="background:${metroLineColor(primaryRoute)}"></span>`
+        + `<span class="hero-line-band${lineBandClass(primaryRoute)}" style="background:${metroLineColor(primaryRoute)}"></span>`
         + `<div class="nearby-card-head"><div class="nearby-card-main">`
         + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute), false, primaryRoute)}${esc(stopName(st.Name) || st.Code)}</div>`
         + `<div class="nearby-card-sub">${esc([dist, "#" + st.Code].filter(Boolean).join(" · "))}</div>`
@@ -3167,6 +3202,17 @@ function clearCityCaches() {
     boardToken++;
 }
 
+// Display-only: the active city's transit mark in the top-left of the bar.
+// Uses the same standalone SVGs as the mode icons (no MTA-style Font Awesome).
+function renderCityMark() {
+    if (!gCityMark) return;
+    const cfg = cityCfg();
+    const icons = (cfg.theme && cfg.theme.icons) || "dc";
+    gCityMark.innerHTML = MTA.icons.html(icons, "subway");
+    gCityMark.setAttribute("aria-label", cfg.name || "");
+    gCityMark.title = cfg.name || "";
+}
+
 // Cities with no bus feed (NYC in phase 0) hide the Bus section and stay in
 // Metro mode; the provider's bus calls return empty results rather than throw.
 function applyCityCapabilities() {
@@ -3191,6 +3237,7 @@ function setCity(next, opts) {
     ensureAirportDefaults();
     clearCityCaches();
     applyCityCapabilities();
+    renderCityMark();
     screenHistory = [];
     currentScreen = null;
     historyGuard = false;
@@ -3494,7 +3541,7 @@ function renderMetro() {
             (stn.Lines && stn.Lines[0]) || "";
         const commuter = isCommuterRoute(primaryRoute);
         let html = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
-            + `<span class="hero-line-band" style="background:${metroLineColor(primaryRoute)}"></span>`
+            + `<span class="hero-line-band${lineBandClass(primaryRoute)}" style="background:${metroLineColor(primaryRoute)}"></span>`
             + `<div class="nearby-card-head"><div class="nearby-card-main">`
             + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute), false, primaryRoute)}${esc(stopName(stn.Name) || stn.Code)}</div>`
             + `<div class="nearby-card-sub">${esc([dist, "#" + stn.Code].filter(Boolean).join(" · "))}</div>`
@@ -4867,7 +4914,7 @@ function bookmarkCardHtml(row) {
     const modeIcon = nearbyModeIcon(row.kind === "metro", commuter,
         row.kind === "metro" ? metroLineColor(route) : "", true, route);
     const band = row.kind === "metro"
-        ? `<span class="hero-line-band" data-band="${esc(row.kind)}:${esc(row.id)}"`
+        ? `<span class="hero-line-band${lineBandClass(route)}" data-band="${esc(row.kind)}:${esc(row.id)}"`
           + ` style="background:${metroLineColor(route)}"></span>`
         : `<span class="hero-line-band bus-band${busBandClass()}" data-band="${esc(row.kind)}:${esc(row.id)}"`
           + `${busBandAttr(route)}></span>`;
@@ -6207,7 +6254,7 @@ function heroCardHtml(st, arrivals) {
         }
     }
     const lineBand = st.Metro
-        ? `<span class="hero-line-band" style="background:${metroLineColor(displayRoute)}"></span>`
+        ? `<span class="hero-line-band${lineBandClass(displayRoute)}" style="background:${metroLineColor(displayRoute)}"></span>`
         : `<span class="hero-line-band bus-band${busBandClass()}"${busBandAttr(next && next.route)}></span>`;
     const heroRoute = String(displayRoute ||
         (st.Metro ? ((st.Lines || [])[0] || "") : ((st.Routes || [])[0] || "")));
@@ -6610,6 +6657,7 @@ if (gCitySelect) {
     gCitySelect.addEventListener("change", () => setCity(gCitySelect.value));
 }
 applyCityCapabilities();
+renderCityMark();
 if (gMapsSelect) {
     gMapsSelect.value = mapsProvider;
     gMapsSelect.addEventListener("change", () => {

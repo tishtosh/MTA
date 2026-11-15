@@ -99,9 +99,9 @@ check("nyc: route colours", nyc.theme.metroColor("N") === "#F6BC26" &&
   nyc.theme.metroColor("SI") === "#08179C");
 check("nyc: express variants show the parent bullet",
   nyc.theme.metroName("FX") === "F" && nyc.theme.metroName("6X") === "6");
-check("nyc: icon is neutral, not an MTA mark",
-  sandbox.MTA.icons.html("nyc", "subway").includes("<svg") &&
-  !/MTA/.test(sandbox.MTA.icons.html("nyc", "subway")));
+check("nyc: icon is the MTA city mark",
+  sandbox.MTA.icons.html("nyc", "subway").includes("<circle") &&
+  sandbox.MTA.icons.html("nyc", "subway").includes("MTA"));
 
 // ── metroLive ─────────────────────────────────────────────────────────
 (async () => {

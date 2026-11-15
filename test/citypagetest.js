@@ -126,6 +126,11 @@ async function settle(board) {
       return ok({ data: { id: "17091", attributes: { name: "Boston Logan Airport Terminal A", latitude: 42.366, longitude: -71.02 } } });
     if (p === "/routes" && u.searchParams.get("filter[type]") === "3")
       return ok({ data: [{ id: "741", attributes: { short_name: "SL1", long_name: "Logan Airport", color: "7C878E", type: 3 } }] });
+    if (p === "/routes" && u.searchParams.get("filter[type]") === "0,1,2")
+      return ok({ data: [
+        { id: "Red", attributes: { short_name: "Red", long_name: "Red Line", type: 1, color: "DA291C" } },
+        { id: "CR-Framingham", attributes: { short_name: "CR-Framingham", long_name: "Framingham/Worcester Line", type: 2, color: "80276C" } },
+      ] });
     if (p === "/routes" && u.searchParams.has("filter[stop]")) return ok({ data: [] });
     if (p === "/routes") return ok({ data: [] });
     if (p === "/route_patterns") return ok({ data: [] });
@@ -144,6 +149,17 @@ async function settle(board) {
   check(bres, "boston: header names the SL1", bAll.includes("SL1"));
   check(bres, "boston: destination from MBTA headsign", bAll.includes("Logan Airport"));
   check(bres, "boston: standalone SVG mode mark", bAll.includes("<svg"));
+  check(bres, "boston: city mark in the top bar", boston.els.cityMark.innerHTML.includes(">T<"));
+  check(bres, "boston: commuter band is a railcar strip",
+    boston.sandbox.lineBandClass("CR-Framingham") === " railcar" &&
+    boston.sandbox.lineBandClass("Red") === "");
+  await boston.sandbox.renderFavMetroLines();
+  const bPanel = boston.els.favMetroLines.innerHTML;
+  check(bres, "boston: Rail panel lists subway and commuter routes",
+    bPanel.includes('data-fav-line="Red"') &&
+    bPanel.includes('data-fav-line="CR-Framingham"'));
+  check(bres, "boston: commuter line name gets slash spacing",
+    bPanel.includes("Framingham / Worcester"));
   check(bres, "boston: no WMATA calls",
     bostonCalls.every(u => !u.includes("api.wmata.com")));
 
@@ -201,6 +217,11 @@ async function settle(board) {
   check(lres, "london: destination from TfL", lAll.includes("Brixton"));
   check(lres, "london: roundel SVG, not Font Awesome",
     lAll.includes("<circle") && !lAll.includes("fa-train-subway"));
+  check(lres, "london: city mark is the roundel",
+    london.els.cityMark.innerHTML.includes("<circle"));
+  check(lres, "london: Overground band is a railcar strip",
+    london.sandbox.lineBandClass("overground") === " railcar" &&
+    london.sandbox.lineBandClass("victoria") === "");
   check(lres, "london: no WMATA/MBTA calls",
     londonCalls.every(u => !u.includes("api.wmata.com") && !u.includes("api-v3.mbta.com")));
   check(lres, "london: registered app_key is used",
@@ -248,6 +269,8 @@ async function settle(board) {
   await wait(300);
   check(nres, "nyc: registered in the city selector",
     String(nyc.els.citySelect.innerHTML).includes("New York City"));
+  check(nres, "nyc: city mark is the MTA wordmark",
+    String(nyc.els.cityMark.innerHTML).includes("MTA"));
   check(nres, "nyc: no bus feed → Metro mode",
     nyc.els.btnHome.title === "Nearest Metro station");
   await nyc.sandbox.loadMetroStations();
@@ -276,6 +299,8 @@ async function settle(board) {
     nycCards.includes("LGA/Terminal B") && nycCards.includes("Howard Beach-JFK Airport"));
   nyc.sandbox.setCity("dc");
   await wait(150);
+  check(nres, "nyc: city mark follows the switch",
+    String(nyc.els.cityMark.innerHTML).includes(">M<"));
   nyc.sandbox.setCity("nyc");
   const nycCards2 = await settle(() => nyc.els.bookmarkList.innerHTML);
   check(nres, "nyc: switching DC → NYC swaps favorites (no Dulles)",
