@@ -97,7 +97,15 @@
             color: #fff; font-weight: 700; font-size: 12px; text-align: center;
         }
         .fav-badge.boston-bus { width: 65px; min-width: 65px; }
-        .fav-badge.line { width: auto; min-width: 74px; max-width: 150px; }
+        /* Long line names ("Hammersmith & City", "Framingham / Worcester")
+           wrap inside a narrow badge: balanced lines and tighter side padding
+           keep the block at a practical width. */
+        .fav-badge.line {
+            width: auto; min-width: 62px; max-width: 118px;
+            padding-left: 5px; padding-right: 5px;
+            white-space: normal; line-height: 1.2; text-wrap: balance;
+            overflow-wrap: anywhere;
+        }
         .fav-conns { display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: auto; }
         /* Connection badges take their own full-width line under the stop
            name, instead of trailing it and colliding with it on narrow rows. */
@@ -111,7 +119,11 @@
             width: auto; min-width: 34px; padding: 0 4px; font-size: 10px; line-height: 1.5;
             border-radius: 4px;
         }
-        .fav-conns .fav-badge.line { min-width: 52px; }
+        .fav-conns .fav-badge.line {
+            min-width: 52px; max-width: 104px;
+            padding-left: 4px; padding-right: 4px;
+            white-space: normal; line-height: 1.25; text-wrap: balance;
+        }
         .conn-badge { border: 0; cursor: pointer; font: inherit; }
         .conn-badge:hover { filter: brightness(.9); }
         .conn-badge:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
@@ -514,12 +526,17 @@
             padding: 0 7px;
         }
         /* Metro line names share one rectangle width (fits "Orange"/"Yellow"
-           plus the stop-list chevron). */
+           plus the stop-list chevron). Long names wrap to two balanced lines
+           with tighter side padding instead of stretching to 150px. */
         .row-badge.metro-line {
-            width: auto; min-width: 84px; max-width: 150px; box-sizing: border-box;
+            width: auto; min-width: 84px; max-width: 118px; box-sizing: border-box;
+            padding-left: 6px; padding-right: 6px;
             display: inline-flex; align-items: center; justify-content: center;
-            text-align: center;
+            text-align: center; white-space: normal; line-height: 1.2;
+            text-wrap: balance; overflow-wrap: anywhere;
         }
+        /* Keep the tighter padding when the badge is the stop-list toggle. */
+        .row-badge.metro-line.bt-allstops { padding: 2px 6px; }
         /* A badge with a stop list is the disclosure control itself. */
         .row-badge.bt-allstops {
             padding: 2px 9px; border: 0; border-radius: 5px;
@@ -631,13 +648,17 @@
             position: absolute; top: 0; left: 0; right: 0; height: 7px;
             border-radius: 10px 10px 0 0; pointer-events: none;
             overflow: hidden;
-            /* DC's 45° slice for every city and every card (hero and nearby):
-               the colour covers the left two thirds and the right third is cut
-               away, so the card's own background shows instead of a grey
-               block. 7px across the 7px band height is exactly 45°. */
+        }
+        /* Buses use the DC 45° slice in every city: the route colour covers the
+           left two thirds and the right third is clipped away, so the card's
+           own background shows instead of a grey block. 7px across the 7px
+           band height is exactly 45°. */
+        .hero-line-band.bus-band {
+            background: var(--bus-band-color, #c62828);
             clip-path: polygon(0 0, calc(66.666% + 7px) 0, 66.666% 100%, 0 100%);
         }
-        .hero-line-band.bus-band { background: var(--bus-band-color, #c62828); }
+        /* Metro, Overground and commuter rail keep the full-width strip (no
+           bus-band class, so no clip-path). */
         .hero-card.hero-bus .board-stopid,
         .hero-card.hero-metro .board-stopid { color: #85706a; }
         .hero-card.hero-bus .bt-next-rest,

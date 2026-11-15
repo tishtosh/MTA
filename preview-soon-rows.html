@@ -29,9 +29,10 @@
   }
   .board-row:first-child { border-top: 0; }
   .badge {
-    flex: none; min-width: 58px; padding: 2px 9px; border-radius: 5px;
+    flex: none; min-width: 58px; max-width: 118px; padding: 2px 6px; border-radius: 5px;
     color: #fff; font-weight: 700; font-size: 13px; text-align: center;
     background: var(--route, #00843d);
+    white-space: normal; line-height: 1.2; text-wrap: balance;
   }
   .dest { font-weight: 700; background: #e9ecef; padding: 1px 6px; border-radius: 3px; }
   .etas { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -88,7 +89,11 @@
     font-size: 14px; overflow: hidden;
   }
   .hero-card .band {
-    position: absolute; top: 0; left: 0; right: 0; height: 7px; background: #00843d;
+    position: absolute; top: 0; left: 0; right: 0; height: 7px;
+    background: #00843d;
+  }
+  /* buses: DC 45° slice, right third clipped away */
+  .hero-card.bus .band {
     clip-path: polygon(0 0, calc(66.666% + 7px) 0, 66.666% 100%, 0 100%);
   }
   .hero-card .title { margin-top: 8px; font-weight: 700; }
