@@ -228,9 +228,11 @@ naive. Mitigate:
 
 1. **P0 — subway board (done).** GTFS-RT decoder, static data script, `metroLive`
    for subway + SIR, station list, nearest-station default. Keyless; no bus.
-   Shipped as: `js/core/gtfsrt.js`, `js/cities/nyc-data.js`, `js/cities/nyc.js`,
-   `scripts/build-nyc-data.mjs`, `test/nyctest.js`, plus a `?city=nyc` smoke in
-   `citypagetest.js`. The Bus section hides and the city starts in Metro mode.
+   Shipped as: `js/core/gtfsrt.js`, `js/cities/nyc-data.js` (496 stations, 29 routes,
+   214 ordered patterns), `js/cities/nyc.js`, `scripts/build-nyc-data.mjs`,
+   `test/nyctest.js`, plus a `?city=nyc` smoke in `citypagetest.js`. The Bus section
+   hides and the city starts in Metro mode; route badges and the hero badge expand
+   "Next stops…" from the stored patterns.
 2. **P1 — buses.** Bus Time key blob + `departures`, nearby stops, route panel,
    terminating drop.
 3. **P2 — LIRR + MNR.** Rail route names, commuter styling, patterns, "Outside NYC"

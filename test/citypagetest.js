@@ -285,9 +285,14 @@ async function settle(board) {
   check(nres, "nyc: headsign is the terminus name",
     nAll.includes("Van Cortlandt Park-242 St"));
   check(nres, "nyc: route bullet 1 rendered", nAll.includes(">1<"));
-  check(nres, "nyc: no route-expansion affordance without patterns",
-    !nAll.includes("hero-route-toggle") && !nAll.includes("bt-chevron") &&
-    !nAll.includes("See route") && !nAll.includes("bt-stoplist"));
+  check(nres, "nyc: route drop-downs are available",
+    nAll.includes("hero-route-toggle") && nAll.includes("bt-chevron"));
+  const nycStops = await nyc.sandbox.loadHeroRouteStops({ dataset: {
+    heroKind: "metro", heroAnchor: "127", heroTo: "101", heroRoute: "1",
+  } });
+  check(nres, "nyc: route drop-down resolves ordered stops",
+    nycStops.length > 2 && nycStops[0].StopID === "127" &&
+    nycStops[nycStops.length - 1].StopID === "101");
   check(nres, "nyc: subway feed requested, no bus/other cities",
     nycCalls.some(u => u.includes("nyct%2Fgtfs")) &&
     nycCalls.every(u => !u.includes("api.wmata.com") &&

@@ -228,6 +228,27 @@
         feedInflight.clear();
     }
 
+    // "Next stops…" for a trip: pick the stored pattern that contains both the
+    // boarding station and the destination, and return the slice between them
+    // (reversed when the pattern runs the other way).
+    async function metroPath(from, to, line) {
+        const seqs = (D.patterns && D.patterns[String(line || "")]) || [];
+        const a = String(from || ""), b = String(to || "");
+        if (!a || !b || a === b) return [];
+        for (const seq of seqs) {
+            const i = seq.indexOf(a), j = seq.indexOf(b);
+            if (i < 0 || j < 0 || i === j) continue;
+            const lo = Math.min(i, j), hi = Math.max(i, j);
+            let ids = seq.slice(lo, hi + 1);
+            if (i > j) ids = ids.slice().reverse();
+            return ids.map(id => {
+                const st = D.stations[id];
+                return { StationCode: id, StationName: st ? st[0] : id };
+            });
+        }
+        return [];
+    }
+
     function isCommuter() { return false; }
 
     MTA.registerCity({
@@ -260,7 +281,7 @@
             scheduleFallback: false,
             patterns: false,
             rail: true,
-            railPath: false,
+            railPath: true,
             metroRoutes: true,
             metroGtfs: false,
             vehicles: false,
@@ -273,7 +294,7 @@
         provider: {
             http: async () => ({ data: null, error: new Error("nyc: no bus API yet") }),
             nearbyStops, allStops, departures, stopSchedule, routeDetails: async () => null,
-            metroStations, metroRoutes, metroLive, metroPath: async () => [],
+            metroStations, metroRoutes, metroLive, metroPath,
             busRouteDirectory, stopsForRoute,
             place, connections, connectionsReady: () => true, resetCaches,
         },

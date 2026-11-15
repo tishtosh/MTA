@@ -168,6 +168,15 @@ check("nyc: icon is the MTA city mark",
     (await nyc.provider.nearbyStops()).length === 0);
   check("nyc: capabilities mark bus deferred", nyc.capabilities.bus === false &&
     nyc.capabilities.metroGtfs === false);
+  check("nyc: static data carries ordered patterns",
+    Array.isArray(D.patterns["1"]) && D.patterns["1"][0].length > 10);
+  const p1 = await nyc.provider.metroPath("127", "101", "1");
+  check("nyc: metroPath slices the stored pattern",
+    p1.length > 2 && p1[0].StationCode === "127" &&
+    p1[p1.length - 1].StationCode === "101");
+  const p2 = await nyc.provider.metroPath("101", "127", "1");
+  check("nyc: metroPath reverses when the pattern runs the other way",
+    p2[0].StationCode === "101" && p2[p2.length - 1].StationCode === "127");
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
