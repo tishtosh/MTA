@@ -4863,7 +4863,11 @@ async function fillBookmarkArrivals(rows, token) {
     await Promise.all(rows.map(async row => {
         let html, next = null;
         try {
-            if (row.kind === "metro") {
+            if (row.kind === "bus" && cityCfg().capabilities.bus === false) {
+                // The place exists (LGA is a saved airport) but its feed does not
+                // yet — say so instead of pretending there is no service.
+                html = `<span class="text-muted">bus arrivals not available yet</span>`;
+            } else if (row.kind === "metro") {
                 const by = await fetchMetroLive([row.id]);
                 const list = (by[row.id] || []).slice().sort((a, b) => a.min - b.min);
                 next = list[0] || null;
@@ -5263,6 +5267,15 @@ async function gotoLike(kind, id, name) {
         if (mode !== "metro") applyMode("metro");
         await loadMetroStations();
         setMetroAnchor(id);
+        return;
+    }
+    if (cityCfg().capabilities.bus === false) {
+        // Saved bus places (NYC's LGA) have no feed yet: keep Metro mode and
+        // explain, rather than landing on an empty bus board.
+        if (mode !== "metro") applyMode("metro");
+        gBoardHeader.innerHTML = "";
+        gLinesScroll.innerHTML = "";
+        gLinesNote.textContent = "Bus arrivals are not available in this city yet.";
         return;
     }
     if (mode !== "bus") applyMode("bus");

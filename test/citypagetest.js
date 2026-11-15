@@ -267,6 +267,21 @@ async function settle(board) {
     nycCalls.every(u => !u.includes("api.wmata.com") &&
       !u.includes("api-v3.mbta.com") && !u.includes("bustime")));
 
+  // Per-city favorites: a DC round-trip must not leak Dulles into NYC.
+  const nycCards = String(nyc.els.bookmarkList.innerHTML);
+  check(nres, "nyc: default favorites are LGA and JFK",
+    nycCards.includes("LGA/Terminal B") && nycCards.includes("Howard Beach-JFK Airport"));
+  nyc.sandbox.setCity("dc");
+  await wait(150);
+  nyc.sandbox.setCity("nyc");
+  const nycCards2 = await settle(() => nyc.els.bookmarkList.innerHTML);
+  check(nres, "nyc: switching DC → NYC swaps favorites (no Dulles)",
+    nycCards2.includes("Howard Beach-JFK Airport") && !nycCards2.includes("Dulles"));
+  await nyc.sandbox.gotoLike("bus", "904417", "LGA/Terminal B");
+  check(nres, "nyc: opening a bus place keeps Metro mode and explains",
+    nyc.els.btnHome.title === "Nearest Metro station" &&
+    /not available/.test(nyc.els.linesNote.textContent));
+
   const pass = bres.pass + lres.pass + nres.pass;
   const fail = bres.fail + lres.fail + nres.fail;
   console.log(`\n${pass} passed, ${fail} failed`);

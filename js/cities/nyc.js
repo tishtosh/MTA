@@ -240,14 +240,15 @@
         metroCenter: { lat: 40.7580, lon: -73.9855 },
         nearbyLabel: "New York City",
         nearbyByDefault: true,
+        storageKey: "nyc",
         defaultStopId: "127",
         defaultLike: { kind: "metro", id: "127", name: "Times Sq-42 St", route: "1" },
         airportDefaults: {
-            bus: [],
-            metro: [
-                { id: "H03", name: "Howard Beach-JFK Airport", route: "A" },
-                { id: "G06", name: "Sutphin Blvd-Archer Av-JFK Airport", route: "E" },
-            ],
+            // LGA has no rail link (M60-SBS from Terminal B); JFK is the A to
+            // Howard Beach. Bus Time is a later phase, so the LGA card shows no
+            // live arrivals until then.
+            bus: [{ id: "904417", name: "LGA/Terminal B", route: "M60" }],
+            metro: [{ id: "H03", name: "Howard Beach-JFK Airport", route: "A" }],
         },
         labels: {
             nextBus: "Next bus", nextTrain: "Next train",

@@ -84,6 +84,10 @@ const feed = id => "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/" + i
 
 // ── static data ───────────────────────────────────────────────────────
 check("nyc: registry entry", !!nyc && nyc.name === "New York City");
+check("nyc: per-city storage key", nyc.storageKey === "nyc");
+check("nyc: default airports are LGA and JFK",
+  nyc.airportDefaults.bus.some(e => e.id === "904417" && /LGA/.test(e.name)) &&
+  nyc.airportDefaults.metro.some(e => e.id === "H03" && /JFK/.test(e.name)));
 check("nyc: static data loaded", Object.keys(D.stations).length > 450);
 check("nyc: Times Sq-42 St station", !!D.stations["127"] &&
   D.stations["127"][0] === "Times Sq-42 St" &&
