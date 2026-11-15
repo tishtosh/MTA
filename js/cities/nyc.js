@@ -93,6 +93,19 @@
         return r ? r[1] : "#5d4037";
     }
 
+    function textOn(hex) {
+        const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
+        if (!m) return "#fff";
+        const v = parseInt(m[1], 16);
+        const lin = c => {
+            c /= 255;
+            return c <= .03928 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4);
+        };
+        const L = .2126 * lin(v >> 16 & 255) + .7152 * lin(v >> 8 & 255)
+            + .0722 * lin(v & 255);
+        return L > .19 ? "#111" : "#fff";
+    }
+
     function parentOf(stopId) {
         return D.platform[stopId] || null;
     }
@@ -311,6 +324,11 @@
             routeColor: () => "#181A7B",
             routeTextColor: () => "#fff",
             badgeClass: () => "",
+            badge: {
+                shape: id => /X$/.test(String(id || "")) ? "diamond" : "circle",
+                color: id => metroColor(id),
+                textColor: id => textOn(metroColor(id)),
+            },
             metroColor,
             metroName: lineName,
             isCommuter,

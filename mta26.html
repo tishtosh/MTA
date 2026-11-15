@@ -124,6 +124,8 @@
             white-space: normal; line-height: 1.25; text-wrap: balance;
         }
         .conn-badge { border: 0; cursor: pointer; font: inherit; }
+        .conn-badge.conn-bullet { background: none; padding: 2px; }
+        .conn-badge.conn-bullet:hover { filter: none; opacity: .85; }
         .conn-badge:hover { filter: brightness(.9); }
         .conn-badge:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .board-row.row-focus {
@@ -516,6 +518,44 @@
         }
         .row-badge.boston-bus { padding-left: 11px; padding-right: 11px; }
         .row-badge.london-bus { border-radius: 2px; }
+
+        /* NYC-style line bullets: a circle (local) or diamond (express)
+           with the disclosure chevron kept outside the shape. */
+        .route-bullet {
+            --bullet-color: #0039A6;
+            --bullet-text: #fff;
+            display: inline-grid; place-items: center; flex: none;
+            width: 28px; height: 28px; border-radius: 50%;
+            background: var(--bullet-color); color: var(--bullet-text);
+            font: 700 15px/1 system-ui, -apple-system, sans-serif;
+            font-variant-numeric: tabular-nums;
+        }
+        .route-bullet > span { display: block; }
+        .route-bullet.sm { width: 22px; height: 22px; font-size: 11px; }
+        .route-bullet.lg { width: 34px; height: 34px; font-size: 18px; }
+        .route-bullet.wide { font-size: 10px; letter-spacing: -.02em; }
+        .route-bullet.diamond { border-radius: 4px; transform: rotate(45deg); }
+        .route-bullet.diamond > span { transform: rotate(-45deg); }
+        .route-bullet.departed {
+            background: transparent; border: 2px solid var(--bullet-color);
+            color: var(--bullet-color);
+        }
+        .badge-disclosure {
+            display: inline-flex; align-items: center; gap: 5px;
+            border: 0; background: none; color: inherit; cursor: pointer;
+            padding: 4px 2px; font: inherit;
+        }
+        .badge-disclosure.bt-allstops {
+            flex: none; padding: 4px 2px; border: 0; border-radius: 0;
+            background: none; font: inherit; color: inherit;
+        }
+        .badge-disclosure.bt-allstops:hover { background: none; }
+        .badge-disclosure .badge-chevron {
+            font-size: 9px; transition: transform .15s ease;
+        }
+        .badge-disclosure[aria-expanded="true"] .badge-chevron { transform: rotate(180deg); }
+        .badge-row-chevron { display: none; }
+        .fav-conns .route-bullet.sm, .bt-stoplist .route-bullet.sm { width: 20px; height: 20px; font-size: 10px; }
         .row-badge.hollow {
             background: transparent; border: 2px solid currentColor;
             padding: 0 7px;
@@ -789,7 +829,16 @@
             background: #fff; border: 1px solid #dee2e6; border-radius: 10px;
         }
         .hero-route-stops[hidden] { display: none; }
-        .hero-route-stops .fav-stop { padding: 5px 2px; border-bottom: 1px solid #f1f3f5; }
+        /* The hero's "Next stops…" rows use the board stop-row format: stop
+           name left, connection chips right-aligned on the same line. */
+        .hero-route-stops .fav-stop {
+            padding: 2px 6px; margin: 1px 0; border-bottom: 0; border-radius: 4px;
+            gap: 4px; row-gap: 2px;
+        }
+        .hero-route-stops .fav-stop:hover { background: #f1f3f5; }
+        .hero-route-stops .fav-stop > .fav-conns:not(:empty) {
+            flex: 0 1 auto; margin-left: auto;
+        }
         .hero-route-stops .fav-stop:last-child { border-bottom: 0; }
         .bt-next-eta { font-weight: 700; font-size: 16px; color: inherit; font-variant-numeric: tabular-nums; }
         .bt-next-eta.soon { font-size: 20px; color: #2e7d32; }
@@ -827,6 +876,21 @@
         }
         @media (max-width: 560px) {
             .clock-meta { display: none; }
+        }
+        /* Approach C: keep the bullet pure and move the disclosure chevron
+           to the row's trailing edge on narrow screens. */
+        @media (max-width: 480px) {
+            .badge-disclosure { min-width: 40px; min-height: 40px; padding: 0 6px 0 2px; }
+            .badge-disclosure .badge-chevron { display: none; }
+            .badge-row-chevron {
+                display: inline-flex; position: absolute; right: 4px; top: 8px;
+                width: 28px; height: 28px; align-items: center; justify-content: center;
+                border: 0; background: none; color: #495057; cursor: pointer;
+                padding: 0;
+            }
+            .badge-row-chevron i { transition: transform .15s ease; }
+            .badge-row-chevron[aria-expanded="true"] i { transform: rotate(180deg); }
+            .board-row:has(.badge-row-chevron) { position: relative; padding-right: 40px; }
         }
         @media (max-width: 380px) {
             .fa-xl-mta { font-size: 1.7em; width: 36px; }
@@ -2826,21 +2890,40 @@ function boardRowHead(row, color, g, k, scheduled) {
     const hasList = (g && g.hasTrack && (g.stops || []).length >= 2) ||
         (row.metro && row.toCode && cityCapability("railPath") !== false) ||
         hasMbtaTrip;
-    const chevron = hasList
-        ? ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>`
-        : "";
-    const badgeClass = `row-badge${row.metro ? " metro-line" : busBadgeClass()}${departed ? " hollow" : ""}${hasList ? " bt-allstops" : ""}`;
-    const badgeTag = hasList ? "button" : "span";
-    const badgeAttrs = hasList
-        ? ` type="button" class="${badgeClass}" aria-expanded="${expandedStops.has(k)}"`
-        : ` class="${badgeClass}"`;
-    const badgeInner = `${esc(badgeText)}${chevron}`;
-    const textColor = badgeTextColor(color);
-    const hollowColor = row.metro ? color
-        : (textColor === "#111" ? "#111" : color);
-    const badge = departed
-        ? `<${badgeTag}${badgeAttrs} style="color:${hollowColor};border-color:${color}">${badgeInner}</${badgeTag}>`
-        : `<${badgeTag}${badgeAttrs} style="background:${color};color:${textColor}">${badgeInner}</${badgeTag}>`;
+    const themed = row.metro && themeBadge();
+    let badge;
+    let rowChevron = "";
+    if (themed) {
+        const ref = row.routeRef || row.route;
+        const bullet = themedBullet(badgeText, ref, color, { departed });
+        if (hasList) {
+            badge = `<button type="button" class="badge-disclosure bt-allstops"`
+                + ` aria-expanded="${expandedStops.has(k)}">`
+                + bullet
+                + `<i class="fa-solid fa-chevron-down badge-chevron bt-chevron" aria-hidden="true"></i></button>`;
+            rowChevron = `<button type="button" class="badge-row-chevron bt-allstops"`
+                + ` tabindex="-1" aria-hidden="true">`
+                + `<i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>`;
+        } else {
+            badge = `<span class="badge-disclosure">${bullet}</span>`;
+        }
+    } else {
+        const chevron = hasList
+            ? ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>`
+            : "";
+        const badgeClass = `row-badge${row.metro ? " metro-line" : busBadgeClass()}${departed ? " hollow" : ""}${hasList ? " bt-allstops" : ""}`;
+        const badgeTag = hasList ? "button" : "span";
+        const badgeAttrs = hasList
+            ? ` type="button" class="${badgeClass}" aria-expanded="${expandedStops.has(k)}"`
+            : ` class="${badgeClass}"`;
+        const badgeInner = `${esc(badgeText)}${chevron}`;
+        const textColor = badgeTextColor(color);
+        const hollowColor = row.metro ? color
+            : (textColor === "#111" ? "#111" : color);
+        badge = departed
+            ? `<${badgeTag}${badgeAttrs} style="color:${hollowColor};border-color:${color}">${badgeInner}</${badgeTag}>`
+            : `<${badgeTag}${badgeAttrs} style="background:${color};color:${textColor}">${badgeInner}</${badgeTag}>`;
+    }
     const statusHtml = departed ? "" : statusChipHtml(row.status);
     const etasHtml = ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled || departed)
         ? boardEtasHtml(row.mins, scheduled, row.departedAt, row.status) : "";
@@ -2848,6 +2931,7 @@ function boardRowHead(row, color, g, k, scheduled) {
         + `<span class="row-badge-wrap">${badge}</span>`
         + `<span class="board-etas">${statusHtml}${etasHtml}</span>`
         + `<span class="board-dest">${dest || "Destination unavailable"}</span>`
+        + rowChevron
         + `</div>`;
 }
 
@@ -2892,7 +2976,7 @@ function boardHtml(geom, rows) {
                   + (actions ? `<li class="route-actions-item">${actions}</li>` : "")
                   + g.stops.map(s => {
                       const mark = s.anchor ? ` <b class="bt-mark">your stop</b>`
-                         : s.terminal ? ` <b class="bt-mark">terminal</b>` : "";
+                         : s.terminal ? ` <b class="bt-mark">last stop</b>` : "";
                       return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(s.id)}">`
                           + `${favStarHtml("bus", s.id, s.name, row.route)}`
                           + `<span class="bt-stop-name">${esc(stopName(s.name) || "#" + s.id)} <small>(${esc(s.id)})</small>${mark}</span>`
@@ -3471,7 +3555,7 @@ async function loadMetroStops(ul) {
             to, toRow ? toRow.StationName : "", label);
         ul.innerHTML = (actions ? `<li class="route-actions-item">${actions}</li>` : "")
             + (next.length ? next.map(p => {
-            const mark = p.StationCode === to ? ` <b class="bt-mark">terminal</b>` : "";
+            const mark = p.StationCode === to ? ` <b class="bt-mark">last stop</b>` : "";
             const badges = connectionBadgesHtml(conns.get(p.StationCode), "metro", line);
             return `<li class="bt-stop-item" role="button" tabindex="0" data-stop="${esc(p.StationCode)}">`
                 + `${favStarHtml("metro", p.StationCode, p.StationName, line)}`
@@ -4458,12 +4542,14 @@ function connBadgeHtml(kind, route, place) {
     const text = badgeTextColor(color);
     const where = place && place.name ? ` at ${place.name}` : " on this board";
     const title = `Go to ${label}${where}`;
-    return `<button type="button" class="fav-badge conn-badge${metro ? " line" : busBadgeClass()}"`
+    const themed = metro && themeBadge();
+    return `<button type="button" class="${themed ? "conn-badge conn-bullet" : `fav-badge conn-badge${metro ? " line" : busBadgeClass()}`}"`
         + ` data-conn-kind="${metro ? "metro" : "bus"}" data-conn-route="${esc(r)}"`
         + (place && place.stopId
             ? ` data-conn-stop="${esc(place.stopId)}" data-conn-name="${esc(place.name || "")}"` : "")
         + ` title="${esc(title)}" aria-label="${esc(title)}"`
-        + ` style="background:${color};color:${text}">${esc(label)}</button>`;
+        + (themed ? "" : ` style="background:${color};color:${text}"`)
+        + `>${themed ? themedBullet(label, r, color, { size: "sm" }) : esc(label)}</button>`;
 }
 
 function connectionBadgesHtml(conns, kind, route) {
@@ -4802,6 +4888,8 @@ async function renderFavMetroLines() {
 function favBadgeHtml(kind, route) {
     const r = String(route || "");
     if (kind === "metro") {
+        if (themeBadge())
+            return themedBullet(r ? metroLineName(r) : "Metro", r, metroLineColor(r), { size: "sm" });
         return `<span class="fav-badge line" style="background:${metroLineColor(r)};color:${badgeTextColor(metroLineColor(r))}">`
             + `${esc(r ? metroLineName(r) : "Metro")}</span>`;
     }
@@ -4895,8 +4983,12 @@ function nextArrivalHtml(kind, next) {
         ? (next.status || (next.min === 0 ? "Arriving" : "")) : "";
     const showEta = !(next.min === 0 && statusReplacesDue(status));
     const dest = next.heads || next.dir || "";
-    return `<span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
-        + ` style="background:${color};color:${badgeTextColor(color)}">${esc(label)}</span>`
+    const themed = kind === "metro" && themeBadge();
+    const badge = themed
+        ? themedBullet(label, lineKey, color, { size: "sm" })
+        : `<span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
+          + ` style="background:${color};color:${badgeTextColor(color)}">${esc(label)}</span>`;
+    return badge
         + `<span class="bt-next-times">${statusChipHtml(status)}`
         + (showEta ? `<span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>` : "")
         + `</span>`
@@ -5868,6 +5960,31 @@ function badgeTextColor(color) {
     return L > .19 ? "#111" : "#fff";
 }
 
+function routeBulletHtml(label, color, textColor, opts) {
+    const o = opts || {};
+    const shape = o.shape === "diamond" ? "diamond" : "circle";
+    const size = o.size ? " " + o.size : "";
+    const wide = String(label || "").length > 2 ? " wide" : "";
+    const departed = o.departed ? " departed" : "";
+    return `<span class="route-bullet${size} ${shape}${wide}${departed}"`
+        + ` style="--bullet-color:${color};--bullet-text:${textColor || "#fff"}">`
+        + `<span>${esc(label)}</span></span>`;
+}
+
+function themeBadge() {
+    const theme = typeof cityTheme === "function" ? cityTheme() : null;
+    return theme && theme.badge ? theme.badge : null;
+}
+
+function themedBullet(label, ref, color, opts) {
+    const cfg = themeBadge();
+    const shape = typeof cfg.shape === "function" ? cfg.shape(ref) : (cfg.shape || "circle");
+    const bulletColor = typeof cfg.color === "function" ? cfg.color(ref) : (cfg.color || color);
+    const textColor = typeof cfg.textColor === "function"
+        ? cfg.textColor(ref) : (cfg.textColor || "#fff");
+    return routeBulletHtml(label, bulletColor, textColor, Object.assign({ shape }, opts || {}));
+}
+
 function busTextColor(route) { return badgeTextColor(routeColor(route)); }
 
 function busBadgeClass() { return cityTheme().badgeClass(); }
@@ -5988,7 +6105,8 @@ gLinesScroll.addEventListener("click", e => {
     } else {
         ul.setAttribute("hidden", "");
     }
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    rowEl.querySelectorAll(".bt-allstops").forEach(b =>
+        b.setAttribute("aria-expanded", open ? "true" : "false"));
 });
 // A row scrolling out from under the cursor also retires the card.
 gLinesScroll.addEventListener("scroll", hideHoverTip, true);
@@ -6229,23 +6347,35 @@ function heroCardHtml(st, arrivals) {
         const mins = list.filter(a => svc(a) === svc(next)).map(a => a.min);
         const badgeCls = `row-badge${st.Metro ? " metro-line" : busBadgeClass()}`;
         const badgeStyle = `background:${badgeColor(nextRef)};color:${badgeTextColor(badgeColor(nextRef))}`;
-        // Only a city with rail patterns can expand "Next stops…"; NYC phase 0
-        // has none, so its badge is plain text (no chevron, no empty panel).
         const canExpand = cityCapability("railPath") !== false;
-        const routeBadge = canExpand
-            ? `<button type="button" class="${badgeCls} hero-route-toggle"`
-            + ` aria-expanded="false" title="Show stops on this route"`
-            + ` data-hero-kind="${st.Metro ? "metro" : "bus"}"`
+        const heroAttrs = ` data-hero-kind="${st.Metro ? "metro" : "bus"}"`
             + ` data-hero-route="${esc(nextRef)}"`
             + ` data-hero-trip="${esc(next.trip || "")}"`
             + ` data-hero-heads="${esc(next.heads || next.dir || "")}"`
             + ` data-hero-dir="${esc(next.dirNum == null ? "" : next.dirNum)}"`
             + ` data-hero-anchor="${esc(id)}"`
-            + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir, nextRef) : "")}"`
-            + ` style="${badgeStyle}">`
-            + `${esc(badgeLabel(nextRef))}`
-            + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
-            : `<span class="${badgeCls}" style="${badgeStyle}">${esc(badgeLabel(nextRef))}</span>`;
+            + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir, nextRef) : "")}"`;
+        const themedHero = st.Metro && themeBadge();
+        const heroBullet = themedHero
+            ? themedBullet(badgeLabel(nextRef), nextRef, badgeColor(nextRef), { size: "lg" })
+            : "";
+        let routeBadge;
+        if (canExpand) {
+            routeBadge = themedHero
+                ? `<button type="button" class="badge-disclosure hero-route-toggle"`
+                  + ` aria-expanded="false" title="Show stops on this route"${heroAttrs}>`
+                  + heroBullet
+                  + `<i class="fa-solid fa-chevron-down badge-chevron bt-chevron" aria-hidden="true"></i></button>`
+                : `<button type="button" class="${badgeCls} hero-route-toggle"`
+                  + ` aria-expanded="false" title="Show stops on this route"${heroAttrs}`
+                  + ` style="${badgeStyle}">`
+                  + `${esc(badgeLabel(nextRef))}`
+                  + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`;
+        } else {
+            routeBadge = themedHero
+                ? `<span class="badge-disclosure">${heroBullet}</span>`
+                : `<span class="${badgeCls}" style="${badgeStyle}">${esc(badgeLabel(nextRef))}</span>`;
+        }
         const destHtml = next.heads || next.dir
             ? `<span class="board-dest">${esc(next.heads || next.dir)}</span>` : "";
         const heroStatus = next.min <= 1

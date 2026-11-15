@@ -33,6 +33,7 @@ let src = [names.map(constBlock).join("\n"),
   'const ROUTE_COLORS = ["#c62828","#1565c0","#2e7d32","#ef6c00","#6a1b9a","#00838f","#ad1457","#5d4037","#455a64","#827717","#37474f","#9e9d24"];',
   "function cityTheme(){ return { routeColor: (id) => { let h=0; for (const c of String(id||'')) h=(h*31+c.charCodeAt(0))>>>0; return ROUTE_COLORS[h % ROUTE_COLORS.length]; }, routeTextColor: () => '#fff', badgeClass: () => '', metroColor: () => '#c62828', metroName: (l) => l, isCommuter: () => false }; }",
   "function cityProvider(){ return {}; }",
+  extractFn("routeBulletHtml"), extractFn("themeBadge"), extractFn("themedBullet"),
   "function clearPendingFocus() {}",
   extractFn("distance"), extractFn("localXY"), extractFn("projArcOnShape"),
   extractFn("trackArcs"), extractFn("rowLayout"), extractFn("boardScale"),
@@ -119,7 +120,7 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   t("D6 route badge carries the stop-list chevron; no separate button",
     html.includes('bt-allstops') && html.includes('bt-chevron') &&
     !html.includes("View all stops") &&
-    html.includes('<b class="bt-mark">your stop</b>') && html.includes('<b class="bt-mark">terminal</b>'));
+    html.includes('<b class="bt-mark">your stop</b>') && html.includes('<b class="bt-mark">last stop</b>'));
   {
     const k1 = ctx.__rowKey({ route: "M1", dest: "TerB" });   // dirNum absent, like these rows
     ctx.__expandedStops.add(k1);

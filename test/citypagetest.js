@@ -285,8 +285,20 @@ async function settle(board) {
   check(nres, "nyc: headsign is the terminus name",
     nAll.includes("Van Cortlandt Park-242 St"));
   check(nres, "nyc: route bullet 1 rendered", nAll.includes(">1<"));
+  check(nres, "nyc: bullet is circular", nAll.includes("route-bullet") && nAll.includes("circle"));
   check(nres, "nyc: route drop-downs are available",
     nAll.includes("hero-route-toggle") && nAll.includes("bt-chevron"));
+  const rowChevron = nyc.sandbox.boardRowHead({
+    metro: true, route: "1", routeRef: "1", toCode: "101",
+    mins: [3], heads: "Van Cortlandt Park-242 St",
+  }, "#EE352E", null, "1|0|Van Cortlandt Park-242 St", null);
+  check(nres, "nyc: narrow-screen row chevron rendered",
+    rowChevron.includes("badge-row-chevron") && rowChevron.includes("badge-disclosure"));
+  const express = nyc.sandbox.themedBullet("6", "6X", "#EE352E", { size: "sm" });
+  check(nres, "nyc: express variant uses a diamond",
+    express.includes("diamond") && express.includes(">6<"));
+  check(nres, "nyc: yellow line gets dark text",
+    nyc.sandbox.themeBadge().textColor("N") === "#111");
   const nycStops = await nyc.sandbox.loadHeroRouteStops({ dataset: {
     heroKind: "metro", heroAnchor: "127", heroTo: "101", heroRoute: "1",
   } });
