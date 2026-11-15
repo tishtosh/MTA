@@ -8,6 +8,12 @@
     <link href="./css/all.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <style>
+        /* One wash for "<= 2 min away", shared by board rows and the summary
+           cards so the highlight looks identical wherever the ETA appears. */
+        body {
+            --imminent-wash: rgba(46, 125, 50, .24);
+            --imminent-wash-fade: rgba(46, 125, 50, .06);
+        }
         .fa-xl-mta {
             font-size: 3em;
             line-height: 0.02167em;
@@ -70,6 +76,7 @@
         .fav-header[hidden] { display: none; }
         .fav-header:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .fav-header .bt-chevron { font-size: 9px; transition: transform .15s ease; }
+        .fav-header[data-fav-panel="settings"] .bt-chevron { font-size: 13px; color: #495057; }
         .fav-header[aria-expanded="true"] .bt-chevron { transform: rotate(180deg); }
         .fav-body { padding: 6px 0 2px; }
         .fav-body[hidden] { display: none; }
@@ -357,9 +364,20 @@
             border-radius: 0 0 10px 10px; background: #fff;
         }
         .main-board .board, .nearby-board .board { margin: 0; }
-        /* The main departures live inside the hero card's colored bounds. */
-        .main-board.bus-board { background: #d8d8d8; border-color: #c9c9c9; border-radius: 0; }
-        .main-board.metro-board { background: #ece1cd; border-color: #dccdb6; border-radius: 0; }
+        /* The departures sit inside the hero card's coloured bounds, so the
+           group must use the same themed surface as the hero: otherwise the
+           first (hero) line and the rows below it sit on different washes
+           whenever a city's palette is not the DC default. */
+        .main-board.bus-board {
+            background: var(--hero-bus-bg, #d8d8d8);
+            border-color: color-mix(in srgb, var(--hero-bus-bg, #d8d8d8) 86%, #000);
+            border-radius: 0;
+        }
+        .main-board.metro-board {
+            background: var(--hero-metro-bg, #ece1cd);
+            border-color: color-mix(in srgb, var(--hero-metro-bg, #ece1cd) 86%, #000);
+            border-radius: 0;
+        }
         .main-board.bus-board .board-row,
         .main-board.metro-board .board-row { background: transparent; }
         .main-board.bus-board .board-row.is-scheduled,
@@ -379,14 +397,14 @@
            quieter surface so it reads as timetable information. */
         .board-row.is-scheduled { background: #f8f9fa; }
         .board-row.is-departed { background: #f8f9fa; }
-        /* A live row whose first arrival is <= 2 min away: a green wash that
-           fades out to the right plus an inset rail. The cue lives in the row
-           box, not the numerals, so nothing reflows when a minute ticks over;
-           the translucent fill works on the grey bus group and the tan Metro
-           group alike. Row focus keeps its own stronger highlight. */
+        /* A live row whose first arrival is <= 2 min away: one wash recipe for
+           every surface (rows and summary cards alike) — a green tint that
+           fades out to the right plus an inset rail. The cue lives in the box,
+           not the numerals, so nothing reflows when a minute ticks over. Row
+           focus keeps its own stronger highlight. */
         .main-board .board-row.is-imminent:not(.row-focus),
         .nearby-board .board-row.is-imminent:not(.row-focus) {
-            background: linear-gradient(90deg, #e8f7ea 0%, rgba(232, 247, 234, .6) 55%, rgba(232, 247, 234, 0) 100%);
+            background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46, 125, 50, 0) 75%);
             box-shadow: inset 3px 0 0 #2e7d32;
         }
         /* Same cue on the summary cards (selected-stop hero, and the Home /
@@ -398,7 +416,7 @@
         .hero-card.is-imminent::before {
             content: ""; position: absolute; inset: 0; z-index: -1;
             border-radius: inherit; pointer-events: none;
-            background: linear-gradient(90deg, rgba(46, 125, 50, .2) 0%, rgba(46, 125, 50, .07) 50%, rgba(46, 125, 50, 0) 78%);
+            background: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46, 125, 50, 0) 75%);
         }
 
         /* One row = one quiet card: white surface, hairline border, rounded.
@@ -814,7 +832,7 @@
     </div>
     <button type="button" class="fav-header" data-fav-panel="settings" aria-expanded="false">
         <span>Settings</span>
-        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+        <i class="fa-solid fa-square-caret-down bt-chevron" aria-hidden="true"></i>
     </button>
     <div id="favSettingsBody" class="fav-body" hidden>
         <div class="fav-setting fav-setting-static">

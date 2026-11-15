@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Soon-row treatments — preview</title>
 <style>
-  :root { --accent: #2e7d32; --ink: #182338; --mute: #6c757d; }
+  :root { --accent: #2e7d32; --ink: #182338; --mute: #6c757d;
+          --imminent-wash: rgba(46, 125, 50, .24); --imminent-wash-fade: rgba(46, 125, 50, .06); }
   body {
     margin: 0; padding: 24px; background: #f4f5f7;
     font-family: system-ui, -apple-system, sans-serif; color: var(--ink);
@@ -43,7 +44,7 @@
   /* ── A: tinted wash + inset rail ──────────────────────────────── */
   .v-a .eta-soon { font-size: 20px; font-weight: 700; color: var(--accent); }
   .v-a .is-imminent {
-    background: linear-gradient(90deg, #e8f7ea 0%, #f3fbf4 55%, #fff 100%);
+    background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
     box-shadow: inset 3px 0 0 var(--accent);
   }
 
@@ -90,7 +91,14 @@
   .hero-card.is-imminent { isolation: isolate; box-shadow: inset 3px 0 0 #2e7d32; }
   .hero-card.is-imminent::before {
     content: ""; position: absolute; inset: 0; z-index: -1;
-    background: linear-gradient(90deg, rgba(46, 125, 50, .2) 0%, rgba(46, 125, 50, .07) 50%, rgba(46, 125, 50, 0) 78%);
+    background: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
+  }
+
+  /* continuous surface: hero line and rows sit on the city's hero-metro-bg */
+  .v-consist .board-row { background: transparent; border-top: 1px solid #dee2e6; }
+  .v-consist .board-row.is-imminent {
+    background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
+    box-shadow: inset 3px 0 0 #2e7d32;
   }
 
   .swatches { display: flex; gap: 14px; font-size: 11px; color: var(--mute); margin-top: 8px; }  .swatch { display: inline-flex; align-items: center; gap: 5px; }
@@ -121,6 +129,21 @@
     <div class="board-row is-imminent"><span class="badge" style="--route:#c62828">R</span><span class="dest">SILVER SPRING</span><span class="etas"><span class="eta-note">Due</span></span></div>
   </div>
   <p class="note">Translucent fill works on both the grey bus board and the tan metro board; rail gives the cue at small sizes.</p>
+</section>
+
+<section class="v-consist">
+  <h2>A on one surface — hero line and rows share the city wash</h2>
+  <div class="main-board" style="background:#dbe4f7; border-color:#c6cfdd; padding:0; overflow:hidden;">
+    <div class="hero-card is-imminent" style="margin:0; border-radius:0; background:#dbe4f7; color:#14225c;">
+      <span class="band" style="background:#6a6a6a"></span>
+      <div class="title">West Hampstead Underground Station</div>
+      <div class="next"><span class="badge mini" style="--route:#6a6a6a">Jubilee</span> Stratford <span class="eta-soon">0:47</span></div>
+    </div>
+    <div class="board-row is-imminent"><span class="badge" style="--route:#6a6a6a">Jubilee</span><span class="dest">Stanmore</span><span class="etas"><span class="eta">1 min</span></span></div>
+    <div class="board-row"><span class="badge" style="--route:#6a6a6a">Jubilee</span><span class="dest">Willesden Green</span><span class="etas"><span class="eta">9 min</span></span></div>
+    <div class="board-row"><span class="badge" style="--route:#6a6a6a">Jubilee</span><span class="dest">Wembley Park</span><span class="etas"><span class="eta">14 min</span></span></div>
+  </div>
+  <p class="note">Same base colour and the same green recipe on the hero line and on each row, so only the ≤2 min entries stand out.</p>
 </section>
 
 <section class="v-card">
