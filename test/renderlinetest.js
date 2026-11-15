@@ -59,7 +59,7 @@ vm.runInContext(
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),
    extractFn("modeMark"), extractFn("modeIconHtml"), extractFn("heroVerbHtml"), extractFn("heroModeIcon"), extractFn("statusChipHtml"), extractFn("statusReplacesDue"), extractFn("etaToken"), extractFn("predictionRank"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
-   extractFn("busTextColor"), extractFn("heroCardHtml")].join("\n")
+   extractFn("busTextColor"), extractFn("isImminentMin"), extractFn("heroCardHtml")].join("\n")
    + "\nglobalThis.__stopScheduleCache = stopScheduleCache;"
    + "\nglobalThis.__shortcuts = shortcuts;",
   sandbox);
@@ -133,6 +133,8 @@ check("header: no name → #id only, no doubled id", (h2.match(/#1002130/g) || [
 check("header: 0 min → Arriving, no Due",
   /C87<i[^>]*><\/i><\/button>[^]*?>TENLEYTOWN<\/span>/.test(h2) &&
   h2.includes("status-arriving") && !h2.includes(">Due<"));
+check("header: <=2 min card gets the imminent wash, 14 min does not",
+  /hero-card[^"]*\bis-imminent\b/.test(h2) && !/is-imminent/.test(h1));
 
 const h3 = sandbox.heroCardHtml({ StopID: "X", Name: "x", Error: { rateLimited: false }, Arrivals: [] }, []);
 check("header: failed predictions → 'arrivals unavailable'", h3.includes("arrivals unavailable"));

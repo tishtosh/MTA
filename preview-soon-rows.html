@@ -77,8 +77,23 @@
                      50% { opacity: .35; transform: scale(.8); } }
   @media (prefers-reduced-motion: reduce) { .v-e .dot { animation: none; } }
 
-  .swatches { display: flex; gap: 14px; font-size: 11px; color: var(--mute); margin-top: 8px; }
-  .swatch { display: inline-flex; align-items: center; gap: 5px; }
+  /* summary cards (hero + bookmark cards) */
+  .hero-card {
+    position: relative; margin: 8px 2px 0; padding: 10px 16px 12px;
+    border-radius: 10px; background: #d8d8d8; color: #2f2f2f;
+    font-size: 14px; overflow: hidden;
+  }
+  .hero-card .band { position: absolute; top: 0; left: 0; right: 0; height: 7px; background: #00843d; }
+  .hero-card .title { margin-top: 8px; font-weight: 700; }
+  .hero-card .next { margin-top: 2px; }
+  .hero-card .badge.mini { min-width: 0; padding: 0 6px; font-size: 12px; display: inline-block; }
+  .hero-card.is-imminent { isolation: isolate; box-shadow: inset 3px 0 0 #2e7d32; }
+  .hero-card.is-imminent::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    background: linear-gradient(90deg, rgba(46, 125, 50, .2) 0%, rgba(46, 125, 50, .07) 50%, rgba(46, 125, 50, 0) 78%);
+  }
+
+  .swatches { display: flex; gap: 14px; font-size: 11px; color: var(--mute); margin-top: 8px; }  .swatch { display: inline-flex; align-items: center; gap: 5px; }
   .chip { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.08); }
 </style>
 </head>
@@ -106,6 +121,21 @@
     <div class="board-row is-imminent"><span class="badge" style="--route:#c62828">R</span><span class="dest">SILVER SPRING</span><span class="etas"><span class="eta-note">Due</span></span></div>
   </div>
   <p class="note">Translucent fill works on both the grey bus board and the tan metro board; rail gives the cue at small sizes.</p>
+</section>
+
+<section class="v-card">
+  <h2>A on the summary cards — hero + Home / Work / Airport / Likes</h2>
+  <div class="hero-card is-imminent">
+    <span class="band"></span>
+    <div class="title">Park Rd NW and 19 St NW</div>
+    <div class="next"><span class="badge mini">D72</span> North to Van Ness <span class="eta-soon">2 min</span></div>
+  </div>
+  <div class="hero-card">
+    <span class="band" style="background:#1565c0"></span>
+    <div class="title">Park Rd NW and 19 St NW</div>
+    <div class="next"><span class="badge mini" style="--route:#00843d">D72</span> North to Van Ness <span class="eta">9 min</span></div>
+  </div>
+  <p class="note">The soonest arrival is lifted out of the board rows into these cards, so the cue lives here too — tint behind the content, hover colours intact.</p>
 </section>
 
 <section class="v-b">
