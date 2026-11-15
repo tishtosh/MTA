@@ -411,18 +411,16 @@
         /* Same cue on the summary cards (selected-stop hero, and the Home /
            Work / Airport / Likes cards). The soonest arrival is lifted out of
            the board rows into these cards, so the wash has to live here too.
-           The tint is a pseudo-element behind the content, which leaves the
-           mode background, hover fill and the line band untouched. The rail
-           marks only the arrival line — the title row above stays unmarked. */
-        .hero-card.is-imminent { isolation: isolate; }
-        .hero-card.is-imminent::before {
-            content: ""; position: absolute; inset: 0; z-index: -1;
-            border-radius: inherit; pointer-events: none;
-            background: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46, 125, 50, 0) 75%);
+           It is painted on the arrival line only — the title row, connections
+           and mode icon above stay on the plain mode surface — and is pulled
+           out to the card's left edge so the rail matches the board rows. */
+        .hero-card.is-imminent .board-next {
+            position: relative;
+            margin-left: -16px; padding-left: 16px;
+            background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46, 125, 50, 0) 75%);
         }
-        .hero-card.is-imminent .board-next { position: relative; }
         .hero-card.is-imminent .board-next::before {
-            content: ""; position: absolute; top: 0; bottom: 0; left: -16px;
+            content: ""; position: absolute; top: 0; bottom: 0; left: 0;
             width: 3px; background: #2e7d32;
             border-radius: 0 2px 2px 0;
         }
@@ -479,10 +477,11 @@
         .nearby-card-sub { margin: 1px 0 0; font-size: 12px; color: #3d3d3d; }
 
         /* Three columns, left to right: route badge, arrival times (wraps
-           inside its own column), final stop (right-aligned, wraps too). */
+           inside its own column), final stop (content-sized, so its block
+           hugs the text instead of stretching across the column). */
         .board-head {
             display: grid;
-            grid-template-columns: max-content minmax(0, 1.2fr) minmax(0, 1fr);
+            grid-template-columns: max-content minmax(0, 1.2fr) max-content;
             align-items: baseline; gap: 2px 12px;
             font: 14px/1.4 system-ui, -apple-system, sans-serif;
         }
@@ -523,14 +522,13 @@
         .bus-status { font-size: 12px; }
         .bus-status.arriving { font-size: 17px; }
         .bus-status.departed { color: #adb5bd; }
-        /* Final destination: bold and set on a quiet grey highlight, sitting
-           at the right edge of the row. */
+        /* Final stop: plain bold text at the right edge of the row — no chip,
+           no fill, so it hugs the text instead of boxing it. */
         .board-dest {
             justify-self: end; text-align: right;
             max-width: 100%; overflow-wrap: anywhere;
             font-family: system-ui, -apple-system, sans-serif;
             font-weight: 700; color: #182338;
-            background: #e9ecef; padding: 1px 6px; border-radius: 3px;
         }
         /* The ETA group owns the middle column and wraps inside it. */
         .board-etas {
@@ -690,9 +688,15 @@
            a board row: route, times (wrapping), final stop on the right. */
         .board-next {
             display: grid;
-            grid-template-columns: max-content minmax(0, 1.2fr) minmax(0, 1fr);
+            grid-template-columns: max-content minmax(0, 1.2fr) max-content;
             align-items: baseline; gap: 2px 12px;
             margin: 8px 0 0; font: 14px/1.4 system-ui, -apple-system, sans-serif; color: #2b2b2b;
+        }
+        /* Narrow screens: give the final stop a flexible track again so a long
+           name wraps instead of pushing the row into horizontal scroll. */
+        @media (max-width: 600px) {
+            .board-head,
+            .board-next { grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr); }
         }
         /* A lone message ("loading arrivals…", "no arrival or departure")
            spans the whole line instead of sitting in the badge column. */

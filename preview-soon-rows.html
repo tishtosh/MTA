@@ -88,14 +88,12 @@
   .hero-card .title { margin-top: 8px; font-weight: 700; }
   .hero-card .next { margin-top: 2px; }
   .hero-card .badge.mini { min-width: 0; padding: 0 6px; font-size: 12px; display: inline-block; }
-  .hero-card.is-imminent { isolation: isolate; }
-  .hero-card.is-imminent::before {
-    content: ""; position: absolute; inset: 0; z-index: -1;
-    background: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
+  .hero-card.is-imminent .next {
+    position: relative; margin-left: -16px; padding-left: 16px;
+    background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
   }
-  .hero-card.is-imminent .next { position: relative; }
   .hero-card.is-imminent .next::before {
-    content: ""; position: absolute; top: 0; bottom: 0; left: -16px;
+    content: ""; position: absolute; top: 0; bottom: 0; left: 0;
     width: 3px; background: #2e7d32; border-radius: 0 2px 2px 0;
   }
 
@@ -109,13 +107,13 @@
   /* three-column row: route | times | final stop */
   .board-head {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-columns: max-content minmax(0, 1.2fr) max-content;
     align-items: baseline; gap: 2px 12px; width: 100%;
   }
   .board-etas { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; min-width: 0; }
   .board-dest {
     justify-self: end; text-align: right; max-width: 100%; overflow-wrap: anywhere;
-    font-weight: 700; background: #e9ecef; padding: 1px 6px; border-radius: 3px;
+    font-weight: 700;
   }
 
   .swatches { display: flex; gap: 14px; font-size: 11px; color: var(--mute); margin-top: 8px; }  .swatch { display: inline-flex; align-items: center; gap: 5px; }
@@ -188,7 +186,7 @@
       </div>
     </div>
   </div>
-  <p class="note">Yellow and pink rectangles switch to #111 text by relative luminance; dark lines keep white. Long ETA strings wrap inside the middle column, long destinations wrap at the right edge.</p>
+  <p class="note">Yellow and pink rectangles switch to #111 text by relative luminance; dark lines keep white. The final stop is plain bold text in a content-sized third column, right-aligned; long ETA strings wrap inside the middle column.</p>
 </section>
 
 <section class="v-card">
