@@ -12,10 +12,13 @@ const HTML_PATH = path.join(ROOT, "mta26.html");
 // Load order must match mta26.html.
 const MODULES = [
   "js/core/http.js",
+  "js/core/gtfsrt.js",
   "js/cities/index.js",
   "js/cities/dc.js",
   "js/cities/boston.js",
   "js/cities/london.js",
+  "js/cities/nyc-data.js",
+  "js/cities/nyc.js",
   "js/ui/icons.js"
 ];
 

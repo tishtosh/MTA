@@ -105,6 +105,15 @@
             tram: GENERIC.tram,
             ferry: GENERIC.ferry,
         },
+        // MTA marks are licensed, so NYC uses the neutral subway/bus glyphs.
+        nyc: {
+            bus: GENERIC.bus,
+            subway: GENERIC.subway,
+            rail: GENERIC.subway,
+            commuter: GENERIC.commuter,
+            tram: GENERIC.tram,
+            ferry: GENERIC.ferry,
+        },
     };
 
     function body(cityId, mode) {

@@ -4,6 +4,7 @@
 "use strict";
 const vm = require("vm");
 const { pageScript } = require("./lib/extract");
+const { feedBytes } = require("./lib/gtfsrt");
 
 const script = pageScript();
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -27,7 +28,7 @@ function makeEl(id) {
   };
 }
 
-function harness(city, stop, fetchImpl) {
+function harness(city, stop, fetchImpl, search) {
   const els = {};
   const document = {
     cookie: "",
@@ -45,7 +46,7 @@ function harness(city, stop, fetchImpl) {
     btoa, atob, TextDecoder, Uint8Array, crypto, TextEncoder,
     fetch: fetchImpl,
     document,
-    location: { search: `?city=${city}&busstop=${stop}`, href: "http://localhost/", reload() {} },
+    location: { search: search || `?city=${city}&busstop=${stop}`, href: "http://localhost/", reload() {} },
     navigator: { geolocation: null },
     matchMedia: q => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }),
     innerWidth: 1280, innerHeight: 800, devicePixelRatio: 2,
@@ -217,8 +218,57 @@ async function settle(board) {
   check(lres, "london: hero stop list resolves",
     heroStops.length === 2 && heroStops[0].StopID === "940GZZLUOXC");
 
-  const pass = bres.pass + lres.pass;
-  const fail = bres.fail + lres.fail;
+  // ── New York City (phase 0: subway only, no buses) ────────────────
+  const nycCalls = [];
+  const nyc = harness("nyc", "", async (url) => {
+    nycCalls.push(String(url));
+    const m = /mtagtfsfeeds\/([^?]+)/.exec(String(url));
+    const id = m ? decodeURIComponent(m[1]) : "";
+    const now = Date.now();
+    let trips = [];
+    if (id === "nyct/gtfs") {
+      trips = [{
+        tripId: "N1", routeId: "1", dir: 1,
+        stops: [
+          { stopId: "127N", at: now + 150000 },
+          { stopId: "101N", at: now + 900000 },   // Van Cortlandt Park-242 St
+        ],
+      }];
+    }
+    const buf = feedBytes(trips, now);
+    return {
+      ok: true, status: 200,
+      json: async () => ({}),
+      arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length),
+    };
+  }, "?city=nyc");
+
+  const nres = result();
+  await nyc.sandbox.unlockAccess("bus");
+  await wait(300);
+  check(nres, "nyc: registered in the city selector",
+    String(nyc.els.citySelect.innerHTML).includes("New York City"));
+  check(nres, "nyc: no bus feed → Metro mode",
+    nyc.els.btnHome.title === "Nearest Metro station");
+  await nyc.sandbox.loadMetroStations();
+  nyc.sandbox.setMetroAnchor("127");
+  const nBoard = await settle(() => nyc.els.linesScroll.innerHTML);
+  const nHeader = nyc.els.boardHeader.innerHTML;
+  const nAll = nHeader + nBoard;
+  if (process.env.DEBUG) console.log("NHEADER>>>", nHeader, "NBOARD>>>", nBoard);
+  check(nres, "nyc: hero painted", nHeader.length > 0);
+  check(nres, "nyc: station named from GTFS static",
+    nAll.includes("Times Sq-42 St"));
+  check(nres, "nyc: headsign is the terminus name",
+    nAll.includes("Van Cortlandt Park-242 St"));
+  check(nres, "nyc: route bullet 1 rendered", nAll.includes(">1<"));
+  check(nres, "nyc: subway feed requested, no bus/other cities",
+    nycCalls.some(u => u.includes("nyct%2Fgtfs")) &&
+    nycCalls.every(u => !u.includes("api.wmata.com") &&
+      !u.includes("api-v3.mbta.com") && !u.includes("bustime")));
+
+  const pass = bres.pass + lres.pass + nres.pass;
+  const fail = bres.fail + lres.fail + nres.fail;
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error("HARNESS ERROR:", e); process.exit(2); });

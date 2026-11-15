@@ -84,8 +84,9 @@ The **Settings** section of the search dropdown selects the transport system:
 | **Washington DC** | WMATA (`api.wmata.com`) | Metrobus + Metrorail |
 | **Boston** | MBTA v3 (`api-v3.mbta.com`) | MBTA bus + subway/light rail + commuter rail |
 | **London** | TfL Unified API (`api.tfl.gov.uk`) | Tube, bus, Overground, DLR, Elizabeth line, tram, river bus |
+| **New York City** | MTA GTFS-Realtime (`api-endpoint.mta.info`) | Subway + Staten Island Railway (phase 0) |
 
-- The choice is stored in the `mta_city` cookie and can be forced with `?city=dc|boston|london`.
+- The choice is stored in the `mta_city` cookie and can be forced with `?city=dc|boston|london|nyc`.
 - Likes and Home/Work bookmarks are per city (separate storage keys), so switching
   cities swaps the saved lists.
 - **Near me** uses the device location to pick the nearer city automatically before
@@ -97,6 +98,13 @@ The **Settings** section of the search dropdown selects the transport system:
 - London uses a registered TfL key (500 requests/minute) stored encrypted in
   `TFL_KEY_BLOB` in `mta26.html`; the provider appends `app_key` automatically. If the
   blob is cleared, the keyless 50 requests/minute limit still applies.
+- **New York City** is a rail-only phase 0: subway + Staten Island Railway from the
+  keyless MTA GTFS-Realtime feeds (protobuf, decoded in `js/core/gtfsrt.js`). Station,
+  route and platform data come from the generated `js/cities/nyc-data.js`
+  (`node scripts/build-nyc-data.mjs`). MTA Bus Time needs a free key and is deferred;
+  NJ Transit, PATH, AirTrain and NY Waterway are out of scope. The MTA logo/roundel is
+  licensed, so the city uses the neutral subway glyph. Feed ids need `%2F` in the path,
+  and LIRR/Metro-North have no JSON mirror — hence the protobuf reader.
 - Nearby stop cards show stops/stations within **1,000 ft**, nearest first. Bus hero
   stripes use the route color (MBTA route color in Boston, TfL red in London, the app
   palette in DC) sliced at 45° into medium grey.
@@ -107,11 +115,14 @@ The **Settings** section of the search dropdown selects the transport system:
 lives in classic scripts under `js/`, loaded before the inline app:
 
 ```
-js/core/http.js        shared JSON GET: timeout, one retry, 429 backoff, 6 s memo
+js/core/http.js        shared GET: timeout, one retry, 429 backoff, 6 s memo, binary feeds
+js/core/gtfsrt.js      dependency-free GTFS-Realtime protobuf reader (MTA)
 js/cities/index.js     registry, active-city state, cookie/city switching
 js/cities/dc.js        WMATA config + provider + theme
 js/cities/boston.js    MBTA config + provider + theme
 js/cities/london.js    TfL config + provider + theme
+js/cities/nyc-data.js  generated NYC stations/routes/platform map (build script)
+js/cities/nyc.js       MTA config + provider + theme (phase 0: subway + SIR)
 js/ui/icons.js         standalone SVG transit marks per city
 ```
 
@@ -134,8 +145,9 @@ local bus/tram/ferry marks), not Font Awesome. Generic chrome (star, home, share
 Font Awesome.
 
 Tests: `node test/run.js` runs all suites, including `providertest.js` (endpoint/
-normalization contract for all three cities) and `citypagetest.js` (full-page Boston and
-London smoke tests with stubbed feeds).
+normalization contract for DC, Boston and London), `nyctest.js` (GTFS-RT decoding + MTA
+rail provider) and `citypagetest.js` (full-page Boston, London and NYC smoke tests with
+stubbed feeds).
 
 
 
@@ -363,8 +375,11 @@ export default {
 | Path | What |
 |------|------|
 | `mta26.html` | **Current app shell.** Inline CSS + the page app; no build step. |
-| `js/core/http.js` | Shared JSON transport (timeout, retry, 429, memo). |
-| `js/cities/*.js` | City providers, config, and themes for DC, Boston, London. |
+| `js/core/http.js` | Shared transport (timeout, retry, 429, memo, binary feeds). |
+| `js/core/gtfsrt.js` | GTFS-Realtime protobuf reader (MTA feeds). |
+| `js/cities/*.js` | City providers, config, and themes for DC, Boston, London, NYC. |
+| `js/cities/nyc-data.js` | Generated NYC stations/routes/platform map. |
+| `scripts/build-nyc-data.mjs` | Regenerates `nyc-data.js` from the MTA static GTFS zip. |
 | `js/ui/icons.js` | Standalone SVG transit marks per city. |
 | `mta4a.html` | Previous version (kept for reference). |
 | `mta2.html` | Earlier iteration (kept for reference). |

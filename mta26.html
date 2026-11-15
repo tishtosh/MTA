@@ -958,10 +958,13 @@
 
 <!-- City adapters: transport + normalization + theme/icons. No build step. -->
 <script src="js/core/http.js"></script>
+<script src="js/core/gtfsrt.js"></script>
 <script src="js/cities/index.js"></script>
 <script src="js/cities/dc.js"></script>
 <script src="js/cities/boston.js"></script>
 <script src="js/cities/london.js"></script>
+<script src="js/cities/nyc-data.js"></script>
+<script src="js/cities/nyc.js"></script>
 <script src="js/ui/icons.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════
@@ -3133,6 +3136,17 @@ function clearCityCaches() {
     boardToken++;
 }
 
+// Cities with no bus feed (NYC in phase 0) hide the Bus section and stay in
+// Metro mode; the provider's bus calls return empty results rather than throw.
+function applyCityCapabilities() {
+    const hasBus = cityCfg().capabilities.bus !== false;
+    const head = document.querySelector
+        ? document.querySelector('[data-fav-panel="bus"]') : null;
+    if (head) head.hidden = !hasBus;
+    if (gFavBusBody && !hasBus) gFavBusBody.hidden = true;
+    if (!hasBus && mode === "bus") applyMode("metro");
+}
+
 function setCity(next, opts) {
     if (!CITIES[next]) return;
     if (next === city) {
@@ -3145,6 +3159,7 @@ function setCity(next, opts) {
     shortcuts = readShortcutCookie();
     ensureAirportDefaults();
     clearCityCaches();
+    applyCityCapabilities();
     screenHistory = [];
     currentScreen = null;
     historyGuard = false;
@@ -6543,6 +6558,7 @@ if (gCitySelect) {
     populateCitySelect(gCitySelect);
     gCitySelect.addEventListener("change", () => setCity(gCitySelect.value));
 }
+applyCityCapabilities();
 if (gMapsSelect) {
     gMapsSelect.value = mapsProvider;
     gMapsSelect.addEventListener("change", () => {

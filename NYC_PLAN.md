@@ -1,7 +1,8 @@
 # NYC as a city — implementation plan
 
-Status: proposal. No code yet. Facts below were checked against the live endpoints
-on 2026-11-15 (UTC) and against the current provider contract.
+Status: **phase 0 implemented** (subway + Staten Island Railway, live and keyless).
+Buses, LIRR and Metro-North remain later phases; NJ Transit, PATH, AirTrain and
+NY Waterway are out of scope. See README for the shipped surface.
 
 ## 1. Scope
 
@@ -35,13 +36,13 @@ wayfinding, never the MTA mark.
   `stops-for-location` 120 KB/500 m, `stops-for-route` 235 KB, `routes-for-location` 4 KB.
 * Static GTFS zips: subway 5.6 MB, LIRR 1.8 MB, MNR 4.4 MB, per-borough bus 8.4 MB.
 
-## 3. Feed map (route → feed)
+## 3. Feed map (route → feed, verified against the live feeds)
 
 | Lines | Feed id |
 |---|---|
-| 1 2 3 4 5 6 7 S | `nyct%2Fgtfs` |
-| A C E | `nyct%2Fgtfs-ace` |
-| B D F M | `nyct%2Fgtfs-bdfm` |
+| 1 2 3 4 5 6 7, GS (42 St shuttle), 6X 7X | `nyct%2Fgtfs` |
+| A C E, B, H (Rockaway Park shuttle) | `nyct%2Fgtfs-ace` |
+| D F M, FX, FS (Franklin shuttle) | `nyct%2Fgtfs-bdfm` |
 | G | `nyct%2Fgtfs-g` |
 | J Z | `nyct%2Fgtfs-jz` |
 | L | `nyct%2Fgtfs-l` |
@@ -51,8 +52,10 @@ wayfinding, never the MTA mark.
 | MNR (all lines) | `mnr%2Fgtfs-mnr` |
 | Alerts (optional) | `camsys%2Fsubway-alerts.json`, `camsys%2Fbus-alerts.json` |
 
-Only the groups covering the visible station's lines (plus nearby) are fetched —
-never all ten. Cache each feed 45–60 s even though the board ticks at 30 s.
+The groups do not follow the printed bullets: B rides with A/C/E, GS with 1-7,
+FS with D/F/M, H with A/C/E. Only the groups covering the visible station's lines
+(plus nearby) are fetched — never all ten. Cache each feed 45–60 s even though
+the board ticks at 30 s.
 
 ## 4. Wire format
 
@@ -223,8 +226,11 @@ naive. Mitigate:
 
 ## 10. Phases
 
-1. **P0 — subway board (1 week).** GTFS-RT decoder, static data script, `metroLive`
+1. **P0 — subway board (done).** GTFS-RT decoder, static data script, `metroLive`
    for subway + SIR, station list, nearest-station default. Keyless; no bus.
+   Shipped as: `js/core/gtfsrt.js`, `js/cities/nyc-data.js`, `js/cities/nyc.js`,
+   `scripts/build-nyc-data.mjs`, `test/nyctest.js`, plus a `?city=nyc` smoke in
+   `citypagetest.js`. The Bus section hides and the city starts in Metro mode.
 2. **P1 — buses.** Bus Time key blob + `departures`, nearby stops, route panel,
    terminating drop.
 3. **P2 — LIRR + MNR.** Rail route names, commuter styling, patterns, "Outside NYC"

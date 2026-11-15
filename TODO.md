@@ -29,3 +29,18 @@ Single-file page, inline CSS, vanilla JS, existing static hosting; all new endpo
 
 - Visual acceptance (check 1: desktop + 360 px in a browser) cannot be done here — no browser/chromium/playwright on this machine; the vm harness approximates it. Must be noted as not visually verified in the final summary.
 - `?busstop=1002135,1002130` multiple-ID deep link behavior vs the board anchor (plan §2: multiple IDs are explicit requests, kept in the table; first ID is the default board anchor) — to verify in piece 14.
+
+## NYC (phase 0, shipped)
+
+- [x] Keyless MTA GTFS-Realtime: `js/core/gtfsrt.js` (varint reader, trip updates +
+      stop times + header timestamp), `MTA.http` binary response mode.
+- [x] `scripts/build-nyc-data.mjs` → `js/cities/nyc-data.js`: 496 subway/SIR parents,
+      29 routes (GTFS colours), `127N→127` platform map, 45 KB classic script.
+- [x] `js/cities/nyc.js`: station list, `metroLive` per line-group feed (45 s TTL,
+      in-flight dedupe, stale-on-failure), terminus-derived headsigns, terminating
+      trains dropped, subway bullets normalized (FX→F, 6X→6, 7X→7).
+- [x] Page: `applyCityCapabilities()` hides the Bus section and starts Metro mode when
+      a city has no bus feed; neutral NYC icon (no MTA mark).
+- [x] Tests: `nyctest.js` (decoder + provider + TTL/outage), `citypagetest.js`
+      `?city=nyc` smoke. 15 suites pass.
+- [ ] P1 buses (MTA Bus Time key), P2 LIRR/Metro-North, P3 alerts + schedule.

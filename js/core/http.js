@@ -39,16 +39,19 @@
     }
 
     // Returns { data, error } and never throws, so callers can choose the
-    // failure surface. `memoize:false` is for live endpoints.
+    // failure surface. `memoize:false` is for live endpoints. Protocol-buffer
+    // feeds (MTA GTFS-RT) ask for `responseType:"arraybuffer"`.
     async function get(options) {
         const {
             url, query, timeoutMs = 12000, retries = 1,
             key, keyParam = "api_key", memoize = true, headers = null,
+            responseType = "json",
         } = options;
 
+        const binary = responseType === "arraybuffer";
         const qs = new URLSearchParams(query || {});
         if (key && keyParam) qs.set(keyParam, key);
-        const mk = memoize ? memoKey(url, qs) : "";
+        const mk = memoize && !binary ? memoKey(url, qs) : "";
         if (mk) {
             const hit = memoGet(mk);
             if (hit) return { data: hit, error: null };
@@ -63,6 +66,15 @@
                     signal: ctl.signal,
                     headers: headers || undefined,
                 });
+                if (binary) {
+                    const buf = await res.arrayBuffer();
+                    if (!res.ok) return {
+                        data: null,
+                        error: Object.assign(new Error(`HTTP ${res.status}`),
+                            { status: res.status, rateLimited: res.status === 429 }),
+                    };
+                    return { data: new Uint8Array(buf), error: null };
+                }
                 const data = await res.json().catch(() => ({}));
                 if (res.status === 429 && attempt < retries) {
                     await sleep(1500);
