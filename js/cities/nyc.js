@@ -369,7 +369,10 @@
             routeTextColor: () => "#fff",
             badgeClass: () => "",
             badge: {
-                shape: id => /X$/.test(String(id || "")) ? "diamond" : "circle",
+                // Commuter services are named rectangles; subway locals are
+                // circles and express variants diamonds.
+                shape: id => isCommuter(id) ? "rect"
+                    : /X$/.test(String(id || "")) ? "diamond" : "circle",
                 color: id => metroColor(id),
                 textColor: id => textOn(metroColor(id)),
             },

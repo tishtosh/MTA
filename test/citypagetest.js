@@ -160,6 +160,8 @@ async function settle(board) {
     bPanel.includes('data-fav-line="CR-Framingham"'));
   check(bres, "boston: commuter line name gets slash spacing",
     bPanel.includes("Framingham / Worcester"));
+  check(bres, "boston: settings separate subway from commuter",
+    bPanel.includes("Metro/Subway/Tube") && bPanel.includes("Commuter"));
   check(bres, "boston: no WMATA calls",
     bostonCalls.every(u => !u.includes("api.wmata.com")));
 
@@ -222,6 +224,10 @@ async function settle(board) {
   check(lres, "london: Overground band is a railcar strip",
     london.sandbox.lineBandClass("overground") === " railcar" &&
     london.sandbox.lineBandClass("victoria") === "");
+  await london.sandbox.renderFavMetroLines();
+  const lPanel = london.els.favMetroLines.innerHTML;
+  check(lres, "london: settings show only the rapid-transit category",
+    lPanel.includes("Metro/Subway/Tube") && !lPanel.includes("Commuter"));
   check(lres, "london: no WMATA/MBTA calls",
     londonCalls.every(u => !u.includes("api.wmata.com") && !u.includes("api-v3.mbta.com")));
   check(lres, "london: registered app_key is used",
@@ -321,7 +327,11 @@ async function settle(board) {
   const nLines = nyc.els.favMetroLines.innerHTML;
   check(nres, "nyc: rail list reuses the circular bullet",
     nLines.includes("route-bullet") && nLines.includes("sm circle"));
-  check(nres, "nyc: rail list says train, not line", nLines.includes("1 train"));
+  check(nres, "nyc: rail list omits the train noun", !/train/i.test(nLines));
+  check(nres, "nyc: settings split rapid transit from commuter",
+    nLines.includes("Metro/Subway/Tube") && nLines.includes("Commuter"));
+  check(nres, "nyc: commuter lines are named rectangles",
+    /route-bullet[^"]*\brect\b/.test(nLines) && nLines.includes("Babylon"));
   check(nres, "nyc: default favorites are LGA and JFK",
     nycCards.includes("LGA/Terminal B") && nycCards.includes("Howard Beach-JFK Airport"));
   nyc.sandbox.setCity("dc");

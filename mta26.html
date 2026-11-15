@@ -537,6 +537,22 @@
         .route-bullet.wide { font-size: 10px; letter-spacing: -.02em; }
         .route-bullet.diamond { border-radius: 4px; transform: rotate(45deg); }
         .route-bullet.diamond > span { transform: rotate(-45deg); }
+        /* Commuter services (NYC LIRR/Metro-North) are rectangles carrying the
+           line name, not numbered bullets. */
+        .route-bullet.rect {
+            width: auto; min-width: 28px; max-width: 132px;
+            height: auto; min-height: 24px; padding: 2px 6px;
+            border-radius: 4px; font-size: 10px; line-height: 1.15;
+            white-space: normal; text-wrap: balance;
+        }
+        .route-bullet.rect.sm {
+            width: auto; height: auto; min-height: 20px; min-width: 22px;
+            padding: 1px 5px; font-size: 9px;
+        }
+        .route-bullet.rect.lg {
+            width: auto; height: auto; min-height: 30px; padding: 3px 8px;
+            font-size: 12px;
+        }
         .route-bullet.departed {
             background: transparent; border: 2px solid var(--bullet-color);
             color: var(--bullet-color);
@@ -4891,13 +4907,37 @@ async function renderFavMetroLines() {
     if (cityCfg().capabilities.metroRoutes)
         await loadMetroRoutes().catch(() => null);
     const lines = cityTheme().metroLineIds();
-    gFavMetroLines.innerHTML = lines.map(line =>
-        `<button type="button" class="fav-route" data-fav-line="${line}" aria-expanded="false">`
-        + lineBadgeHtml(line)
-        + `<span class="fav-desc">${esc(metroLineName(line))} ${esc(cityCfg().labels.railNoun || "Line")}</span>`
-        + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
-        + `<div class="fav-stops" data-fav-stops="metro" data-line="${line}" hidden></div>`
-    ).join("");
+    // The route label keeps the city's noun ("Line") except where that noun is
+    // "train": the word is redundant next to a route name/bullet.
+    const noun = cityCfg().labels.railNoun || "Line";
+    const desc = line => /^train$/i.test(noun)
+        ? metroLineName(line)
+        : `${metroLineName(line)} ${noun}`;
+    const row = line => {
+        const badge = themeBadge();
+        // The badge already carries the name (bullets in NYC, pills elsewhere);
+        // only cities without themed bullets need the text label beside it.
+        const label = desc(line);
+        return `<button type="button" class="fav-route" data-fav-line="${line}" aria-expanded="false" aria-label="${esc(label)}">`
+            + lineBadgeHtml(line)
+            + (badge ? "" : `<span class="fav-desc">${esc(label)}</span>`)
+            + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
+            + `<div class="fav-stops" data-fav-stops="metro" data-line="${line}" hidden></div>`;
+    };
+    // Two settings categories for every city: rapid transit (metro/subway/tube)
+    // and commuter rail. Empty groups are omitted.
+    const rapid = lines.filter(line => !isCommuterRoute(line));
+    const commuter = lines.filter(line => isCommuterRoute(line));
+    let html = "";
+    if (rapid.length) {
+        html += `<div class="fav-dir-label">Metro/Subway/Tube</div>`;
+        html += rapid.map(row).join("");
+    }
+    if (commuter.length) {
+        html += `<div class="fav-dir-label">Commuter</div>`;
+        html += commuter.map(row).join("");
+    }
+    gFavMetroLines.innerHTML = html;
 }
 
 // The master likes list is shared by both modes: bus likes first,
@@ -5975,7 +6015,7 @@ function badgeTextColor(color) {
 
 function routeBulletHtml(label, color, textColor, opts) {
     const o = opts || {};
-    const shape = o.shape === "diamond" ? "diamond" : "circle";
+    const shape = o.shape === "diamond" ? "diamond" : o.shape === "rect" ? "rect" : "circle";
     const size = o.size ? " " + o.size : "";
     const wide = String(label || "").length > 2 ? " wide" : "";
     const departed = o.departed ? " departed" : "";
