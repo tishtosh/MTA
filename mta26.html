@@ -54,7 +54,8 @@
         .mode-icon i { color: #adb5bd; }
         .mode-icon.active i { color: var(--city-accent, #2e7d32); }
         .add-fav-btn { margin-right: 2px; }
-        .add-fav-btn i { font-size: 1.6em; width: 36px; color: #3f2b1e; }
+        .add-fav-btn i { font-size: 1.6em; width: 36px; color: #3f2b1e; transition: transform .15s ease; }
+        .add-fav-btn[aria-expanded="true"] i { transform: rotate(180deg); }
 
         /* Add-like picker */
         .fav-panel {
@@ -827,7 +828,7 @@
                     <i class="fa-regular fa-circle-left" aria-hidden="true"></i>
                 </button>
                 <button id="btnAddFav" class="navicon add-fav-btn" title="Find stops and likes" aria-label="Find stops and likes" aria-expanded="false" aria-controls="favPanel">
-                    <i class="fa-regular fa-compass" aria-hidden="true"></i>
+                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
                 </button>
                 <button id="btnFav" class="navicon nav-shortcut" title="All likes" aria-label="Show all likes">
                     <i class="fa-regular fa-heart fa-xl-mta"></i>
