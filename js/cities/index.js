@@ -72,7 +72,7 @@
     function isBoston() { return city === "boston"; }
     function isLondon() { return city === "london"; }
     function cityHome() { return cityCfg().center; }
-    function defaultFavorite() { return Object.assign({}, cityCfg().defaultFavorite); }
+    function defaultLike() { return Object.assign({}, cityCfg().defaultLike); }
 
     function nearestCity(lat, lon) {
         let best = city, bestD = Infinity;
@@ -103,7 +103,7 @@
         cityProvider,
         cityTheme,
         cityHome,
-        defaultFavorite,
+        defaultLike,
         nearestCity,
         populateCitySelect,
         isBoston,

@@ -50,7 +50,7 @@
         .add-fav-btn { margin-right: 2px; }
         .add-fav-btn i { font-size: 1.6em; width: 36px; color: #3f2b1e; }
 
-        /* Add-favorite picker */
+        /* Add-like picker */
         .fav-panel {
             position: fixed; top: 64px; left: 12px; z-index: 4000;
             width: min(92vw, 460px); max-height: 72vh; overflow-y: auto;
@@ -98,6 +98,13 @@
             border-radius: 4px;
         }
         .fav-conns .fav-badge.line { min-width: 52px; }
+        .conn-badge { border: 0; cursor: pointer; font: inherit; }
+        .conn-badge:hover { filter: brightness(.9); }
+        .conn-badge:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .board-row.row-focus {
+            background: #fff8d6;
+            box-shadow: inset 3px 0 0 var(--city-accent, #2e7d32);
+        }
         .fav-desc { flex: 1; min-width: 0; }
         .fav-stops { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px 14px; }
         .fav-stops[hidden] { display: none; }
@@ -181,10 +188,10 @@
         .fav-setting-static:hover { background: #fff; }
         .fav-city-select { width: auto; max-width: 150px; font-size: 12px; }
         .fav-setting-danger i { color: #c92a2a; }
-        .fav-setting-danger .fa-star { color: #2e7d32; }
+        .fav-setting-danger .fa-heart-crack { color: #2e7d32; }
         .fav-setting-danger:hover { background: #fff5f5; }
 
-        /* Main-panel bookmark list (Home / Work / Favorites) */
+        /* Main-panel bookmark list (Home / Work / Likes) */
         .bookmark-view {
             margin: 8px 0 18px; padding: 12px 14px;
             background: #fff; border: 1px solid #dee2e6; border-radius: 10px;
@@ -604,7 +611,7 @@
         }
         .hero-card.hero-bus .board-share-inline,
         .hero-card.hero-metro .board-share-inline { background: none; }
-        /* Shortcut checkboxes: save the current stop as home/work/favorite. */
+        /* Shortcut checkboxes: save the current stop as home/work/like. */
         .board-shortcuts {
             position: absolute; top: 8px; right: 10px;
             display: flex; gap: 2px;
@@ -724,11 +731,11 @@
                 <button id="btnBack" class="navicon nav-back" title="Back" aria-label="Back" disabled>
                     <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
                 </button>
-                <button id="btnAddFav" class="navicon add-fav-btn" title="Find stops and favorites" aria-label="Find stops and favorites" aria-expanded="false" aria-controls="favPanel">
+                <button id="btnAddFav" class="navicon add-fav-btn" title="Find stops and likes" aria-label="Find stops and likes" aria-expanded="false" aria-controls="favPanel">
                     <i class="fa-solid fa-search" aria-hidden="true"></i>
                 </button>
-                <button id="btnFav" class="navicon nav-shortcut" title="All favorites" aria-label="Show all favorites">
-                    <i class="fa-solid fa-star fa-xl-mta"></i>
+                <button id="btnFav" class="navicon nav-shortcut" title="All likes" aria-label="Show all likes">
+                    <i class="fa-solid fa-heart fa-xl-mta"></i>
                 </button>
                 <button id="btnHome" class="navicon nav-shortcut" title="Home stop" aria-label="Go to home stop">
                     <i class="fa-solid fa-house fa-xl-mta"></i>
@@ -751,8 +758,8 @@
 </div>
 
 <div id="favPanel" class="fav-panel" hidden>
-    <button type="button" class="fav-header" data-fav-panel="favorites" aria-expanded="false">
-        <span>Favorites</span>
+    <button type="button" class="fav-header" data-fav-panel="likes" aria-expanded="false">
+        <span>Likes</span>
         <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
     </button>
     <div id="favFavBody" class="fav-body" hidden>
@@ -809,11 +816,11 @@
             <span class="fav-setting-name">Auto-refresh</span>
             <span id="refreshState" class="fav-setting-state">on</span>
         </button>
-        <button id="btnClearFavorites" class="fav-setting fav-setting-danger" type="button"
-                title="Delete all favorites, Home, Work, and Airport bookmarks"
-                aria-label="Delete all favorites and bookmarks">
-            <i class="fa-solid fa-star" aria-hidden="true"></i>
-            <span class="fav-setting-name">Delete all favorites</span>
+        <button id="btnClearLikes" class="fav-setting fav-setting-danger" type="button"
+                title="Delete all likes, Home, Work, and Airport bookmarks"
+                aria-label="Delete all likes and bookmarks">
+            <i class="fa-solid fa-heart-crack" aria-hidden="true"></i>
+            <span class="fav-setting-name">Delete all likes</span>
         </button>
     </div>
 </div>
@@ -835,7 +842,7 @@
         <select id="metroSelect" class="form-select form-select-lg" aria-label="Metro station"></select>
     </div>
 
-    <!-- Bookmark views (Home / Work / Favorites) replace the board area. -->
+    <!-- Bookmark views (Home / Work / Likes) replace the board area. -->
     <div id="bookmarkView" class="bookmark-view" hidden>
         <h4 id="bookmarkTitle" class="bookmark-title"></h4>
         <div id="bookmarkList" class="fav-list bookmark-list"></div>
@@ -920,7 +927,7 @@ async function unlockAccess(pass) {
 
 function startApp() {
     // Deep links still open their stop/location directly. With no parameters
-    // the launch screen is the favorites list: nothing is fetched and no
+    // the launch screen is the likes list: nothing is fetched and no
     // stop or station is selected until the user picks one.
     if (stopListFromURL || urlPoint) {
         if (mode === "metro") runMetro();
@@ -972,7 +979,7 @@ let mapsProvider = readMapsProvider();
 const TOPOLOGY_TTL_MS = 24 * 60 * 60 * 1000;
 const CONNECTION_TTL_MS = 24 * 60 * 60 * 1000;
 const API_MEMO_MS = 6000;
-const CACHE_PREFIX = "mta_cache_v2_";
+const CACHE_PREFIX = "mta_cache_v3_";
 
 function cacheStorageKey(name) {
     return `${CACHE_PREFIX}${city}_${name}`;
@@ -1016,7 +1023,7 @@ function dropCache(name) {
 //   ?lat=38.934&lon=-77.045    search for stops near this point
 //   ?radius=300                search radius in meters
 //   ?refresh=30                prediction refresh interval, seconds (15..600)
-// No params: the favorites panel opens; no stop is fetched until one is picked.
+// No params: the likes panel opens; no stop is fetched until one is picked.
 // Defaults: radius 300 m, refresh 30 s.
 const params = new URLSearchParams(location.search);
 
@@ -1106,7 +1113,7 @@ function metroLineName(line) { return cityTheme().metroName(line); }
 function isCommuterRoute(line) { return cityTheme().isCommuter(line); }
 
 // ── Mode (bus / metro) and shortcut locations ─────────────────────────
-// Bookmarks are stored per mode; home/work/favorite are not shared.
+// Bookmarks are stored per mode; home/work/like are not shared.
 const MODE_COOKIE = "mta_mode";
 const SHORTCUT_SLOTS = ["home", "work", "airport", "fav"];
 let mode = readModeCookie();
@@ -1199,7 +1206,7 @@ function setSlotEntries(kind, slot, list) {
 }
 
 // Save/clear Home, Work, or Airport from a summary card. Multiple entries
-// are allowed; adding also adds the stop to favorites.
+// are allowed; adding also adds the stop to likes.
 function toggleBookmarkCardSlot(kind, id, name, route, slot) {
     if (slot !== "home" && slot !== "work" && slot !== "airport") return;
     const list = slotEntries(kind, slot);
@@ -1208,27 +1215,27 @@ function toggleBookmarkCardSlot(kind, id, name, route, slot) {
         list.splice(at, 1);
     } else {
         list.push({ id: String(id), name: name || "", route: route || "" });
-        if (!isFavorite(kind, id)) toggleFavorite(kind, id, name, route);
+        if (!isLike(kind, id)) toggleLike(kind, id, name, route);
     }
     setSlotEntries(kind, slot, list);
     updateShortcutNav();
     if (bookmarkSlot) syncBookmarkView();
-    if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+    if (gFavFavBody && !gFavFavBody.hidden) renderLikes();
     syncFavStars();
 }
 
 function shortcutLabel(slot) {
     return slot === "home" ? "Home" : slot === "work" ? "Work"
-        : slot === "airport" ? "Airport" : "Favorite";
+        : slot === "airport" ? "Airport" : "Like";
 }
 
-// ── Multi-favorites from the Add Favorite panel ───────────────────────
-const FAVORITES_COOKIE = "mta_favorites";   // legacy DC key
-function favoritesCookieName() {
+// ── Multi-likes from the Add Like panel ───────────────────────
+const LIKES_COOKIE = "mta_likes";   // legacy DC key
+function likesCookieName() {
     const key = cityCfg().storageKey;
-    return key ? `mta_favorites_${key}` : FAVORITES_COOKIE;
+    return key ? `mta_likes_${key}` : LIKES_COOKIE;
 }
-let favorites = readFavorites();
+let likes = readLikes();
 let busRouteDirectory = null;
 let busRouteDirectoryAt = 0;
 let busRouteLoad = null;
@@ -1247,8 +1254,8 @@ let busRouteColors = {};
     }
 }
 
-function readFavorites() {
-    const key = favoritesCookieName();
+function readLikes() {
+    const key = likesCookieName();
     try {
         if (typeof localStorage !== "undefined") {
             const raw = localStorage.getItem(key);
@@ -1268,27 +1275,27 @@ function readFavorites() {
     } catch (e) { return []; }
 }
 
-function writeFavorites() {
-    const key = favoritesCookieName();
+function writeLikes() {
+    const key = likesCookieName();
     try {
         if (typeof localStorage !== "undefined")
-            localStorage.setItem(key, JSON.stringify(favorites));
+            localStorage.setItem(key, JSON.stringify(likes));
     } catch (e) { /* ignore storage failures */ }
     try {
-        document.cookie = `${key}=${encodeURIComponent(JSON.stringify(favorites))}`
+        document.cookie = `${key}=${encodeURIComponent(JSON.stringify(likes))}`
             + "; max-age=31536000; path=/; SameSite=Lax";
     } catch (e) { /* session-only fallback */ }
 }
 
-function isFavorite(kind, id) {
-    return favorites.some(f => f.kind === kind && String(f.id) === String(id));
+function isLike(kind, id) {
+    return likes.some(f => f.kind === kind && String(f.id) === String(id));
 }
 
-// Settings → Delete all favorites: drop every saved bus stop/station and
+// Settings → Delete all likes: drop every saved bus stop/station and
 // restore the single default (N10, Washington Dulles International Airport).
-// The view switches to the same Favorites panel the star icon shows.
+// The view switches to the same Likes panel the heart icon shows.
 function ensureAirportDefaults() {
-    const hadNoFavorites = !favorites.length;
+    const hadNoLikes = !likes.length;
     const added = [];
     const defs = cityCfg().airportDefaults || {};
     for (const kind of ["bus", "metro"]) {
@@ -1312,24 +1319,24 @@ function ensureAirportDefaults() {
     }
     if (added.length) shortcuts = readShortcutCookie();
     for (const e of added) {
-        if (!isFavorite(e.kind, e.id))
-            favorites.push({ kind: e.kind, id: e.id, name: e.name, route: e.route });
+        if (!isLike(e.kind, e.id))
+            likes.push({ kind: e.kind, id: e.id, name: e.name, route: e.route });
     }
-    if (added.length) writeFavorites();
-    // With no favorites at all, the airport is the default saved set.
+    if (added.length) writeLikes();
+    // With no likes at all, the airport is the default saved set.
     const airport = allSlotEntries("airport");
-    if (hadNoFavorites && airport.length) {
-        favorites = airport.map(e => ({
+    if (hadNoLikes && airport.length) {
+        likes = airport.map(e => ({
             kind: e.kind, id: e.id, name: e.name, route: e.route
         }));
-        writeFavorites();
+        writeLikes();
     }
     return added;
 }
 
-function resetFavorites() {
+function resetLikes() {
     // Clear Home / Work / Airport shortcuts first, then reseed the airport
-    // defaults (which are also favorites).
+    // defaults (which are also likes).
     for (const kind of ["bus", "metro"]) {
         const cur = readShortcutsFor(kind);
         cur.home = [];
@@ -1341,8 +1348,8 @@ function resetFavorites() {
     for (const slot of ["home", "work", "airport"]) writeBookmarkOrder(slot, []);
     shortcuts = readShortcutCookie();
     ensureAirportDefaults();
-    // The city's default favorite (Dulles in DC) is also an Airport bookmark.
-    const defFav = defaultFavorite();
+    // The city's default like (Dulles in DC) is also an Airport bookmark.
+    const defFav = defaultLike();
     const defList = slotEntries(defFav.kind, "airport");
     if (!defList.some(e => String(e.id) === String(defFav.id))) {
         defList.push({
@@ -1358,23 +1365,23 @@ function resetFavorites() {
         seen.add(key);
         list.push({ kind: e.kind, id: String(e.id), name: e.name || "", route: e.route || "" });
     };
-    add(defaultFavorite());
+    add(defaultLike());
     for (const e of allSlotEntries("airport")) add(e);
-    favorites = list;
-    writeFavorites();
+    likes = list;
+    writeLikes();
     updateShortcutNav();
     closeFavPanel();
     renderBookmarkList("fav");
     syncFavStars();
 }
 
-function toggleFavorite(kind, id, name, route) {
-    const i = favorites.findIndex(f => f.kind === kind && String(f.id) === String(id));
+function toggleLike(kind, id, name, route) {
+    const i = likes.findIndex(f => f.kind === kind && String(f.id) === String(id));
     let on;
     if (i >= 0) {
-        favorites.splice(i, 1);
+        likes.splice(i, 1);
         on = false;
-        // Removing a favorite removes it from every bookmark category too.
+        // Removing a like removes it from every bookmark category too.
         const key = bookmarkKey(kind, id);
         for (const slot of ["home", "work", "airport"]) {
             const list = slotEntries(kind, slot);
@@ -1385,10 +1392,10 @@ function toggleFavorite(kind, id, name, route) {
             if (nextOrder.length !== order.length) writeBookmarkOrder(slot, nextOrder);
         }
     } else {
-        favorites.push({ kind, id: String(id), name: name || "", route: route || "" });
+        likes.push({ kind, id: String(id), name: name || "", route: route || "" });
         on = true;
     }
-    writeFavorites();
+    writeLikes();
     updateShortcutNav();
     return on;
 }
@@ -1420,7 +1427,7 @@ const gFavNearBody = document.getElementById("favNearBody");
 const gFavNearList = document.getElementById("favNearList");
 const gFavSettingsBody = document.getElementById("favSettingsBody");
 const gRefreshState = document.getElementById("refreshState");
-const gClearFavorites = document.getElementById("btnClearFavorites");
+const gClearLikes = document.getElementById("btnClearLikes");
 const gCitySelect = document.getElementById("citySelect");
 const gMapsSelect = document.getElementById("mapsSelect");
 const gFavBusBody = document.getElementById("favBusBody");
@@ -1777,10 +1784,10 @@ function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
         const key = p.route + "|" + (dirNum == null ? "?" : dirNum) + "|" + (p.heads || "");
         let v = variants.get(key);
         if (!v) {
-            v = { route: p.route, dirNum, heads: p.heads || "", mins: [], vehicles: [], preds: [],
+            v = { route: p.route, routeRef: p.routeRef || p.route, dirNum, heads: p.heads || "", mins: [], vehicles: [], preds: [],
                   status: p.min <= 1
                       ? (p.status || (p.min === 0 ? "Arriving" : "")) : "",
-                  rep: { route: p.route, dirNum, heads: p.heads || "",
+                  rep: { route: p.route, routeRef: p.routeRef || p.route, dirNum, heads: p.heads || "",
                          trip: p.trip || "", vehicle: p.vehicle || "" } };
             variants.set(key, v);
             rows.push(v);
@@ -2002,6 +2009,7 @@ function noteSelectionChange() {
     expandedStops.clear();       // a new stop starts with every list collapsed
     boardUserScrolled = false;   // piece 12: a new board re-claims centering
     boardAuto = { at: 0, left: null };
+    clearPendingFocus();
 }
 
 // The normalized seam (plan §4): jStops-shaped records — StopID/Name/Lat/Lon,
@@ -2181,7 +2189,8 @@ function nearbyModeIcon(metro, commuter, color, drag, route) {
 
 function crossMetroSectionHtml(st) {
     const dist = st.distFt == null ? "" : `${Math.round(st.distFt)} ft away`;
-    const primaryRoute = (st.next && st.next.route) || (st.Lines && st.Lines[0]) || "";
+    const primaryRoute = (st.next && (st.next.routeRef || st.next.route))
+        || (st.Lines && st.Lines[0]) || "";
     const commuter = isCommuterRoute(primaryRoute);
     const card = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0"`
         + ` data-cross="metro" data-stop="${esc(st.Code)}" data-name="${esc(st.Name || "")}">`
@@ -2195,7 +2204,7 @@ function crossMetroSectionHtml(st) {
     return {
         dist: st.distFt == null ? Infinity : st.distFt,
         html: card + `<div class="nearby-board"><div class="board">`
-            + `<div class="board-row"><div class="board-next">${line}</div></div>`
+            + `<div class="board-row" data-row-route="${esc(primaryRoute)}"><div class="board-next">${line}</div></div>`
             + `</div></div>`
     };
 }
@@ -2617,7 +2626,7 @@ function boardRowHead(row, color, g, k, scheduled) {
         ? (row.dest ? esc(row.dest) : "")
         : esc(row.dest || row.dir || "");
     const departed = !!row.departed;
-    const badgeText = row.metro ? metroLineName(row.route) : row.route;
+    const badgeText = row.metro ? metroLineName(row.routeRef || row.route) : row.route;
     const hasMbtaTrip = typeof cityProvider().tripStops === "function" &&
         !row.metro && row.rep && row.rep.trip;
     const hasList = (g && g.hasTrack && (g.stops || []).length >= 2) ||
@@ -2696,7 +2705,7 @@ function boardHtml(geom, rows) {
                 }).join("") + `</ul>`;
               })() : mbtaList;
         const rowClass = row.departed ? " is-departed" : (scheduled ? " is-scheduled" : "");
-        out += `<div class="board-row${rowClass}" data-rowkey="${encodeURIComponent(k)}">`
+        out += `<div class="board-row${rowClass}" data-rowkey="${encodeURIComponent(k)}" data-row-route="${esc(row.metro ? (row.routeRef || row.route) : row.route)}">`
             + `${boardRowHead(row, color, g, k, scheduled)}${list}</div>`;
     }
     return `<div class="board">${out}</div>`;
@@ -2875,6 +2884,7 @@ function applyMode(next) {
     writeModeCookie();
     shortcuts = readShortcutCookie();
     updateShortcutNav();
+    clearPendingFocus();
     if (changed) {
         expandedStops.clear();
         gBoardHeader.innerHTML = "";
@@ -2896,7 +2906,7 @@ function setMode(next) {
     } else { metroAnchorCode = null; runMetro(); }
 }
 
-// City switching: every city has its own data caches, favorites, and
+// City switching: every city has its own data caches, likes, and
 // Home/Work bookmarks. Called from Settings and from "Near me".
 function hydrateCityCaches() {
     const stops = readCache("stops");
@@ -3006,7 +3016,7 @@ function setCity(next, opts) {
     }
     city = next;
     writeCityCookie();
-    favorites = readFavorites();
+    likes = readLikes();
     shortcuts = readShortcutCookie();
     ensureAirportDefaults();
     clearCityCaches();
@@ -3093,10 +3103,11 @@ function metroRowsFor(station, skipFirst) {
         const key = t.route + "|" + (t.dirNum || "") + "|" + t.heads;
         let r = groups.get(key);
         if (!r) {
-            r = { kind: "compact", route: t.route, dirNum: t.dirNum || "",
-                  dest: t.heads, mins: [], first: 0, metro: true,
+            r = { kind: "compact", route: t.route, routeRef: t.routeRef || t.route,
+                  dirNum: t.dirNum || "", dest: t.heads, mins: [], first: 0, metro: true,
                   status: t.status || "",
-                  fromCode: station.Code, toCode: metroDestCode(t.heads, t.route) };
+                  fromCode: station.Code,
+                  toCode: metroDestCode(t.heads, t.routeRef || t.route) };
             groups.set(key, r);
             rows.push(r);
         }
@@ -3118,9 +3129,10 @@ function metroRowsFor(station, skipFirst) {
         const prev = schedGroups.get(key);
         if (!prev || d.at < prev.scheduled.at)
             schedGroups.set(key, {
-                kind: "service", route: d.route, dirNum: d.dirNum || "",
-                dest: d.heads, mins: [], first: 0, metro: true,
-                fromCode: station.Code, toCode: metroDestCode(d.heads, d.route),
+                kind: "service", route: d.route, routeRef: d.routeRef || d.route,
+                dirNum: d.dirNum || "", dest: d.heads, mins: [], first: 0, metro: true,
+                fromCode: station.Code,
+                toCode: metroDestCode(d.heads, d.routeRef || d.route),
                 scheduled: { at: d.at }
             });
     }
@@ -3284,13 +3296,13 @@ function renderMetro() {
         const list = r.metro && r.toCode
             ? `<ul class="bt-stoplist"${open ? "" : " hidden"}`
               + ` data-metro-from="${esc(r.fromCode || "")}" data-metro-to="${esc(r.toCode)}"`
-              + ` data-line="${esc(r.route || "")}">`
+              + ` data-line="${esc(r.routeRef || r.route || "")}">`
               + (open ? `<li class="bt-stop-item">loading stops…</li>` : "")
               + `</ul>`
             : "";
         return `<div class="board-row${r.scheduled ? " is-scheduled" : ""}"`
-            + ` data-rowkey="${encodeURIComponent(key)}">`
-            + boardRowHead(r, metroLineColor(r.route), null, key, r.scheduled)
+            + ` data-rowkey="${encodeURIComponent(key)}" data-row-route="${esc(r.routeRef || r.route)}">`
+            + boardRowHead(r, metroLineColor(r.routeRef || r.route), null, key, r.scheduled)
             + list + `</div>`;
     }).join("");
     const mainRows = metroRowsFor(station, true);
@@ -3332,6 +3344,7 @@ function renderMetro() {
         });
     }
     refreshBoardStopConnections();
+    applyPendingFocus();
 }
 
 async function refreshMetro() {
@@ -3815,7 +3828,7 @@ function shownStops() {
 // ════════════════════════════════════════════════════════════════════
 
 // Re-anchor on a stop and put its name in the entry field. Home/work/
-// favorite shortcuts all funnel through here.
+// like shortcuts all funnel through here.
 async function gotoStop(id, name) {
     searchPoint = null;                 // explicit stop, not a nearby search
     forceNearby = false;
@@ -3841,8 +3854,8 @@ function updateShortcutNav() {
         const btn = gShortcutBtns[slot];
         if (!btn) continue;
         if (slot === "fav") {
-            btn.title = favorites.length
-                ? `All favorites (${favorites.length})` : "All favorites";
+            btn.title = likes.length
+                ? `All likes (${likes.length})` : "All likes";
             btn.setAttribute("aria-label", btn.title);
             continue;
         }
@@ -4042,7 +4055,7 @@ async function openRouteInMaps(ds) {
     window.open(url, "_blank", "noopener");
 }
 
-// ── Add Favorite picker ──────────────────────────────────────────────
+// ── Add Like picker ──────────────────────────────────────────────
 function applyBusRouteDirectory(list) {
     busRouteDirectory = list;
     busRouteDirectoryAt = Date.now();
@@ -4093,13 +4106,13 @@ function favGotoHtml(kind, id, name, label) {
 }
 
 function favStarHtml(kind, id, name, route) {
-    const on = isFavorite(kind, id);
+    const on = isLike(kind, id);
     return `<button type="button" class="fav-star${on ? " active" : ""}"`
         + ` data-fav-kind="${esc(kind)}" data-fav-id="${esc(id)}"`
         + ` data-fav-name="${esc(name || "")}" data-fav-route="${esc(route || "")}"`
         + ` aria-pressed="${on ? "true" : "false"}"`
-        + ` title="${on ? "Remove favorite" : "Add favorite"}">`
-        + `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i></button>`;
+        + ` title="${on ? "Remove like" : "Add like"}">`
+        + `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i></button>`;
 }
 
 // Bus stop-name filter: at 3+ characters, routes are expanded to just the
@@ -4205,17 +4218,112 @@ async function fetchStopConnections(kind, id) {
     return refreshStopConnections(kind, id);
 }
 
+function connBadgeHtml(kind, route, place) {
+    const r = String(route || "");
+    const metro = kind === "metro";
+    const label = metro ? metroLineName(r) : r;
+    const color = metro ? metroLineColor(r) : routeColor(r);
+    const text = metro ? "#fff" : busTextColor(r);
+    const where = place && place.name ? ` at ${place.name}` : " on this board";
+    const title = `Go to ${label}${where}`;
+    return `<button type="button" class="fav-badge conn-badge${metro ? " line" : busBadgeClass()}"`
+        + ` data-conn-kind="${metro ? "metro" : "bus"}" data-conn-route="${esc(r)}"`
+        + (place && place.stopId
+            ? ` data-conn-stop="${esc(place.stopId)}" data-conn-name="${esc(place.name || "")}"` : "")
+        + ` title="${esc(title)}" aria-label="${esc(title)}"`
+        + ` style="background:${color};color:${text}">${esc(label)}</button>`;
+}
+
 function connectionBadgesHtml(conns, kind, route) {
     if (!conns) return "";
+    const places = conns.places || {};
+    const placeFor = (k, r) => places[k + ":" + String(r || "").toUpperCase()] || null;
     const skip = route ? String(route).toUpperCase() : "";
     const bus = (conns.bus || [])
         .filter(r => !(kind === "bus" && skip && String(r).toUpperCase() === skip))
-        .map(r => favBadgeHtml("bus", r));
+        .map(r => connBadgeHtml("bus", r, placeFor("bus", r)));
     const metro = (conns.metro || [])
         .filter(l => !(kind === "metro" && skip && String(l).toUpperCase() === skip))
-        .map(l => favBadgeHtml("metro", l));
+        .map(l => connBadgeHtml("metro", l, placeFor("metro", l)));
     return [...bus, ...metro].join(" ");
 }
+
+// A connection badge names a route/line at a place. Navigate to that place
+// when it is not the current board, then bring the matching row into view.
+let pendingFocus = null;
+let pendingFocusTimer = null;
+
+function clearPendingFocus() {
+    pendingFocus = null;
+    if (pendingFocusTimer) {
+        clearTimeout(pendingFocusTimer);
+        pendingFocusTimer = null;
+    }
+}
+
+function requestRouteFocus(route, kind) {
+    pendingFocus = { route: String(route || ""), kind: kind === "metro" ? "metro" : "bus" };
+    if (pendingFocusTimer) clearTimeout(pendingFocusTimer);
+    pendingFocusTimer = setTimeout(clearPendingFocus, 8000);
+    applyPendingFocus();
+}
+
+function applyPendingFocus() {
+    if (!pendingFocus) return false;
+    if ((mode === "metro") !== (pendingFocus.kind === "metro")) return false;
+    const want = pendingFocus.route.toLowerCase();
+    const rows = gLinesScroll ? gLinesScroll.querySelectorAll(".board-row[data-row-route]") : [];
+    let hit = null;
+    for (const el of rows) {
+        const route = String((el.dataset && el.dataset.rowRoute) || "").toLowerCase();
+        if (route === want) { hit = el; break; }
+    }
+    if (!hit) return false;
+    clearPendingFocus();
+    hit.classList.add("row-focus");
+    if (typeof hit.scrollIntoView === "function") {
+        try {
+            hit.scrollIntoView({ block: "center",
+                behavior: REDUCE_MOTION.matches ? "auto" : "smooth" });
+        } catch (e) { /* no scrolling in tests */ }
+    }
+    setTimeout(() => { if (hit.classList) hit.classList.remove("row-focus"); }, 2400);
+    return true;
+}
+
+async function navigateToConnection(el) {
+    const ds = (el && el.dataset) || {};
+    const kind = ds.connKind === "metro" ? "metro" : "bus";
+    const route = ds.connRoute || "";
+    if (!route) return;
+    const stopId = ds.connStop || "";
+    const current = kind === "metro"
+        ? (metroAnchor && String(metroAnchor.Code || ""))
+        : (anchorStop() && String(anchorStop().StopID || ""));
+    if (stopId && stopId !== current) {
+        if (kind === "metro") {
+            if (mode !== "metro") applyMode("metro");
+            await loadMetroStations().catch(() => null);
+            setMetroAnchor(stopId);
+        } else {
+            if (mode !== "bus") applyMode("bus");
+            selectStop(stopId, true);
+        }
+    }
+    requestRouteFocus(route, kind);
+}
+
+function handleConnectionClick(e) {
+    const badge = e.target && e.target.closest ? e.target.closest(".conn-badge") : null;
+    if (!badge) return;
+    e.preventDefault();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    else e.stopPropagation();
+    navigateToConnection(badge);
+}
+
+gBoardHeader.addEventListener("click", handleConnectionClick, true);
+gLinesScroll.addEventListener("click", handleConnectionClick, true);
 
 async function loadStopConnections(rows) {
     const map = new Map();
@@ -4401,13 +4509,13 @@ async function renderFavBusRoutesByStop(raw) {
     applyStopNameWidth(gFavBusRoutes);
 }
 
-function renderFavBusRoutes(query) {
+async function renderFavBusRoutes(query) {
     if (!gFavBusRoutes) return;
     const raw = String(query || "").trim();
     const q = raw.toLowerCase();
     if (cityCfg().capabilities.routeSearchByStop) return renderFavBusRoutesByStop(raw);
-    favBusFilterToken++;
-    if (q && !allStopsCache) {
+    const token = ++favBusFilterToken;
+    if (q && !allStopsCache && !cityCfg().capabilities.stopSearch) {
         loadStopDirectory()
             .then(() => {
                 if (gFavBusFilter && gFavBusFilter.value.trim() === raw &&
@@ -4416,7 +4524,12 @@ function renderFavBusRoutes(query) {
             })
             .catch(() => {});
     }
-    const byStop = stopsByRouteForQuery(q);
+    let byStop = stopsByRouteForQuery(q);
+    if (q.length >= 3 && typeof cityProvider().busRoutesForQuery === "function") {
+        try { byStop = await cityProvider().busRoutesForQuery(q); }
+        catch (e) { /* keep the local directory result */ }
+    }
+    if (token !== favBusFilterToken) return;
     const routes = (busRouteDirectory || []).filter(r => !q ||
         r.id.toLowerCase().includes(q) ||
         r.desc.toLowerCase().includes(q) ||
@@ -4451,8 +4564,8 @@ async function renderFavMetroLines() {
     ).join("");
 }
 
-// The master favorites list is shared by both modes: bus favorites first,
-// then subway favorites, each group sorted by name. Home and Work are
+// The master likes list is shared by both modes: bus likes first,
+// then subway likes, each group sorted by name. Home and Work are
 // separate special bookmarks and never appear here.
 function favBadgeHtml(kind, route) {
     const r = String(route || "");
@@ -4471,18 +4584,18 @@ function favRowHtml(f) {
         + `${favGotoHtml(f.kind, f.id, f.name, stopName(f.name) || "#" + f.id)}</div>`;
 }
 
-function orderedFavorites() {
-    return favorites.slice();
+function orderedLikes() {
+    return likes.slice();
 }
 
-function renderFavorites() {
+function renderLikes() {
     if (!gFavFavList) return;
-    const list = orderedFavorites();
+    const list = orderedLikes();
     gFavFavList.innerHTML = list.length ? list.map(favRowHtml).join("")
-        : `<div class="fav-empty">no favorites yet — tap a star to save one</div>`;
+        : `<div class="fav-empty">no likes yet — tap the heart to save one</div>`;
 }
 
-// ── Main-panel bookmark list (Home / Work / Favorites) ───────────────
+// ── Main-panel bookmark list (Home / Work / Likes) ───────────────
 function shortcutRoute(kind, id) {
     if (kind === "metro") {
         const st = (metroStationsCache || []).find(s => String(s.Code) === String(id));
@@ -4527,11 +4640,11 @@ function orderedSlotEntries(slot) {
         .map(x => x.row);
 }
 
-// Home/Work: that slot's bus stop and Metro station (both modes). Favorites:
+// Home/Work: that slot's bus stop and Metro station (both modes). Likes:
 // the master list. Both preserve the user's drag order.
 function bookmarkRows(slot) {
     if (slot === "fav") {
-        return orderedFavorites().map(f =>
+        return orderedLikes().map(f =>
             ({ kind: f.kind, id: String(f.id), name: f.name || "", route: f.route || "" }));
     }
     return orderedSlotEntries(slot).map(e => ({
@@ -4543,8 +4656,9 @@ function bookmarkRows(slot) {
 function nextArrivalHtml(kind, next) {
     if (!next) return `<span class="text-muted">no arrival or departure</span>`;
     refreshEtaMinutes([next]);
-    const color = kind === "metro" ? metroLineColor(next.route) : routeColor(next.route);
-    const label = kind === "metro" ? metroLineName(next.route) : next.route;
+    const lineKey = kind === "metro" ? (next.routeRef || next.route) : next.route;
+    const color = kind === "metro" ? metroLineColor(lineKey) : routeColor(lineKey);
+    const label = kind === "metro" ? metroLineName(lineKey) : next.route;
     const status = next.min <= 1
         ? (next.status || (next.min === 0 ? "Arriving" : "")) : "";
     const showEta = !(next.min === 0 && statusReplacesDue(status));
@@ -4556,7 +4670,7 @@ function nextArrivalHtml(kind, next) {
 }
 
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
-// Home / Work buttons shown beside the favorite star on every summary card.
+// Home / Work buttons shown beside the like heart on every summary card.
 function bmSlotHtml(row, slot) {
     const on = slotHas(row.kind, slot, row.id);
     const label = shortcutLabel(slot);
@@ -4696,7 +4810,7 @@ function syncBookmarkView() {
     const hasCards = !!gBookmarkList.querySelector(".bookmark-card");
     if (!hasCards && !empty) {
         const label = slot === "fav"
-            ? "favorites" : shortcutLabel(slot).toLowerCase() + " bookmark";
+            ? "likes" : shortcutLabel(slot).toLowerCase() + " bookmark";
         gBookmarkList.innerHTML = `<div class="fav-empty">no ${label} saved yet</div>`;
     } else if (hasCards && empty) {
         empty.remove();
@@ -4710,7 +4824,7 @@ function saveBookmarkOrderFromDom() {
     const keys = [...gBookmarkList.querySelectorAll(".bookmark-card")]
         .map(card => bookmarkKey(card.dataset.bookmarkKind, card.dataset.bookmarkId));
     if (bookmarkSlot === "fav") {
-        const by = new Map(favorites.map(f => [bookmarkKey(f.kind, f.id), f]));
+        const by = new Map(likes.map(f => [bookmarkKey(f.kind, f.id), f]));
         const next = [];
         for (const key of keys) {
             const f = by.get(key);
@@ -4718,15 +4832,15 @@ function saveBookmarkOrderFromDom() {
             next.push(f);
             by.delete(key);
         }
-        for (const f of favorites) {
+        for (const f of likes) {
             if (by.has(bookmarkKey(f.kind, f.id))) next.push(f);
         }
-        favorites = next;
-        writeFavorites();
+        likes = next;
+        writeLikes();
     } else {
         writeBookmarkOrder(bookmarkSlot, keys);
     }
-    if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+    if (gFavFavBody && !gFavFavBody.hidden) renderLikes();
 }
 
 const bookmarkReflowAnimations = new Map();
@@ -4770,7 +4884,7 @@ function screenKey(s) {
 function screenLabel(s) {
     if (!s) return "previous screen";
     if (s.type === "bookmarks")
-        return s.slot === "fav" ? "Favorites" : shortcutLabel(s.slot);
+        return s.slot === "fav" ? "Likes" : shortcutLabel(s.slot);
     return s.name || (s.id ? `#${s.id}` : "previous stop");
 }
 
@@ -4807,7 +4921,7 @@ async function goBack() {
             closeFavPanel();
             await renderBookmarkList(prev.slot);
         } else if (prev.type === "board") {
-            await gotoFavorite(prev.mode, prev.id, prev.name || "");
+            await gotoLike(prev.mode, prev.id, prev.name || "");
         }
         currentScreen = prev;
     } finally {
@@ -4827,12 +4941,12 @@ async function renderBookmarkList(slot) {
     bookmarkSlot = slot;
     enterScreen({ type: "bookmarks", slot });
     const token = ++bookmarkToken;
-    const label = slot === "fav" ? "Favorites" : shortcutLabel(slot);
+    const label = slot === "fav" ? "Likes" : shortcutLabel(slot);
     if (gBookmarkTitle) gBookmarkTitle.textContent = label;
     const rows = bookmarkRows(slot);
     if (gBookmarkList) {
         gBookmarkList.innerHTML = rows.length ? rows.map(bookmarkCardHtml).join("")
-            : `<div class="fav-empty">no ${slot === "fav" ? "favorites" : label.toLowerCase() + " bookmark"} saved yet</div>`;
+            : `<div class="fav-empty">no ${slot === "fav" ? "likes" : label.toLowerCase() + " bookmark"} saved yet</div>`;
     }
     if (gBookmarkView) gBookmarkView.hidden = false;
     if (gViewArrivals) gViewArrivals.hidden = true;
@@ -4857,11 +4971,11 @@ function showBookmarkList(slot) {
 function syncFavStars() {
     const scope = [gFavPanel, gBookmarkList, gLinesScroll, gBoardHeader].filter(Boolean);
     for (const root of scope) root.querySelectorAll(".fav-star").forEach(star => {
-        const on = isFavorite(star.dataset.favKind, star.dataset.favId);
+        const on = isLike(star.dataset.favKind, star.dataset.favId);
         star.classList.toggle("active", on);
         star.setAttribute("aria-pressed", on ? "true" : "false");
-        star.title = on ? "Remove favorite" : "Add favorite";
-        star.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i>`;
+        star.title = on ? "Remove like" : "Add like";
+        star.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i>`;
     });
     syncHeaderShortcuts();
 }
@@ -4994,9 +5108,9 @@ function closeFavPanel() {
     if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "false");
 }
 
-// A favorite name navigates: switch mode first (without starting a competing
+// A like name navigates: switch mode first (without starting a competing
 // flow), then anchor exactly once on the chosen stop/station.
-async function gotoFavorite(kind, id, name) {
+async function gotoLike(kind, id, name) {
     closeFavPanel();
     showBoardView();
     if (kind === "metro") {
@@ -5032,14 +5146,14 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         e.stopPropagation();
         const kind = star.dataset.favKind;
         const id = star.dataset.favId;
-        toggleFavorite(kind, id, star.dataset.favName, star.dataset.favRoute);
-        const on = isFavorite(kind, id);
+        toggleLike(kind, id, star.dataset.favName, star.dataset.favRoute);
+        const on = isLike(kind, id);
         star.classList.toggle("active", on);
         star.setAttribute("aria-pressed", on ? "true" : "false");
-        star.title = on ? "Remove favorite" : "Add favorite";
-        star.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i>`;
+        star.title = on ? "Remove like" : "Add like";
+        star.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i>`;
         updateShortcutNav();
-        if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+        if (gFavFavBody && !gFavFavBody.hidden) renderLikes();
         syncBookmarkView();
         syncFavStars();
         return;
@@ -5047,7 +5161,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     const go = e.target.closest ? e.target.closest(".fav-goto") : null;
     if (go && go.dataset.favId) {
         e.preventDefault();
-        await gotoFavorite(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
+        await gotoLike(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
         return;
     }
     const route = e.target.closest ? e.target.closest(".fav-route") : null;
@@ -5070,28 +5184,31 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     const header = e.target.closest ? e.target.closest(".fav-header") : null;
     if (!header) return;
     const which = header.dataset.favPanel;
-    const body = which === "favorites" ? gFavFavBody
+    const body = which === "likes" ? gFavFavBody
         : which === "near" ? gFavNearBody
         : which === "bus" ? gFavBusBody
         : which === "metro" ? gFavMetroBody : gFavSettingsBody;
     const open = body.hidden;
     if (open) {
         try {
-            if (which === "favorites") {
-                renderFavorites();
+            if (which === "likes") {
+                renderLikes();
             } else if (which === "near") {
                 populateNearMe();
             } else if (which === "bus") {
                 await loadBusRouteDirectory();
                 renderFavBusRoutes(gFavBusFilter ? gFavBusFilter.value : "");
                 // Stop names are part of the filter; warm the directory so
-                // the first stop-name query matches without a pause.
-                loadStopDirectory()
-                    .then(() => {
-                        if (gFavBusBody && !gFavBusBody.hidden)
-                            renderFavBusRoutes(gFavBusFilter ? gFavBusFilter.value : "");
-                    })
-                    .catch(() => {});
+                // the first stop-name query matches without a pause. London
+                // searches TfL on demand instead of preloading a directory.
+                if (!cityCfg().capabilities.stopSearch) {
+                    loadStopDirectory()
+                        .then(() => {
+                            if (gFavBusBody && !gFavBusBody.hidden)
+                                renderFavBusRoutes(gFavBusFilter ? gFavBusFilter.value : "");
+                        })
+                        .catch(() => {});
+                }
             } else if (which === "metro") {
                 await loadMetroStations();
                 await renderFavMetroLines();
@@ -5173,18 +5290,18 @@ if (gBookmarkList) gBookmarkList.addEventListener("click", async e => {
     const star = e.target.closest ? e.target.closest(".fav-star") : null;
     if (star) {
         e.preventDefault();
-        toggleFavorite(star.dataset.favKind, star.dataset.favId,
+        toggleLike(star.dataset.favKind, star.dataset.favId,
             star.dataset.favName, star.dataset.favRoute);
         updateShortcutNav();
         syncBookmarkView();
-        if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+        if (gFavFavBody && !gFavFavBody.hidden) renderLikes();
         syncFavStars();
         return;
     }
     const go = e.target.closest ? e.target.closest(".bookmark-card") : null;
     if (go && go.dataset.bookmarkId) {
         e.preventDefault();
-        await gotoFavorite(go.dataset.bookmarkKind, go.dataset.bookmarkId, go.dataset.bookmarkName);
+        await gotoLike(go.dataset.bookmarkKind, go.dataset.bookmarkId, go.dataset.bookmarkName);
     }
 });
 if (gBookmarkList) gBookmarkList.addEventListener("keydown", e => {
@@ -5208,7 +5325,7 @@ for (const slot of SHORTCUT_SLOTS) {
 
 if (gBackBtn) gBackBtn.addEventListener("click", goBack);
 
-// Repaint the hero card's Home / Work / Favorite buttons from saved state.
+// Repaint the hero card's Home / Work / Like buttons from saved state.
 function syncHeaderShortcuts() {
     if (!gBoardHeader) return;
     const kind = mode === "metro" ? "metro" : "bus";
@@ -5219,13 +5336,13 @@ function syncHeaderShortcuts() {
         const s = b.dataset && b.dataset.shortcut;
         if (!s) return;
         if (s === "fav") {
-            const on = isFavorite(kind, id);
-            const text = on ? "Remove favorite" : "Add to favorites";
+            const on = isLike(kind, id);
+            const text = on ? "Remove like" : "Add to likes";
             b.classList.toggle("active", on);
             b.setAttribute("aria-pressed", on ? "true" : "false");
             b.title = text;
             b.setAttribute("aria-label", text);
-            b.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i>`;
+            b.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i>`;
             return;
         }
         const on = slotHas(kind, s, id);
@@ -5239,8 +5356,8 @@ function syncHeaderShortcuts() {
 }
 
 // Home and Work save/clear their single special bookmark in the header. The
-// star toggles membership in the master favorites list, so it matches the
-// star's color everywhere else.
+// heart toggles membership in the master likes list, so it matches the
+// heart's color everywhere else.
 gBoardHeader.addEventListener("click", e => {
     const routeAction = e.target.closest ? e.target.closest(".route-action") : null;
     if (routeAction) {
@@ -5257,7 +5374,7 @@ gBoardHeader.addEventListener("click", e => {
     const favStar = e.target.closest ? e.target.closest(".fav-star") : null;
     if (favStar) {
         e.preventDefault();
-        toggleFavorite(favStar.dataset.favKind, favStar.dataset.favId,
+        toggleLike(favStar.dataset.favKind, favStar.dataset.favId,
             favStar.dataset.favName, favStar.dataset.favRoute);
         updateShortcutNav();
         syncBookmarkView();
@@ -5267,7 +5384,7 @@ gBoardHeader.addEventListener("click", e => {
     const go = e.target.closest ? e.target.closest(".fav-goto") : null;
     if (go && go.dataset.favId) {
         e.preventDefault();
-        gotoFavorite(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
+        gotoLike(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
         return;
     }
     const share = e.target.closest ? e.target.closest(".board-share") : null;
@@ -5285,7 +5402,7 @@ gBoardHeader.addEventListener("click", e => {
             ? String((st.Lines && st.Lines[0]) || "")
             : String((st.Routes && st.Routes[0]) ||
                 (st.Arrivals && st.Arrivals[0] && st.Arrivals[0].route) || "");
-        toggleFavorite(kind, id, st.Name || "", route);
+        toggleLike(kind, id, st.Name || "", route);
     } else {
         const route = kind === "metro"
             ? String((st.Lines && st.Lines[0]) || "")
@@ -5294,18 +5411,18 @@ gBoardHeader.addEventListener("click", e => {
         const list = slotEntries(kind, slot);
         const at = list.findIndex(e => String(e.id) === id);
         if (at >= 0) {
-            // Clearing a category leaves the master favorites list alone.
+            // Clearing a category leaves the master likes list alone.
             list.splice(at, 1);
         } else {
             list.push({ id, name: st.Name || "", route });
-            // Saving Home/Work/Airport also adds the stop to favorites.
-            if (!isFavorite(kind, id)) toggleFavorite(kind, id, st.Name || "", route);
+            // Saving Home/Work/Airport also adds the stop to likes.
+            if (!isLike(kind, id)) toggleLike(kind, id, st.Name || "", route);
         }
         setSlotEntries(kind, slot, list);
     }
     syncHeaderShortcuts();
     updateShortcutNav();
-    if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+    if (gFavFavBody && !gFavFavBody.hidden) renderLikes();
     syncBookmarkView();
     syncFavStars();
 });
@@ -5677,10 +5794,10 @@ gLinesScroll.addEventListener("click", e => {
     if (star) {
         e.preventDefault();
         e.stopPropagation();
-        toggleFavorite(star.dataset.favKind, star.dataset.favId,
+        toggleLike(star.dataset.favKind, star.dataset.favId,
             star.dataset.favName, star.dataset.favRoute);
         updateShortcutNav();
-        if (gFavFavBody && !gFavFavBody.hidden) renderFavorites();
+        if (gFavFavBody && !gFavFavBody.hidden) renderLikes();
         syncBookmarkView();
         syncFavStars();
         return;
@@ -5688,7 +5805,7 @@ gLinesScroll.addEventListener("click", e => {
     const cross = e.target.closest ? e.target.closest("[data-cross]") : null;
     if (cross) {
         e.preventDefault();
-        gotoFavorite(cross.dataset.cross, cross.dataset.stop, cross.dataset.name);
+        gotoLike(cross.dataset.cross, cross.dataset.stop, cross.dataset.name);
         return;
     }
     const item = e.target.closest ? e.target.closest(".bt-stop-item") : null;
@@ -5710,7 +5827,7 @@ gLinesScroll.addEventListener("click", e => {
 });
 gLinesScroll.addEventListener("keydown", e => {
     if (e.key !== "Enter" && e.key !== " ") return;
-    // The star is a real button: let its native activation toggle the favorite.
+    // The star is a real button: let its native activation toggle the like.
     if (e.target.closest && e.target.closest(".fav-star")) return;
     const el = e.target.closest ? e.target.closest(".nearby-stop-card, .bt-stop-item") : null;
     if (!el || !el.dataset || !el.dataset.stop) return;
@@ -5756,8 +5873,8 @@ function anchorStop() {
     return shownStops().find(s => String(s.StopID) === want) || null;
 }
 
-// The home / work / favorite buttons in the stop header. Home and Work are
-// single special bookmarks; the star toggles the master favorites list.
+// The home / work / like buttons in the stop header. Home and Work are
+// single special bookmarks; the heart toggles the master likes list.
 function shortcutButtonsHtml(id) {
     const kind = mode === "metro" ? "metro" : "bus";
     return `<div class="board-shortcuts">`
@@ -5765,12 +5882,12 @@ function shortcutButtonsHtml(id) {
         + `<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button>`
         + SHORTCUT_SLOTS.map(slot => {
         if (slot === "fav") {
-            const on = isFavorite(kind, id);
-            const text = on ? "Remove favorite" : "Add to favorites";
+            const on = isLike(kind, id);
+            const text = on ? "Remove like" : "Add to likes";
             return `<button type="button" class="board-shortcut${on ? " active" : ""}"`
                 + ` data-shortcut="fav" aria-pressed="${on ? "true" : "false"}"`
                 + ` title="${text}" aria-label="${text}">`
-                + `<i class="${on ? "fa-solid" : "fa-regular"} fa-star" aria-hidden="true"></i>`
+                + `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i>`
                 + `</button>`;
         }
         const on = slotHas(kind, slot, id);
@@ -5815,7 +5932,8 @@ function heroCardHtml(st, arrivals) {
     const list = (arrivals || []).slice().sort((a, b) => a.min - b.min);
     const next = (arrivals || []).slice()
         .sort((a, b) => predictionRank(a) - predictionRank(b) || a.min - b.min)[0] || null;
-    const displayRoute = next ? next.route :
+    const nextRef = next ? (st.Metro ? (next.routeRef || next.route) : next.route) : "";
+    const displayRoute = nextRef ||
         ((st.MetroScheduledNext && st.MetroScheduledNext.route) ||
          (st.Lines && st.Lines[0]) || "");
     const commuter = st.Metro && isCommuterRoute(displayRoute);
@@ -5832,14 +5950,14 @@ function heroCardHtml(st, arrivals) {
         const routeBadge = `<button type="button" class="${badgeCls} hero-route-toggle"`
             + ` aria-expanded="false" title="Show stops on this route"`
             + ` data-hero-kind="${st.Metro ? "metro" : "bus"}"`
-            + ` data-hero-route="${esc(next.route)}"`
+            + ` data-hero-route="${esc(nextRef)}"`
             + ` data-hero-trip="${esc(next.trip || "")}"`
             + ` data-hero-heads="${esc(next.heads || next.dir || "")}"`
             + ` data-hero-dir="${esc(next.dirNum == null ? "" : next.dirNum)}"`
             + ` data-hero-anchor="${esc(id)}"`
-            + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir, displayRoute) : "")}"`
-            + ` style="background:${badgeColor(next.route)};color:${st.Metro ? "#fff" : busTextColor(next.route)}">`
-            + `${esc(badgeLabel(next.route))}`
+            + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir, nextRef) : "")}"`
+            + ` style="background:${badgeColor(nextRef)};color:${st.Metro ? "#fff" : busTextColor(nextRef)}">`
+            + `${esc(badgeLabel(nextRef))}`
             + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`;
         const bits = [
             routeBadge,
@@ -6111,6 +6229,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
         if (!ul.hidden && !ul.dataset.loaded) loadMbtaRowStops(ul);
     });
     refreshBoardStopConnections();
+    applyPendingFocus();
 }
 
 // (Re)draw the board: resolve the anchor, paint the header at once, then
@@ -6271,7 +6390,7 @@ function setRefreshEnabled(on) {
     tickClock();
 }
 gRefreshToggle.addEventListener("click", () => setRefreshEnabled(!refreshEnabled));
-if (gClearFavorites) gClearFavorites.addEventListener("click", resetFavorites);
+if (gClearLikes) gClearLikes.addEventListener("click", resetLikes);
 applyCityChrome(city);
 if (gCitySelect) {
     populateCitySelect(gCitySelect);

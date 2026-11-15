@@ -41,12 +41,12 @@ sandbox.stopListFromURL = null;
 sandbox.forceNearby = false;
 sandbox.DEFAULT_STOP_ID = "1002135";
 sandbox.mode = "bus";
-sandbox.favorites = [];
+sandbox.likes = [];
 vm.createContext(sandbox);
 vm.runInContext(
   ['const ROUTE_COLORS = ["#c62828","#1565c0","#2e7d32","#ef6c00","#6a1b9a","#00838f","#ad1457","#5d4037","#455a64","#827717","#37474f","#9e9d24"];', "const stopScheduleCache = {};", "let shortcuts = {};",
    'const SHORTCUT_SLOTS = ["home", "work", "airport", "fav"];',
-   extractFn("shortcutLabel"), extractFn("isFavorite"),
+   extractFn("shortcutLabel"), extractFn("isLike"),
    "function slotHas(kind, slot, id){ const v = shortcuts[slot]; const list = !v ? [] : (Array.isArray(v) ? v : (v.id ? [v] : [])); return list.some(e => String(e.id) === String(id)); }",
    extractFn("shortcutButtonsHtml"),
    "function cityCfg(){ return { defaultStopId: '1002135' }; }",
@@ -108,7 +108,7 @@ const h1 = sandbox.heroCardHtml(
 check("header: name", h1.includes("Park Rd &amp; 19th St NW"));
 check("header: stop reference not shown", !/#1002130/.test(h1));
 check("header: 'Selected boarding stop' removed", !h1.includes("Selected boarding stop"));
-check("header: home/work/favorite shortcuts",
+check("header: home/work/like shortcuts",
   h1.includes('data-shortcut="home"') && h1.includes('data-shortcut="work"') && h1.includes('data-shortcut="fav"'));
 sandbox.__shortcuts.home = { id: "1002130", name: "Park Rd & 19th St NW" };
 const hActive = sandbox.heroCardHtml(
@@ -116,11 +116,11 @@ const hActive = sandbox.heroCardHtml(
 delete sandbox.__shortcuts.home;
 check("header: saved shortcut shows checked",
   /data-shortcut="home"[^>]*aria-pressed="true"/.test(hActive));
-sandbox.favorites = [{ kind: "bus", id: "1002130", name: "Park Rd & 19th St NW" }];
+sandbox.likes = [{ kind: "bus", id: "1002130", name: "Park Rd & 19th St NW" }];
 const hFav = sandbox.heroCardHtml(
   { StopID: "1002130", Name: "Park Rd & 19th St NW", Arrivals: [], Error: null }, []);
-sandbox.favorites = [];
-check("header: favorite star shows selected",
+sandbox.likes = [];
+check("header: like star shows selected",
   /data-shortcut="fav"[^>]*aria-pressed="true"/.test(hFav));
 check("header: next bus route + headsign", /aria-label="Bus"[^]*?D72<i class="fa-solid fa-chevron-down[^]*?North to Van Ness/.test(h1));
 check("header: ETA 14 min", h1.includes(">14 min<"));

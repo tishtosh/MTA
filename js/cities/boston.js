@@ -406,6 +406,7 @@
                 min: Math.max(0, Math.round((at - Date.now()) / 60000)),
                 at,
                 route: (routeRel && routeRel.id) || "",
+                routeRef: (routeRel && routeRel.id) || "",
                 dir: heads, heads, dirNum: String(a.direction_id == null ? "" : a.direction_id),
                 vehicle: null, trip: (tripRel && tripRel.id) || null,
                 status: mbtaPredictionStatus(a, Date.now()),
@@ -625,15 +626,29 @@
     }
 
     async function connections(kind, id) {
-        const out = { bus: [], metro: [] };
+        const out = { bus: [], metro: [], places: {} };
+        const current = (allStopsCache || []).find(s => String(s.StopID) === String(id))
+            || (metroStationsCache || []).find(s => String(s.Code) === String(id)) || null;
+        const mark = (k, route, stopId, name) => {
+            if (route) out.places[k + ":" + String(route).toUpperCase()] = {
+                stopId: String(stopId || ""), name: name || "",
+            };
+        };
         try {
             if (!Object.keys(busRouteColors).length)
                 await loadBusRouteDirectory().catch(() => null);
             const { data } = await mbtaGet("/routes", { "filter[stop]": String(id) });
             for (const r of (data && data.data) || []) {
                 const type = r.attributes.type;
-                if (type === 3) out.bus.push(String(r.attributes.short_name || r.id).toUpperCase());
-                else if (type === 0 || type === 1 || type === 2) out.metro.push(String(r.id));
+                if (type === 3) {
+                    const route = String(r.attributes.short_name || r.id).toUpperCase();
+                    out.bus.push(route);
+                    mark("bus", route, id, current && current.Name);
+                } else if (type === 0 || type === 1 || type === 2) {
+                    const route = String(r.id);
+                    out.metro.push(route);
+                    mark("metro", route, id, current && current.Name);
+                }
             }
             if (kind === "bus") {
                 let lat = null, lon = null;
@@ -648,8 +663,10 @@
                     const stations = await loadMetroStations().catch(() => []);
                     for (const s of stations) {
                         const ft = distance(lat, lon, s.Lat, s.Lon, "f");
-                        if (ft <= CROSS_CONNECTION_FT)
+                        if (ft <= CROSS_CONNECTION_FT) {
                             out.metro.push(...(s.Lines || []));
+                            for (const line of s.Lines || []) mark("metro", line, s.Code, s.Name);
+                        }
                     }
                 }
             }
@@ -722,7 +739,7 @@
         nearbyByDefault: true,
         defaultStopId: "17091",
         storageKey: "boston",
-        defaultFavorite: {
+        defaultLike: {
             kind: "bus", id: "17091",
             name: "Boston Logan Airport Terminal A", route: "SL1",
         },

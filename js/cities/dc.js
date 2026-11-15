@@ -121,7 +121,7 @@
                     seen.add(key);
                 }
                 preds.push({
-                    min, route, dir, dirNum,
+                    min, route, routeRef: route, dir, dirNum,
                     heads: String(p.TripHeadsign || "") || dir,
                     vehicle: vehicle || null, trip: trip || null,
                     status: min === 0 ? "Arriving" : "",
@@ -212,7 +212,7 @@
             if (dest && ((metroDestCode(dest) === code) ||
                 (stName && normHeads(dest) === normHeads(stName.Name)))) continue;
             (by[code] || (by[code] = [])).push({
-                min, route: line,
+                min, route: line, routeRef: line,
                 dir: dest, heads: dest,
                 dirNum: t.Group != null ? String(t.Group) : "",
                 vehicle: null, trip: null, status,
@@ -233,11 +233,17 @@
     }
 
     async function connections(kind, id) {
-        const out = { bus: [], metro: [] };
+        const out = { bus: [], metro: [], places: {} };
+        const mark = (k, route, stopId, name) => {
+            if (route) out.places[k + ":" + String(route).toUpperCase()] = {
+                stopId: String(stopId || ""), name: name || "",
+            };
+        };
         try {
             if (kind === "metro") {
                 const st = (metroStationsCache || []).find(s => String(s.Code) === String(id));
                 out.metro = st ? (st.Lines || []).slice() : [];
+                for (const line of out.metro) mark("metro", line, id, st && st.Name);
                 if (st && st.Lat != null && st.Lon != null) {
                     let near = null;
                     if (allStopsCache) {
@@ -247,17 +253,23 @@
                         near = await fetchStopsNear(st.Lat, st.Lon,
                             CROSS_CONNECTION_FT / 3.28084).catch(() => []);
                     }
-                    for (const s of near || [])
-                        out.bus.push(...((s.Routes || []).map(r => String(r).toUpperCase())));
+                    for (const s of near || []) {
+                        const routes = (s.Routes || []).map(r => String(r).toUpperCase());
+                        out.bus.push(...routes);
+                        for (const route of routes) mark("bus", route, s.StopID, s.Name);
+                    }
                 }
             } else {
                 const st = (allStopsCache || []).find(s => String(s.StopID) === String(id));
                 out.bus = ((st && st.Routes) || []).map(r => String(r).toUpperCase());
+                for (const route of out.bus) mark("bus", route, id, st && st.Name);
                 if (st && st.Lat != null && st.Lon != null) {
                     const stations = await loadMetroStations().catch(() => []);
                     for (const s of stations) {
-                        if (distance(st.Lat, st.Lon, s.Lat, s.Lon, "f") <= CROSS_CONNECTION_FT)
+                        if (distance(st.Lat, st.Lon, s.Lat, s.Lon, "f") <= CROSS_CONNECTION_FT) {
                             out.metro.push(...(s.Lines || []));
+                            for (const line of s.Lines || []) mark("metro", line, s.Code, s.Name);
+                        }
                     }
                 }
             }
@@ -313,7 +325,7 @@
         nearbyLabel: "the Cleveland Park / 20010 corner",
         defaultStopId: "1002135",
         storageKey: "",
-        defaultFavorite: {
+        defaultLike: {
             kind: "metro", id: "N10",
             name: "Washington Dulles International Airport", route: "SV",
         },

@@ -14,24 +14,24 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 
 ## What it does
 
-- On load it shows the **Favorites** view: each saved stop/station is a **bookmark card**
+- On load it shows the **Likes** view: each saved stop/station is a **bookmark card**
   in the main panel. Defaults are N10 (Washington Dulles International Airport) for DC and
-  Boston Logan Airport Terminal A (`#17091`) for Boston. Selecting Favorites, Home, or
+  Boston Logan Airport Terminal A (`#17091`) for Boston. Selecting Likes, Home, or
   Work always shows that view; the icons are not toggles.
-- The top bar holds **Search**, **Favorites**, **Home**, **Work**, and **Airport**, with the
+- The top bar holds **Search**, **Likes**, **Home**, **Work**, and **Airport**, with the
   clock at the right showing the last data-refresh time. All icons are always enabled.
 - Home, Work, and Airport are multi-bookmark categories: each can hold several bus stops
-  and Metro stations. Adding one also adds it to favorites; removing a favorite removes
+  and Metro stations. Adding one also adds it to likes; removing a like removes
   it from Home, Work, and Airport too.
-- Bookmark cards can be dragged by their bus/train/commuter icon to reorder them. Favorites, Home,
+- Bookmark cards can be dragged by their bus/train/commuter icon to reorder them. Likes, Home,
   Work, and Airport each keep their own order per city.
 - Airports are seeded per city with a bus stop and a rail station.
-- **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Rail**, and
+- **Search** opens a dropdown with **Likes**, **Near me**, **Bus**, **Rail**, and
   **Settings**. Settings includes the **City** selector (**Washington DC**, **Boston**, or **London**),
   the **Maps app** choice (**Apple Maps** or **Google Maps**, default Google, used by the
-  hero map button and route actions), auto-refresh, and Delete all favorites.
+  hero map button and route actions), auto-refresh, and Delete all likes.
 - **Near me** lists bus stops and Metro/subway/commuter-rail stations within 1,000 ft of the current
-  location, and auto-selects Boston or Washington DC from that location. Favorites and
+  location, and auto-selects Boston or Washington DC from that location. Likes and
   Home/Work bookmarks are stored separately per city.
 - The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
   each matching route to only the matching stops.
@@ -60,8 +60,8 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 | **Next stops…** | The label at the end of the **See route** line. The current stop is not repeated; only upcoming stops are listed, each with its own star and connection chips. |
 | **See route** | The share-icon action at the top of a route expansion. It opens transit directions from the selected stop to that direction's terminal. |
 | **Selected-stop map button** | The share/arrow button in the hero card. It opens the selected stop/station in the configured Maps app. |
-| **Bookmark cards** | The cards shown in the Favorites / Home / Work / Airport views (saved locations). Class `.bookmark-card`. |
-| **Bookmark list view** | The main-panel view that replaces the board when Favorites, Home, Work, or Airport is selected. |
+| **Bookmark cards** | The cards shown in the Likes / Home / Work / Airport views (saved locations). Class `.bookmark-card`. |
+| **Bookmark list view** | The main-panel view that replaces the board when Likes, Home, Work, or Airport is selected. |
 
 ### Maps launching
 
@@ -86,7 +86,7 @@ The **Settings** section of the search dropdown selects the transport system:
 | **London** | TfL Unified API (`api.tfl.gov.uk`) | Tube, bus, Overground, DLR, Elizabeth line, tram, river bus |
 
 - The choice is stored in the `mta_city` cookie and can be forced with `?city=dc|boston|london`.
-- Favorites and Home/Work bookmarks are per city (separate storage keys), so switching
+- Likes and Home/Work bookmarks are per city (separate storage keys), so switching
   cities swaps the saved lists.
 - **Near me** uses the device location to pick the nearer city automatically before
   listing nearby stops and stations.
@@ -117,7 +117,7 @@ js/ui/icons.js         standalone SVG transit marks per city
 
 Each city registers one object with:
 
-- **config** — name, agency, center, labels, default favorite/airport stops, storage key.
+- **config** — name, agency, center, labels, default like/airport stops, storage key.
 - **provider** — `nearbyStops`, `allStops`, `departures`, `stopSchedule`, `routeDetails`,
   `metroStations`, `metroRoutes`, `metroLive`, `metroPath`, `busRouteDirectory`,
   `connections`, plus optional `place`/`tripStops`/`routeStops`/`heroStops`.
@@ -151,7 +151,7 @@ London smoke tests with stubbed feeds).
 Examples:
 
 ```
-/mta26.html                                          # Favorites view (no stop fetched)
+/mta26.html                                          # Likes view (no stop fetched)
 /mta26.html?busstop=1002135,1002130                  # just these two stops
 /mta26.html?lat=38.934&lon=-77.045&radius=500        # stops within 500 m of a point
 /mta26.html?refresh=45                               # refresh every 45 s (default: 30)
@@ -205,7 +205,7 @@ API budget on static lookups.
   stop list and per-stop connection data; later opens and reloads use the 24 h caches.
 - The stop directory is fetched lazily — when the Bus filter, a stop lookup, or **Near me**
   needs it — never on initial load.
-- Favorite and bookmark cards fetch their own next arrival when the view opens.
+- Like and bookmark cards fetch their own next arrival when the view opens.
 
 ### API call strategy
 
@@ -260,7 +260,7 @@ the provider adds `app_key` when one is configured.
 | `GET https://api.tfl.gov.uk/Line/Mode/bus` | Bus route directory |
 
 - **Developer portal / docs:** <https://api.tfl.gov.uk> (register for an `app_key`).
-- `?city=london` forces the city; the default favorite is Oxford Circus.
+- `?city=london` forces the city; the default like is Oxford Circus.
 - A User-Agent header is sent because TfL's edge rejects some default client strings.
 - TfL's whole-mode stop dumps are tens of MB, so London does **not** preload a bus
   directory. The route picker requests one line's stops on demand
@@ -269,6 +269,11 @@ the provider adds `app_key` when one is configured.
 - TfL returns Tube branches as separate route-sequence segments. London builds a small
   stop graph and stitches them, so "Next stops…" works across Heathrow/Uxbridge
   branches instead of stopping at the Acton Town junction.
+- The Bus filter also accepts stop names. London queries `/StopPoint/Search` and
+  batch-fetches the matching stop details, so a stop-name query shows the routes and
+  the matching stops; route expansion is fetched per line on demand.
+- Connection chips are buttons. A click navigates to that connection's stop/station
+  (switching bus/metro mode when needed) and highlights the matching row on the board.
 
 ### MBTA (Boston)
 

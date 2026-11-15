@@ -138,6 +138,7 @@ async function settle(board) {
   const bBoard = await settle(() => boston.els.linesScroll.innerHTML);
   const bHeader = boston.els.boardHeader.innerHTML;
   const bAll = bHeader + bBoard;
+  if (process.env.DEBUG) console.log("BHEADER>>>", bHeader);
   check(bres, "boston: hero painted", bHeader.length > 0);
   check(bres, "boston: header names the SL1", bAll.includes("SL1"));
   check(bres, "boston: destination from MBTA headsign", bAll.includes("Logan Airport"));
@@ -166,7 +167,11 @@ async function settle(board) {
       return ok({
         naptanId: "940GZZLUOXC", commonName: "Oxford Circus Underground Station",
         lat: 51.515, lon: -0.141,
-        lines: [{ id: "victoria", name: "Victoria", modes: ["tube"] }],
+        modes: ["tube", "bus"],
+        lines: [
+          { id: "victoria", name: "Victoria", modes: ["tube"] },
+          { id: "38", name: "38" },
+        ],
       });
     }
     if (p === "/Line/victoria/Route/Sequence/all") {
@@ -184,10 +189,12 @@ async function settle(board) {
   });
 
   const lres = result();
+  const londonRec = lres;
   await london.sandbox.unlockAccess("bus");
   const lBoard = await settle(() => london.els.linesScroll.innerHTML);
   const lHeader = london.els.boardHeader.innerHTML;
   const lAll = lHeader + lBoard;
+  if (process.env.DEBUG) console.log("LHEADER>>>", lHeader);
   check(lres, "london: hero painted", lHeader.length > 0);
   check(lres, "london: header names the Victoria line", lAll.includes("Victoria"));
   check(lres, "london: destination from TfL", lAll.includes("Brixton"));
@@ -197,6 +204,12 @@ async function settle(board) {
     londonCalls.every(u => !u.includes("api.wmata.com") && !u.includes("api-v3.mbta.com")));
   check(lres, "london: registered app_key is used",
     londonCalls.some(u => u.includes("app_key=")));
+  const londonConns = await london.sandbox.MTA.cities.london.provider.connections("bus", "940GZZLUOXC");
+  const connHtml = london.sandbox.connectionBadgesHtml(londonConns, "bus", "Victoria");
+  check(londonRec, "london: bus connection badge is clickable",
+    /<button[^>]*class="[^"]*conn-badge/.test(connHtml));
+  check(londonRec, "london: bus connection badge is red",
+    /data-conn-route="38"[^>]*background:#DC241F/.test(connHtml));
   const heroStops = await london.sandbox.loadHeroRouteStops({ dataset: {
     heroKind: "metro", heroAnchor: "940GZZLUOXC",
     heroTo: "940GZZLUGPK", heroRoute: "victoria",

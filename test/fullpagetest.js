@@ -147,7 +147,7 @@ const board = () => els.linesScroll.innerHTML;
   check("header: canonical directory name", h.includes("Park Rd NW and 19 St NW"));
   check("header: Next bus icon", h.includes('aria-label="Bus"'));
   check("header: 'Selected boarding stop' removed", !h.includes("Selected boarding stop"));
-  check("header: home/work/favorite shortcut icons",
+  check("header: home/work/like shortcut icons",
     h.includes('data-shortcut="home"') && h.includes('data-shortcut="work"') && h.includes('data-shortcut="fav"'));
   check("header: no stop-count line", !/^\d+ stops?/.test(els.statusmessage.textContent));
 

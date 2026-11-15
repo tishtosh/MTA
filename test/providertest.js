@@ -140,6 +140,36 @@ responses.push({
   check("london: branch segments stitch into one path",
     branch.length === 4 && branch[0].StationCode === "A" && branch[3].StationCode === "D");
 
+  // ── London: connection classification + place metadata ──────────
+  responses.push({
+    match: u => u.includes("/StopPoint/490000173RC"),
+    body: {
+      naptanId: "490000173RC", commonName: "Oxford Circus Station",
+      modes: ["bus"],
+      lines: [{ id: "12", name: "12" }, { id: "n15", name: "N15" }],
+    },
+  });
+  const busStopConn = await lon.connections("bus", "490000173RC");
+  check("london: bus stop lines classify as bus",
+    busStopConn.bus.includes("12") && busStopConn.bus.includes("N15") &&
+    busStopConn.metro.length === 0);
+  check("london: bus connection carries its stop",
+    busStopConn.places["bus:12"] && busStopConn.places["bus:12"].stopId === "490000173RC");
+
+  responses.push({
+    match: u => u.includes("/StopPoint/910GHTRWAPT"),
+    body: {
+      naptanId: "910GHTRWAPT", commonName: "Heathrow Terminals 2 & 3 Rail Station",
+      modes: ["elizabeth-line"],
+      lines: [{ id: "elizabeth", name: "Elizabeth line" }, { id: "105", name: "105" }],
+    },
+  });
+  const railConn = await lon.connections("metro", "910GHTRWAPT");
+  check("london: rail station keeps the line, not the bus",
+    railConn.metro.includes("elizabeth") && railConn.bus.includes("105"));
+  check("london: rail connection carries its station",
+    railConn.places["metro:ELIZABETH"].stopId === "910GHTRWAPT");
+
   // ── Theme + icons ────────────────────────────────────────────────
   check("london: Victoria line color", cities.london.theme.metroColor("victoria") === "#0098D4");
   check("london: bus badge is TfL red", cities.london.theme.routeColor("38") === "#DC241F");

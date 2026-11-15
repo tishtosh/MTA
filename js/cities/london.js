@@ -84,6 +84,44 @@
 
     const routeStopCache = new Map();
 
+    // Bus stop-name search: TfL's search returns stop ids without routes, so
+    // batch-fetch the stop details and group their bus routes.
+    async function busRoutesForQuery(query) {
+        const q = String(query || "").trim();
+        const byRoute = new Map();
+        if (q.length < 3) return byRoute;
+        const { data, error } = await tflGet(
+            `/StopPoint/Search/${encodeURIComponent(q)}`, { modes: "bus" });
+        if (error) return byRoute;
+        const matches = (data && data.matches) || [];
+        const ids = matches.slice(0, 12).map(m => m.id).filter(Boolean);
+        if (!ids.length) return byRoute;
+        const { data: details } = await tflGet(
+            `/StopPoint/${ids.map(encodeURIComponent).join(",")}`);
+        const stops = Array.isArray(details) ? details : (details ? [details] : []);
+        for (const s of stops) {
+            const stopModes = new Set((s.modes || []).map(m => String(m).toLowerCase()));
+            const stop = {
+                StopID: String(s.naptanId || s.id || ""),
+                Name: s.commonName || s.name || "",
+                Lat: Number(s.lat), Lon: Number(s.lon), Routes: [],
+            };
+            if (!stop.StopID) continue;
+            for (const l of (s.lines || [])) {
+                if (!isBusLine(l, stopModes)) continue;
+                const route = String(l.name || l.id).toUpperCase();
+                if (!route) continue;
+                if (!byRoute.has(route)) byRoute.set(route, []);
+                const list = byRoute.get(route);
+                if (!list.some(x => x.StopID === stop.StopID)) {
+                    stop.Routes = [route];
+                    list.push({ ...stop, Routes: [route] });
+                }
+            }
+        }
+        return byRoute;
+    }
+
     async function stopsForRoute(routeId) {
         const key = String(routeId || "");
         if (!key) return [];
@@ -339,16 +377,41 @@
         };
     }
 
+    // /StopPoint/{id} often returns bus lines without a `modes` array, so
+    // classify by the stop's own modes, the known rail line ids, and the
+    // numeric/alphanumeric shape of a London bus route.
+    function isBusLine(line, stopModes) {
+        const modes = (line.modes || []).map(m => String(m).toLowerCase());
+        if (modes.includes("bus")) return true;
+        if (modes.some(m => RAIL_MODES.has(m))) return false;
+        const id = String(line.id || "").toLowerCase();
+        if (LINE_COLORS[id]) return false;
+        const busShape = /^[a-z]{0,3}\d+[a-z]?$/i;
+        if (busShape.test(id) || busShape.test(String(line.name || ""))) return true;
+        return stopModes.has("bus") && ![...RAIL_MODES].some(m => stopModes.has(m));
+    }
+
     async function connections(kind, id) {
-        const out = { bus: [], metro: [] };
+        const out = { bus: [], metro: [], places: {} };
         const { data } = await tflGet(`/StopPoint/${encodeURIComponent(id)}`)
             .catch(() => ({ data: null }));
         if (!data) return out;
         const s = Array.isArray(data) ? data[0] : data;
+        const stopModes = new Set((s.modes || []).map(m => String(m).toLowerCase()));
+        const where = { stopId: String(id), name: s.commonName || s.name || "" };
+        const mark = (k, route) => {
+            if (route) out.places[k + ":" + String(route).toUpperCase()] = where;
+        };
         for (const l of (s.lines || [])) {
-            const modes = (l.modes || []).map(String);
-            if (modes.includes("bus")) out.bus.push(String(l.name || l.id).toUpperCase());
-            else out.metro.push(String(l.id || l.name));
+            if (isBusLine(l, stopModes)) {
+                const route = String(l.name || l.id).toUpperCase();
+                out.bus.push(route);
+                mark("bus", route);
+            } else {
+                const line = String(l.id || l.name);
+                out.metro.push(line);
+                mark("metro", line);
+            }
         }
         // TfL does not attach bus routes to rail stations in every response:
         // fall back to the arrival feed's line names.
@@ -356,7 +419,11 @@
             const { data: arrivals } = await tflGet(
                 `/StopPoint/${encodeURIComponent(id)}/Arrivals`).catch(() => ({ data: null }));
             for (const a of (arrivals || []))
-                if (String(a.modeName) === "bus") out.bus.push(String(a.lineName || "").toUpperCase());
+                if (String(a.modeName) === "bus") {
+                    const route = String(a.lineName || "").toUpperCase();
+                    out.bus.push(route);
+                    mark("bus", route);
+                }
         }
         out.bus = [...new Set(out.bus)].slice(0, 6);
         out.metro = [...new Set(out.metro)].slice(0, 6);
@@ -391,7 +458,7 @@
         defaultStopId: "940GZZLUOXC",
         storageKey: "london",
         keyOptional: true,
-        defaultFavorite: {
+        defaultLike: {
             kind: "metro", id: "940GZZLUOXC",
             name: "Oxford Circus Underground Station", route: "victoria",
         },
@@ -413,10 +480,11 @@
             metroGtfs: false,
             vehicles: false,
             routeStopsOnDemand: true,
+            stopSearch: true,
         },
         provider: {
             http: tflGet,
-            nearbyStops, allStops, stopsForRoute, departures, stopSchedule, routeDetails,
+            nearbyStops, allStops, stopsForRoute, busRoutesForQuery, departures, stopSchedule, routeDetails,
             metroStations, metroRoutes, metroLive, metroPath,
             busRouteDirectory, place, connections, connectionsReady: () => true,
         },
