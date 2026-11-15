@@ -45,6 +45,9 @@
   .v-a .eta-soon { font-size: 20px; font-weight: 700; color: var(--accent); }
   .v-a .is-imminent {
     background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
+    background-repeat: no-repeat;
+    background-position: 16px 0;
+    background-size: calc(100% - 16px) 100%;
     box-shadow: inset 3px 0 0 var(--accent);
   }
 
@@ -89,11 +92,13 @@
   .hero-card .next { margin-top: 2px; }
   .hero-card .badge.mini { min-width: 0; padding: 0 6px; font-size: 12px; display: inline-block; }
   .hero-card.is-imminent .next {
-    position: relative; margin-left: -16px; padding-left: 16px;
+    position: relative;
     background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
   }
   .hero-card.is-imminent .next::before {
-    content: ""; position: absolute; top: 0; bottom: 0; left: 0;
+    content: ""; position: absolute; top: 0; bottom: 0; left: -16px;
     width: 3px; background: #2e7d32; border-radius: 0 2px 2px 0;
   }
 
@@ -101,6 +106,9 @@
   .v-consist .board-row { background: transparent; border-top: 1px solid #dee2e6; }
   .v-consist .board-row.is-imminent {
     background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
+    background-repeat: no-repeat;
+    background-position: 16px 0;
+    background-size: calc(100% - 16px) 100%;
     box-shadow: inset 3px 0 0 #2e7d32;
   }
 
@@ -183,6 +191,13 @@
         <span class="row-badge-wrap"><span class="badge" style="--route:#0019A8;color:#fff;">Piccadilly</span></span>
         <span class="board-etas"><span class="eta">4 min</span></span>
         <span class="board-dest">Cockfosters</span>
+      </div>
+    </div>
+    <div class="board-row" style="background:transparent;">
+      <div class="board-head">
+        <span class="row-badge-wrap"><span class="badge" style="--route:#80276C;color:#fff;">Framingham / Worcester</span></span>
+        <span class="board-etas"><span class="eta">7 min</span></span>
+        <span class="board-dest">South Station</span>
       </div>
     </div>
   </div>

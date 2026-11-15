@@ -47,7 +47,7 @@ let src = [names.map(constBlock).join("\n"),
   extractFn("boardRowHead"), extractFn("boardHtml"),
   extractFn("busBadgeClass"), extractFn("busTextColor"), extractFn("badgeTextColor"),
   extractFn("statusReplacesDue"), extractFn("isImminentMin"),
-  extractFn("isImminentRow"),
+  extractFn("isImminentRow"), extractFn("lineDisplayName"),
   extractFn("etaToken"), extractFn("statusChipHtml")].join("\n");
 // const/let bindings stay in the script's lexical scope, not on ctx — expose
 // the two piece-11 ones so the tests can poke them.
@@ -199,6 +199,10 @@ t("A3b no prediction + schedule → time + not seen", (() => {
     ctx.badgeTextColor("#F589A6") === "#111" &&
     ctx.badgeTextColor("#DC241F") === "#fff" &&
     ctx.badgeTextColor("#0019A8") === "#fff");
+  t("G3 slash in a line name gets air around it",
+    ctx.lineDisplayName("Framingham/Worcester") === "Framingham / Worcester" &&
+    ctx.lineDisplayName("Framingham / Worcester") === "Framingham / Worcester" &&
+    ctx.lineDisplayName("Hammersmith & City") === "Hammersmith & City");
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

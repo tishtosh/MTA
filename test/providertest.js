@@ -98,12 +98,34 @@ responses.push({
       direction: "inbound", destinationName: "Brixton",
       expectedArrival: new Date(now + 3 * 60000).toISOString(),
       timeToStation: 180, vehicleId: "v1", stationName: "Oxford Circus",
+    }, {
+      // Destination is a different station: kept.
+      lineId: "central", lineName: "Central", modeName: "tube",
+      direction: "outbound", destinationName: "Epping",
+      destinationNaptanId: "940GZZLUEPG",
+      expectedArrival: new Date(now + 6 * 60000).toISOString(),
+      timeToStation: 360, vehicleId: "v3", stationName: "Oxford Circus",
+    }, {
+      // Terminates at Oxford Circus: nobody boards it, so the board must not
+      // show it (this is the London bug the other providers already avoid).
+      lineId: "piccadilly", lineName: "Piccadilly", modeName: "tube",
+      direction: "inbound", destinationName: "Oxford Circus",
+      destinationNaptanId: "940GZZLUOXC",
+      expectedArrival: new Date(now + 2 * 60000).toISOString(),
+      timeToStation: 120, vehicleId: "v2", stationName: "Oxford Circus",
     }],
   });
   const lon = cities.london.provider;
   const ldep = await lon.departures(["940GZZLUOXC"]);
   const lrow = (ldep.get("940GZZLUOXC") || {}).predictions || [];
-  check("london: arrivals normalized to Victoria", lrow.length === 1 && lrow[0].route === "Victoria");
+  check("london: arrivals normalized to Victoria",
+    lrow.some(p => p.route === "Victoria") && lrow.length === 2);
+  check("london: terminating arrival (destination = this station) dropped",
+    lrow.every(p => p.heads !== "Oxford Circus"));
+  const lrail = await lon.metroLive(["940GZZLUOXC"]);
+  const lrailRows = lrail["940GZZLUOXC"] || [];
+  check("london rail: terminating arrival dropped from the Metro feed too",
+    lrailRows.length === 3 && lrailRows.every(p => p.heads !== "Oxford Circus"));
   check("london: absolute ETA + headsign", lrow[0] && lrow[0].at > now && lrow[0].heads === "Brixton");
   check("london: app_key omitted when no key", calls.every(u => !u.includes("app_key=")));
 

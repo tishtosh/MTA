@@ -29,6 +29,7 @@ vm.runInContext([
   extractFn("metroMin"),
   extractFn("metroHeadsMatch"),
   extractFn("metroDestCode"),
+  extractFn("lineDisplayName"),
   extractFn("metroLineName"),
   extractFn("sortRowsBySoonest"),
   extractFn("metroRowsFor"),

@@ -174,7 +174,16 @@
         return stops;
     }
 
-    function toPrediction(a) {
+    // A service whose published destination is the station it is arriving at
+    // is terminating there: nobody boards it, so it is not an arrival for this
+    // board. TfL names that station in destinationNaptanId.
+    function terminatesHere(a, stopId) {
+        if (!stopId || a.destinationNaptanId == null) return false;
+        return String(a.destinationNaptanId) === String(stopId);
+    }
+
+    function toPrediction(a, stopId) {
+        if (terminatesHere(a, stopId)) return null;
         const at = parseTflTime(a.expectedArrival)
             || parseTflTime(a.timestamp) + Number(a.timeToStation || 0) * 1000;
         if (!Number.isFinite(at)) return null;
@@ -209,7 +218,7 @@
             const seen = new Set();
             const preds = [];
             for (const a of (data || [])) {
-                const row = toPrediction(a);
+                const row = toPrediction(a, id);
                 if (!row) continue;
                 const key = row.routeRef + "|" + (row.vehicle || row.at);
                 if (seen.has(key)) continue;
@@ -340,7 +349,7 @@
             if (error) return;
             out[code] = (data || [])
                 .filter(a => RAIL_MODES.has(String(a.modeName || "")))
-                .map(toPrediction)
+                .map(a => toPrediction(a, code))
                 .filter(Boolean)
                 .sort((a, b) => a.min - b.min);
         }));
