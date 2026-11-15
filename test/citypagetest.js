@@ -347,6 +347,15 @@ async function settle(board) {
     nyc.els.favCommuterHeader.hidden === false);
   check(nres, "nyc: commuter lines are named rectangles",
     /route-bullet[^"]*\brect\b/.test(nCommuter) && nCommuter.includes("Babylon"));
+  const rb1 = nyc.sandbox.themedBullet("Danbury", "MNR:5", "#EE0034", { size: "sm" });
+  const rb2 = nyc.sandbox.themedBullet("New Canaan", "MNR:4", "#EE0034", { size: "sm" });
+  const rb3 = nyc.sandbox.themedBullet("City Terminal Zone", "LIRR:12", "#4D5357", { size: "sm" });
+  check(nres, "nyc: commuter rectangles snap to three standard widths",
+    /\brect\b[^"]*\bw1\b/.test(rb1) && /\brect\b[^"]*\bw2\b/.test(rb2) &&
+    /\brect\b[^"]*\bw3\b/.test(rb3));
+  check(nres, "nyc: the same line uses the same width everywhere",
+    rb1.includes("w1") &&
+    nyc.sandbox.themedBullet("Danbury", "MNR:5", "#EE0034", {}).includes("w1"));
   check(nres, "nyc: default favorites are LGA and JFK",
     nycCards.includes("LGA/Terminal B") && nycCards.includes("Howard Beach-JFK Airport"));
   nyc.sandbox.setCity("dc");

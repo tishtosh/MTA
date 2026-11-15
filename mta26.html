@@ -538,21 +538,27 @@
         .route-bullet.diamond { border-radius: 4px; transform: rotate(45deg); }
         .route-bullet.diamond > span { transform: rotate(-45deg); }
         /* Commuter services (NYC LIRR/Metro-North) are rectangles carrying the
-           line name, not numbered bullets. */
+           line name, not numbered bullets. Widths snap to three standard sizes
+           so the badge is the same everywhere the line appears. */
         .route-bullet.rect {
-            width: auto; min-width: 28px; max-width: 132px;
+            box-sizing: border-box;
+            width: 128px; min-width: 0; max-width: none;
             height: auto; min-height: 24px; padding: 2px 6px;
             border-radius: 4px; font-size: 10px; line-height: 1.15;
             white-space: normal; text-wrap: balance;
         }
         .route-bullet.rect.sm {
-            width: auto; height: auto; min-height: 20px; min-width: 22px;
+            height: auto; min-height: 20px;
             padding: 1px 5px; font-size: 9px;
         }
         .route-bullet.rect.lg {
-            width: auto; height: auto; min-height: 30px; padding: 3px 8px;
+            height: auto; min-height: 30px; padding: 3px 8px;
             font-size: 12px;
         }
+        /* Three width tiers by label length; declared last so they win. */
+        .route-bullet.rect.w1 { width: 72px; }
+        .route-bullet.rect.w2 { width: 100px; }
+        .route-bullet.rect.w3 { width: 128px; }
         .route-bullet.departed {
             background: transparent; border: 2px solid var(--bullet-color);
             color: var(--bullet-color);
@@ -6084,7 +6090,12 @@ function routeBulletHtml(label, color, textColor, opts) {
     const size = o.size ? " " + o.size : "";
     const wide = String(label || "").length > 2 ? " wide" : "";
     const departed = o.departed ? " departed" : "";
-    return `<span class="route-bullet${size} ${shape}${wide}${departed}"`
+    // Named commuter rectangles snap to three standard widths (72/100/128px)
+    // so the same line looks identical in the board, hero, chips and settings.
+    const text = String(label || "");
+    const width = shape !== "rect" ? ""
+        : text.length <= 8 ? " w1" : text.length <= 13 ? " w2" : " w3";
+    return `<span class="route-bullet${size} ${shape}${width}${wide}${departed}"`
         + ` style="--bullet-color:${color};--bullet-text:${textColor || "#fff"}">`
         + `<span>${esc(label)}</span></span>`;
 }
