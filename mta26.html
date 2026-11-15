@@ -871,9 +871,9 @@
 //    password via PBKDF2-SHA-256 (salt and IV are stored with the ciphertext).
 const KEY_BLOB = "5iUncaMBYE7uFbNF/sa4No2ZSSmC3OhN6cevnbrGAfnFyGRzaRvlN14ZCuRDjJxTz0OT+EGRuXJbjkp+m8ACl5Qkq6tF2EnR3MBw0g==";
 const MBTA_KEY_BLOB = "+SZJ27k1QG5H2Hm9P2oAyrXAAopq/FaRuF6qsbcJ0gaqAL7PxSW4c+61/NLmO4ZUPFqB3zmUWrrZEAWIOb8hO2b0NIRPhWyImGunRw==";
-// TfL works keyless at low volume. When the key arrives, paste its
-// encrypted blob here (or set TFL_KEY in the console for a session).
-const TFL_KEY_BLOB = "";
+// TfL works keyless at low volume. The registered key is stored encrypted
+// like the WMATA/MBTA keys; set TFL_KEY in the console to rotate for a session.
+const TFL_KEY_BLOB = "oUVtJV5AGTpcTzYwbT8+oJDi9S+kTKE+y96pOpVj0Y15cQnuxtOREI57Yx1LmReNnNCbsYMtBxTH7btTitjqP9l41O6DW06HhfBtHQ==";
 const PBKDF2_ITERATIONS = 210000;
 let API_KEY = "";
 let MBTA_KEY = "";

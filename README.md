@@ -94,9 +94,9 @@ The **Settings** section of the search dropdown selects the transport system:
   `Green-B`, …); DC uses WMATA stop/station codes; London uses NaPTAN IDs
   (`940GZZLUOXC` for Tube stations, `490…` for bus stops) and TfL line IDs
   (`victoria`, `elizabeth`, `overground`, …).
-- London is **keyless for low-volume development** (about 50 requests/minute). When the
-  key arrives, put its encrypted blob in `TFL_KEY_BLOB` in `mta26.html`; the provider
-  appends `app_key` automatically. A registered key raises the limit to 500 requests/minute.
+- London uses a registered TfL key (500 requests/minute) stored encrypted in
+  `TFL_KEY_BLOB` in `mta26.html`; the provider appends `app_key` automatically. If the
+  blob is cleared, the keyless 50 requests/minute limit still applies.
 - Nearby stop cards show stops/stations within **1,000 ft**, nearest first. Bus hero
   stripes use the route color (MBTA route color in Boston, TfL red in London, the app
   palette in DC) sliced at 45° into medium grey.

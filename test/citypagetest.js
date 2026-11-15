@@ -195,6 +195,8 @@ async function settle(board) {
     lAll.includes("<circle") && !lAll.includes("fa-train-subway"));
   check(lres, "london: no WMATA/MBTA calls",
     londonCalls.every(u => !u.includes("api.wmata.com") && !u.includes("api-v3.mbta.com")));
+  check(lres, "london: registered app_key is used",
+    londonCalls.some(u => u.includes("app_key=")));
 
   const pass = bres.pass + lres.pass;
   const fail = bres.fail + lres.fail;
