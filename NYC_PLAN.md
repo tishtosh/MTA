@@ -152,7 +152,7 @@ MTA.registerCity({
     place, connections, connectionsReady: () => true, resetCaches,
   },
   theme: { icons: "nyc", cssVars: { … }, routeColor, routeTextColor: () => "#fff",
-           badgeClass: () => "", bandStyle: "solid",
+           badgeClass: () => "",
            metroColor, metroName, isCommuter },
 });
 ```

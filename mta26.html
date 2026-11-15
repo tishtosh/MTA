@@ -229,6 +229,8 @@
         }
         .bookmark-title-line .nearby-mode-icon.bookmark-drag:hover { filter: brightness(.85); }
         .bookmark-title-line .nearby-mode-icon.bookmark-drag:active { cursor: grabbing; }
+        /* Bookmark titles use the same 1.3rem name, so their icon matches. */
+        .bookmark-title-line .nearby-mode-icon { font-size: 1.3rem; }
         .bookmark-card.dragging { opacity: .55; }
         .bookmark-card .board-shortcuts { top: 8px; right: 10px; }
         .bookmark-card .fav-star {
@@ -615,8 +617,10 @@
         .hero-card.hero-metro { background: var(--hero-metro-bg, #ece1cd); color: var(--hero-metro-color, #46301a); }
         .hero-title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .hero-mode-icon { flex: none; display: inline-flex; align-items: center; }
-        .hero-mode-icon i { font-size: 17px; }
-        .hero-mode-icon .mode-svg { width: 17px; height: 17px; display: inline-block; }
+        /* Match the location name's 1.3rem so the bus/train mark sits at the
+           same height as the station title. */
+        .hero-mode-icon i { font-size: 1.3rem; }
+        .hero-mode-icon .mode-svg { width: 1.3rem; height: 1.3rem; display: inline-block; }
         .hero-mode-icon.commuter-rail-icon {
             width: 21px; height: 21px; box-sizing: border-box;
             justify-content: center; border: 1.5px solid currentColor;
@@ -627,16 +631,13 @@
             position: absolute; top: 0; left: 0; right: 0; height: 7px;
             border-radius: 10px 10px 0 0; pointer-events: none;
             overflow: hidden;
+            /* DC's 45° slice for every city and every card (hero and nearby):
+               the colour covers the left two thirds and the right third is cut
+               away, so the card's own background shows instead of a grey
+               block. 7px across the 7px band height is exactly 45°. */
+            clip-path: polygon(0 0, calc(66.666% + 7px) 0, 66.666% 100%, 0 100%);
         }
-        /* Bus hero strip: red on the left 2/3, medium grey on the right,
-           with a 45° transition (the 7 px band height is the offset). */
         .hero-line-band.bus-band { background: var(--bus-band-color, #c62828); }
-        .hero-line-band.bus-band.band-solid::after { display: none; }
-        .hero-line-band.bus-band::after {
-            content: ""; position: absolute; top: 0; right: 0; bottom: 0;
-            left: 66.666%; background: #9e9e9e;
-            clip-path: polygon(7px 0, 100% 0, 100% 100%, 0 100%);
-        }
         .hero-card.hero-bus .board-stopid,
         .hero-card.hero-metro .board-stopid { color: #85706a; }
         .hero-card.hero-bus .bt-next-rest,
@@ -2744,6 +2745,14 @@ function boardEtasHtml(mins, scheduled, departedAt, status) {
 const expandedStops = new Set();
 const rowKey = (r) => `${r.route}\u0000${String(r.dirNum ?? "")}\u0000${r.dest || ""}${r.departed ? "\u0000departed" : ""}`;
 
+// Capability lookup that tolerates the single-function test sandboxes, which
+// extract a few functions without the full city config.
+function cityCapability(name) {
+    const cfg = typeof cityCfg === "function" ? cityCfg() : null;
+    const caps = cfg && cfg.capabilities;
+    return caps ? caps[name] : undefined;
+}
+
 // One row's header, laid out in three columns: the route badge (left), the
 // arrival times (middle, wrapping within their column) and the final stop
 // (right, wrapping too). Track rows also carry the stop-list chevron on the
@@ -2757,7 +2766,8 @@ function boardRowHead(row, color, g, k, scheduled) {
     const hasMbtaTrip = typeof cityProvider().tripStops === "function" &&
         !row.metro && row.rep && row.rep.trip;
     const hasList = (g && g.hasTrack && (g.stops || []).length >= 2) ||
-        (row.metro && row.toCode) || hasMbtaTrip;
+        (row.metro && row.toCode && cityCapability("railPath") !== false) ||
+        hasMbtaTrip;
     const chevron = hasList
         ? ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>`
         : "";
@@ -3433,7 +3443,7 @@ function renderMetro() {
     const rowsHtml = (rows) => rows.map(r => {
         const key = rowKey(r);
         const open = expandedStops.has(key);
-        const list = r.metro && r.toCode
+        const list = r.metro && r.toCode && cityCapability("railPath") !== false
             ? `<ul class="bt-stoplist"${open ? "" : " hidden"}`
               + ` data-metro-from="${esc(r.fromCode || "")}" data-metro-to="${esc(r.toCode)}"`
               + ` data-line="${esc(r.routeRef || r.route || "")}">`
@@ -5747,8 +5757,9 @@ function busBandAttr(route) {
 }
 
 function busBandClass() {
-    const theme = typeof cityTheme === "function" ? cityTheme() : null;
-    return theme && theme.bandStyle === "solid" ? " band-solid" : "";
+    // Every city now uses the DC 45° slice, so the hook stays empty; kept so
+    // the band markup does not need a theme branch.
+    return "";
 }
 
 // Text colour for a filled route/line rectangle. WCAG relative luminance with
@@ -6123,7 +6134,12 @@ function heroCardHtml(st, arrivals) {
             : (a) => `${a.route}|${a.dirNum || a.heads || a.dir || ""}`;
         const mins = list.filter(a => svc(a) === svc(next)).map(a => a.min);
         const badgeCls = `row-badge${st.Metro ? " metro-line" : busBadgeClass()}`;
-        const routeBadge = `<button type="button" class="${badgeCls} hero-route-toggle"`
+        const badgeStyle = `background:${badgeColor(nextRef)};color:${badgeTextColor(badgeColor(nextRef))}`;
+        // Only a city with rail patterns can expand "Next stops…"; NYC phase 0
+        // has none, so its badge is plain text (no chevron, no empty panel).
+        const canExpand = cityCapability("railPath") !== false;
+        const routeBadge = canExpand
+            ? `<button type="button" class="${badgeCls} hero-route-toggle"`
             + ` aria-expanded="false" title="Show stops on this route"`
             + ` data-hero-kind="${st.Metro ? "metro" : "bus"}"`
             + ` data-hero-route="${esc(nextRef)}"`
@@ -6132,9 +6148,10 @@ function heroCardHtml(st, arrivals) {
             + ` data-hero-dir="${esc(next.dirNum == null ? "" : next.dirNum)}"`
             + ` data-hero-anchor="${esc(id)}"`
             + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir, nextRef) : "")}"`
-            + ` style="background:${badgeColor(nextRef)};color:${badgeTextColor(badgeColor(nextRef))}">`
+            + ` style="${badgeStyle}">`
             + `${esc(badgeLabel(nextRef))}`
-            + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`;
+            + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
+            : `<span class="${badgeCls}" style="${badgeStyle}">${esc(badgeLabel(nextRef))}</span>`;
         const destHtml = next.heads || next.dir
             ? `<span class="board-dest">${esc(next.heads || next.dir)}</span>` : "";
         const heroStatus = next.min <= 1

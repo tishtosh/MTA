@@ -46,8 +46,9 @@ let src = [names.map(constBlock).join("\n"),
   extractFn("noteSelectionChange"),
   extractFn("boardRowHead"), extractFn("boardHtml"),
   extractFn("busBadgeClass"), extractFn("busTextColor"), extractFn("badgeTextColor"),
+  extractFn("cityCapability"),
   extractFn("statusReplacesDue"), extractFn("isImminentMin"),
-  extractFn("isImminentRow"), extractFn("lineDisplayName"),
+  extractFn("isImminentRow"), extractFn("lineDisplayName"), extractFn("metroLineName"),
   extractFn("etaToken"), extractFn("statusChipHtml")].join("\n");
 // const/let bindings stay in the script's lexical scope, not on ctx — expose
 // the two piece-11 ones so the tests can poke them.
@@ -203,6 +204,16 @@ t("A3b no prediction + schedule → time + not seen", (() => {
     ctx.lineDisplayName("Framingham/Worcester") === "Framingham / Worcester" &&
     ctx.lineDisplayName("Framingham / Worcester") === "Framingham / Worcester" &&
     ctx.lineDisplayName("Hammersmith & City") === "Hammersmith & City");
+  // A city with no rail patterns (NYC phase 0) must not offer "Next stops…".
+  ctx.cityCfg = () => ({ capabilities: { railPath: false } });
+  const metroHead = ctx.boardRowHead({
+    kind: "compact", metro: true, route: "A", routeRef: "A",
+    dest: "Far Rockaway", mins: [4], toCode: "H04", fromCode: "H03",
+  }, "#0062CF", null, "metro-key", null);
+  t("G4 no route-expansion affordance without rail patterns",
+    !/bt-allstops/.test(metroHead) && !/bt-chevron/.test(metroHead) &&
+    /row-badge/.test(metroHead));
+  delete ctx.cityCfg;
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

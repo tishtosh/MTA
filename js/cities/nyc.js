@@ -290,7 +290,6 @@
             routeColor: () => "#0039a6",
             routeTextColor: () => "#fff",
             badgeClass: () => "",
-            bandStyle: "solid",
             metroColor,
             metroName: lineName,
             isCommuter,

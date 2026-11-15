@@ -541,7 +541,6 @@
             routeColor,
             routeTextColor: () => "#fff",
             badgeClass: () => " london-bus",
-            bandStyle: "solid",
             metroColor,
             metroName: themeName,
             isCommuter: () => false,

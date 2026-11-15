@@ -59,7 +59,7 @@ vm.runInContext(
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),
    extractFn("modeMark"), extractFn("modeIconHtml"), extractFn("heroVerbHtml"), extractFn("heroModeIcon"), extractFn("statusChipHtml"), extractFn("statusReplacesDue"), extractFn("etaToken"), extractFn("predictionRank"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
-   extractFn("busTextColor"), extractFn("badgeTextColor"), extractFn("isImminentMin"), extractFn("heroCardHtml")].join("\n")
+   extractFn("busTextColor"), extractFn("badgeTextColor"), extractFn("cityCapability"), extractFn("isImminentMin"), extractFn("heroCardHtml")].join("\n")
    + "\nglobalThis.__stopScheduleCache = stopScheduleCache;"
    + "\nglobalThis.__shortcuts = shortcuts;",
   sandbox);

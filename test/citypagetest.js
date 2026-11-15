@@ -262,6 +262,9 @@ async function settle(board) {
   check(nres, "nyc: headsign is the terminus name",
     nAll.includes("Van Cortlandt Park-242 St"));
   check(nres, "nyc: route bullet 1 rendered", nAll.includes(">1<"));
+  check(nres, "nyc: no route-expansion affordance without patterns",
+    !nAll.includes("hero-route-toggle") && !nAll.includes("bt-chevron") &&
+    !nAll.includes("See route") && !nAll.includes("bt-stoplist"));
   check(nres, "nyc: subway feed requested, no bus/other cities",
     nycCalls.some(u => u.includes("nyct%2Fgtfs")) &&
     nycCalls.every(u => !u.includes("api.wmata.com") &&
