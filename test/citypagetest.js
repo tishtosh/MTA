@@ -149,7 +149,7 @@ async function settle(board) {
   check(bres, "boston: header names the SL1", bAll.includes("SL1"));
   check(bres, "boston: destination from MBTA headsign", bAll.includes("Logan Airport"));
   check(bres, "boston: standalone SVG mode mark", bAll.includes("<svg"));
-  check(bres, "boston: city mark in the top bar", boston.els.cityMark.innerHTML.includes(">T<"));
+  check(bres, "boston: city mark in the top bar", boston.els.cityMark.innerHTML.includes("img/MBTA.svg"));
   check(bres, "boston: commuter band is a railcar strip",
     boston.sandbox.lineBandClass("CR-Framingham") === " railcar" &&
     boston.sandbox.lineBandClass("Red") === "");
