@@ -122,19 +122,13 @@ const hFav = sandbox.heroCardHtml(
 sandbox.likes = [];
 check("header: like star shows selected",
   /data-shortcut="fav"[^>]*aria-pressed="true"/.test(hFav));
-check("header: next bus route + headsign", /aria-label="Bus"[^]*?D72<i class="fa-solid fa-chevron-down[^]*?North to Van Ness/.test(h1));
-check("header: ETA 14 min", h1.includes(">14 min<"));
-check("header: first ETA uses bt-next-eta", h1.includes("bt-next-eta"));
+check("header: first departure lives on the board, not the hero", !h1.includes("bt-next-eta") && !h1.includes("data-hero-route"));
 
 const h2 = sandbox.heroCardHtml(
   { StopID: "1002130", Name: null, Arrivals: [], Error: null },
   [{ min: 0, route: "C87", dir: "TENLEYTOWN", heads: "TENLEYTOWN" }]);
 check("header: no name → #id only, no doubled id", (h2.match(/#1002130/g) || []).length === 1);
-check("header: 0 min → Arriving, no Due",
-  /C87<i[^>]*><\/i><\/button>[^]*?>TENLEYTOWN<\/span>/.test(h2) &&
-  h2.includes("status-arriving") && !h2.includes(">Due<"));
-check("header: <=2 min card gets the imminent wash, 14 min does not",
-  /hero-card[^"]*\bis-imminent\b/.test(h2) && !/is-imminent/.test(h1));
+check("header: no duplicate departure in the hero", !h2.includes("TENLEYTOWN"));
 
 const h3 = sandbox.heroCardHtml({ StopID: "X", Name: "x", Error: { rateLimited: false }, Arrivals: [] }, []);
 check("header: failed predictions → 'arrivals unavailable'", h3.includes("arrivals unavailable"));
@@ -142,8 +136,7 @@ check("header: failed predictions → 'arrivals unavailable'", h3.includes("arri
 const h4 = sandbox.heroCardHtml({ StopID: "X", Name: "x", Error: null, Arrivals: [] }, []);
 check("header: no predictions → 'no arrival or departure'", h4.includes("no arrival or departure"));
 
-// With no live prediction but a schedule entry, the header shows the time
-// and labels it "not seen".
+// Scheduled fallback also lives on the board, not in the hero.
 sandbox.__stopScheduleCache["1002130"] = {
   day: sandbox.scheduleDayKey(), ok: true, at: Date.now(),
   arrivals: [{ at: Date.now() + 3600000, route: "D60", dirNum: "1",
@@ -152,8 +145,8 @@ sandbox.__stopScheduleCache["1002130"] = {
 const hSched = sandbox.heroCardHtml(
   { StopID: "1002130", Name: "x", Error: null, Arrivals: [] }, []);
 delete sandbox.__stopScheduleCache["1002130"];
-check("header: no prediction → scheduled time + not seen",
-  hSched.includes("not seen") && hSched.includes("D60") && /\d{1,2}:\d{2}/.test(hSched));
+check("header: scheduled fallback is not repeated in the hero",
+  !hSched.includes("not seen") && !hSched.includes("D60"));
 
 // ---- against the locked live capture (1002130) ----
 const raw = JSON.parse(fs.readFileSync(require("path").join(__dirname, "fixtures", "pred_1002130.json"), "utf8"));
@@ -171,9 +164,8 @@ check("live pred130: at least one prediction", preds.length > 0);
 if (preds.length) {
   const h5 = sandbox.heroCardHtml(
     { StopID: "1002130", Name: raw.StopName || null, Error: null, Arrivals: preds }, preds);
-  const first = preds[0];
-  check(`live header: earliest ${first.route} @ ${first.min} min leads the Next bus line`,
-    new RegExp('aria-label="Bus"[^]*?' + first.route).test(h5) && h5.includes(`>${first.min === 0 ? "Due" : first.min + " min"}<`));
+  check("live header: departure rows are not duplicated in the hero",
+    !h5.includes("bt-next-eta") && !h5.includes("data-hero-route"));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

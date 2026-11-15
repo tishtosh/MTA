@@ -287,7 +287,7 @@ async function settle(board) {
   check(nres, "nyc: route bullet 1 rendered", nAll.includes(">1<"));
   check(nres, "nyc: bullet is circular", nAll.includes("route-bullet") && nAll.includes("circle"));
   check(nres, "nyc: route drop-downs are available",
-    nAll.includes("hero-route-toggle") && nAll.includes("bt-chevron"));
+    nAll.includes("badge-disclosure") && nAll.includes("bt-allstops"));
   const rowChevron = nyc.sandbox.boardRowHead({
     metro: true, route: "1", routeRef: "1", toCode: "101",
     mins: [3], heads: "Van Cortlandt Park-242 St",
@@ -312,6 +312,11 @@ async function settle(board) {
 
   // Per-city favorites: a DC round-trip must not leak Dulles into NYC.
   const nycCards = String(nyc.els.bookmarkList.innerHTML);
+  await nyc.sandbox.renderFavMetroLines();
+  const nLines = nyc.els.favMetroLines.innerHTML;
+  check(nres, "nyc: rail list reuses the circular bullet",
+    nLines.includes("route-bullet") && nLines.includes("sm circle"));
+  check(nres, "nyc: rail list says train, not line", nLines.includes("1 train"));
   check(nres, "nyc: default favorites are LGA and JFK",
     nycCards.includes("LGA/Terminal B") && nycCards.includes("Howard Beach-JFK Airport"));
   nyc.sandbox.setCity("dc");

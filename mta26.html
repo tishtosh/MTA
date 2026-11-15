@@ -528,9 +528,10 @@
             width: 28px; height: 28px; border-radius: 50%;
             background: var(--bullet-color); color: var(--bullet-text);
             font: 700 15px/1 system-ui, -apple-system, sans-serif;
-            font-variant-numeric: tabular-nums;
+            font-variant-numeric: tabular-nums; text-align: center;
+            line-height: 1;
         }
-        .route-bullet > span { display: block; }
+        .route-bullet > span { display: block; line-height: 1; }
         .route-bullet.sm { width: 22px; height: 22px; font-size: 11px; }
         .route-bullet.lg { width: 34px; height: 34px; font-size: 18px; }
         .route-bullet.wide { font-size: 10px; letter-spacing: -.02em; }
@@ -555,6 +556,9 @@
         }
         .badge-disclosure[aria-expanded="true"] .badge-chevron { transform: rotate(180deg); }
         .badge-row-chevron { display: none; }
+        .row-badge-wrap:has(.route-bullet),
+        .board-next > .badge-disclosure,
+        .board-next > .route-bullet { align-self: center; }
         .fav-conns .route-bullet.sm, .bt-stoplist .route-bullet.sm { width: 20px; height: 20px; font-size: 10px; }
         .row-badge.hollow {
             background: transparent; border: 2px solid currentColor;
@@ -3621,7 +3625,7 @@ function renderMetro() {
             + boardRowHead(r, metroLineColor(r.routeRef || r.route), null, key, r.scheduled)
             + list + `</div>`;
     }).join("");
-    const mainRows = metroRowsFor(station, true);
+    const mainRows = metroRowsFor(station, false);
     sortHeroRows(mainRows, station.Code, Date.now());
     const mainHtml = mainRows.length
         ? `<div class="main-board metro-board"><div class="board">${rowsHtml(mainRows)}</div></div>`
@@ -4868,6 +4872,12 @@ async function renderFavBusRoutes(query) {
     applyStopNameWidth(gFavBusRoutes);
 }
 
+function lineBadgeHtml(line) {
+    if (themeBadge())
+        return themedBullet(metroLineName(line), line, metroLineColor(line), { size: "sm" });
+    return `<span class="fav-badge line" style="background:${metroLineColor(line)};color:${badgeTextColor(metroLineColor(line))}">${esc(metroLineName(line))}</span>`;
+}
+
 async function renderFavMetroLines() {
     if (!gFavMetroLines) return;
     if (cityCfg().capabilities.metroRoutes)
@@ -4875,8 +4885,8 @@ async function renderFavMetroLines() {
     const lines = cityTheme().metroLineIds();
     gFavMetroLines.innerHTML = lines.map(line =>
         `<button type="button" class="fav-route" data-fav-line="${line}" aria-expanded="false">`
-        + `<span class="fav-badge line" style="background:${metroLineColor(line)};color:${badgeTextColor(metroLineColor(line))}">${esc(metroLineName(line))}</span>`
-        + `<span class="fav-desc">${esc(metroLineName(line))} Line</span>`
+        + lineBadgeHtml(line)
+        + `<span class="fav-desc">${esc(metroLineName(line))} ${esc(cityCfg().labels.railNoun || "Line")}</span>`
         + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
         + `<div class="fav-stops" data-fav-stops="metro" data-line="${line}" hidden></div>`
     ).join("");
@@ -4887,12 +4897,7 @@ async function renderFavMetroLines() {
 // separate special bookmarks and never appear here.
 function favBadgeHtml(kind, route) {
     const r = String(route || "");
-    if (kind === "metro") {
-        if (themeBadge())
-            return themedBullet(r ? metroLineName(r) : "Metro", r, metroLineColor(r), { size: "sm" });
-        return `<span class="fav-badge line" style="background:${metroLineColor(r)};color:${badgeTextColor(metroLineColor(r))}">`
-            + `${esc(r ? metroLineName(r) : "Metro")}</span>`;
-    }
+    if (kind === "metro") return lineBadgeHtml(r);
     return `<span class="fav-badge${busBadgeClass()}"`
         + ` style="background:${routeColor(r)};color:${busTextColor(r)}">`
         + `${esc(r || "Bus")}</span>`;
@@ -6338,83 +6343,21 @@ function heroCardHtml(st, arrivals) {
     const commuter = st.Metro && isCommuterRoute(displayRoute);
     const badgeColor = (route) => st.Metro ? metroLineColor(route) : routeColor(route);
     const badgeLabel = (route) => st.Metro ? metroLineName(route) : route;
-    let nextLine;
-    if (next) {
-        // Same service as the next vehicle: route plus direction.
-        const svc = st.Metro
-            ? (a) => `${a.route}|${a.heads || a.dir || ""}`
-            : (a) => `${a.route}|${a.dirNum || a.heads || a.dir || ""}`;
-        const mins = list.filter(a => svc(a) === svc(next)).map(a => a.min);
-        const badgeCls = `row-badge${st.Metro ? " metro-line" : busBadgeClass()}`;
-        const badgeStyle = `background:${badgeColor(nextRef)};color:${badgeTextColor(badgeColor(nextRef))}`;
-        const canExpand = cityCapability("railPath") !== false;
-        const heroAttrs = ` data-hero-kind="${st.Metro ? "metro" : "bus"}"`
-            + ` data-hero-route="${esc(nextRef)}"`
-            + ` data-hero-trip="${esc(next.trip || "")}"`
-            + ` data-hero-heads="${esc(next.heads || next.dir || "")}"`
-            + ` data-hero-dir="${esc(next.dirNum == null ? "" : next.dirNum)}"`
-            + ` data-hero-anchor="${esc(id)}"`
-            + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir, nextRef) : "")}"`;
-        const themedHero = st.Metro && themeBadge();
-        const heroBullet = themedHero
-            ? themedBullet(badgeLabel(nextRef), nextRef, badgeColor(nextRef), { size: "lg" })
-            : "";
-        let routeBadge;
-        if (canExpand) {
-            routeBadge = themedHero
-                ? `<button type="button" class="badge-disclosure hero-route-toggle"`
-                  + ` aria-expanded="false" title="Show stops on this route"${heroAttrs}>`
-                  + heroBullet
-                  + `<i class="fa-solid fa-chevron-down badge-chevron bt-chevron" aria-hidden="true"></i></button>`
-                : `<button type="button" class="${badgeCls} hero-route-toggle"`
-                  + ` aria-expanded="false" title="Show stops on this route"${heroAttrs}`
-                  + ` style="${badgeStyle}">`
-                  + `${esc(badgeLabel(nextRef))}`
-                  + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`;
-        } else {
-            routeBadge = themedHero
-                ? `<span class="badge-disclosure">${heroBullet}</span>`
-                : `<span class="${badgeCls}" style="${badgeStyle}">${esc(badgeLabel(nextRef))}</span>`;
-        }
-        const destHtml = next.heads || next.dir
-            ? `<span class="board-dest">${esc(next.heads || next.dir)}</span>` : "";
-        const heroStatus = next.min <= 1
-            ? (next.status || (next.min === 0 ? "Arriving" : "")) : "";
-        const showEta = !(mins[0] === 0 && statusReplacesDue(heroStatus));
-        const etaHtml = next.min <= 1
-            ? ` <span class="bt-next-eta soon hero-countdown">0:59</span>`
-            : (showEta ? ` <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>` : "");
-        nextLine = routeBadge
-            + `<span class="bt-next-times">${statusChipHtml(heroStatus)}${etaHtml}`
-            + (mins.length > 1
-                ? ` <span class="bt-next-rest">then ${mins.slice(1).map(etaToken).join(", ")} min</span>` : "")
-            + `</span>`
-            + destHtml;
-    } else if (st.Error) {
-        nextLine = `<span class="text-muted">arrivals unavailable — retrying</span>`;
-    } else {
-        // No live prediction: test the schedule and show the next scheduled
-        // arrival explicitly as "not seen".
-        const sched = st.MetroScheduledNext || nextScheduledFor(id);
-        if (sched) {
-            const schedBadge = `<span class="row-badge${st.Metro ? " metro-line" : busBadgeClass()}" style="background:${badgeColor(sched.route)};color:${badgeTextColor(badgeColor(sched.route))}">${esc(badgeLabel(sched.route))}</span>`;
-            const schedDest = sched.heads || sched.dirText
-                ? `<span class="board-dest">${esc(sched.heads || sched.dirText)}</span>` : "";
-            nextLine = schedBadge
-                + `<span class="bt-next-times">`
-                + `<span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
-                + ` <span class="bt-next-rest">not seen</span></span>`
-                + schedDest;
-        } else {
-            nextLine = `<span class="text-muted">no arrival or departure</span>`;
-        }
+    // The first departure lives in the board rows below, exactly like every
+    // other departure. The hero card keeps only the stop identity, shortcuts,
+    // connections, and any feed error / empty-state note.
+    let statusLine = "";
+    if (!next) {
+        statusLine = st.Error
+            ? `<span class="text-muted">arrivals unavailable — retrying</span>`
+            : `<span class="text-muted">no arrival or departure</span>`;
     }
     const lineBand = st.Metro
         ? `<span class="hero-line-band${lineBandClass(displayRoute)}" style="background:${metroLineColor(displayRoute)}"></span>`
         : `<span class="hero-line-band bus-band${busBandClass()}"${busBandAttr(next && next.route)}></span>`;
     const heroRoute = String(displayRoute ||
         (st.Metro ? ((st.Lines || [])[0] || "") : ((st.Routes || [])[0] || "")));
-    return `<div class="hero-card${st.Metro ? " hero-metro" : " hero-bus"}${isImminentMin(next && next.min) ? " is-imminent" : ""}">`
+    return `<div class="hero-card${st.Metro ? " hero-metro" : " hero-bus"}">`
         + lineBand
         + shortcutButtonsHtml(id)
         + `<div class="hero-title-row">`
@@ -6427,7 +6370,7 @@ function heroCardHtml(st, arrivals) {
         + ` data-conn-kind="${st.Metro ? "metro" : "bus"}"`
         + ` data-conn-route="${esc(heroRoute)}"></span>`
         + `</div>`
-        + `<div class="board-next">${nextLine}</div>`
+        + (statusLine ? `<div class="board-next">${statusLine}</div>` : "")
         + `</div><div class="hero-route-stops" hidden></div>`;
 }
 
@@ -6540,12 +6483,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     const serviceKey = p => p.route + "|" +
         ((p.dirNum == null || p.dirNum === "") ? "?" : String(p.dirNum)) + "|" +
         (p.heads || "");
-    const heroNext = (arrivals || []).slice()
-        .sort((a, b) => predictionRank(a) - predictionRank(b) || a.min - b.min)[0] || null;
-    const heroKey = heroNext ? serviceKey(heroNext) : null;
-    const rowPreds = heroKey
-        ? (arrivals || []).filter(p => serviceKey(p) !== heroKey)
-        : (arrivals || []);
+    const rowPreds = arrivals || [];
     const liveRows = buildBoardRows(anchorId, rowPreds, routeDetails, posRows);
     // Boston compact rows carry no pattern anchor; remember the boarding stop
     // so their stop-list dropdown can slice from here.

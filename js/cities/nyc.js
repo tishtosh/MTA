@@ -287,6 +287,7 @@
         labels: {
             nextBus: "Next bus", nextTrain: "Next train",
             stop: "stop", station: "station", towards: "towards", platform: "Platform",
+            railNoun: "train",
         },
         capabilities: {
             bus: false,                 // MTA Bus Time is a later phase

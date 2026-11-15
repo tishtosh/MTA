@@ -35,7 +35,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   Home/Work bookmarks are stored separately per city.
 - The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
   each matching route to only the matching stops.
-- A selected stop opens its **hero card** plus **route/departure rows**; other stops
+- A selected stop opens a compact **hero card** plus **route/departure rows**; the first departure is the first row, so every departure uses the same format. Other stops
   within walking distance appear below as **nearby stop cards** with their own rows.
 - Each route row expands to **Next stops…**, with connection chips and a **See route**
   action that opens transit directions from the selected stop to that route's terminal.
@@ -50,7 +50,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 
 | Term | What it means in this app |
 |------|---------------------------|
-| **Hero card** | The primary card for the selected stop/station: name, ID, and next bus/train with the colored top strip. Class `.hero-card`. |
+| **Hero card** | The primary card for the selected stop/station: name, ID, shortcuts, connections, and the colored top strip. Departures live in the rows below. Class `.hero-card`. |
 | **Nearby stop cards** | Cards for other stops within walking distance, below the hero card. They reuse the hero header line and top strip on a lighter tint of the same mode color, with their own departure rows underneath. Class `.nearby-stop-card`. |
 | **Route/departure rows** | The repeated rows inside a stop card: line badge, destination/headsign, and ETAs. Class `.board-row`. |
 | **Route / line badge** | The colored rectangle before a destination. It is a bus route number or a rail line name. In the hero it is also the disclosure button for the route's stop list. |
