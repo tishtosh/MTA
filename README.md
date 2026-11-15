@@ -31,7 +31,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   NYC), and **Settings**. Settings includes the **City** selector (**Washington DC**,
   **Boston**, **London**, **New York City**), the **Maps app** choice (**Apple Maps**
   or **Google Maps**, default Google, used by the hero map button and route actions),
-  the **Near me radius** (1,000 feet, 1 mile, or 10 miles), auto-refresh, and Delete
+  the **Near me radius** (1,000 feet, 1 mile, 10 miles, or 100 miles), auto-refresh, and Delete
   all likes.
 - **Near me** lists bus stops and Metro/subway/commuter-rail stations within the
   chosen radius of the current location, and auto-selects the nearest city from that

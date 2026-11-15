@@ -1051,6 +1051,7 @@
                 <option value="1000">1,000 feet</option>
                 <option value="mile">1 mile</option>
                 <option value="10mi">10 miles</option>
+                <option value="100mi">100 miles</option>
             </select>
         </div>
         <button id="btnRefreshToggle" class="fav-setting" type="button"
@@ -1225,7 +1226,7 @@ let mapsProvider = readMapsProvider();
 const TOPOLOGY_TTL_MS = 24 * 60 * 60 * 1000;
 const CONNECTION_TTL_MS = 24 * 60 * 60 * 1000;
 const API_MEMO_MS = 6000;
-const CACHE_PREFIX = "mta_cache_v3_";
+const CACHE_PREFIX = "mta_cache_v4_";
 
 function cacheStorageKey(name) {
     return `${CACHE_PREFIX}${city}_${name}`;
@@ -3430,10 +3431,21 @@ async function runMetro() {
     }
 }
 
-function setMetroAnchor(code) {
+function setMetroAnchor(code, retried) {
     const all = metroStationsCache || [];
     const anchor = all.find(s => s.Code === String(code));
-    if (!anchor) return;
+    if (!anchor) {
+        // The cached directory can predate newly added lines (e.g. LIRR/MNR).
+        // Refresh once and retry instead of leaving a blank board.
+        if (retried) return;
+        fetchMetroStationsFresh()
+            .then(list => {
+                if ((list || []).some(s => String(s.Code) === String(code)))
+                    setMetroAnchor(code, true);
+            })
+            .catch(() => {});
+        return;
+    }
     showBoardView();
     metroAnchorCode = anchor.Code;
     metroAnchor = Object.assign({}, anchor, { distFt: 0 });
@@ -5410,6 +5422,7 @@ const NEAR_RADII = {
     "1000": { label: "1,000 feet", ft: 1000, m: 305 },
     mile: { label: "1 mile", ft: 5280, m: 1609 },
     "10mi": { label: "10 miles", ft: 52800, m: 16093 },
+    "100mi": { label: "100 miles", ft: 528000, m: 160934 },
 };
 function readNearRadius() {
     try {
@@ -5462,8 +5475,10 @@ async function populateNearMe() {
     if (targetCity !== city) setCity(targetCity, { keepPanel: true });
     try {
         const [busStops, stations] = await Promise.all([
-            fetchStopsNear(pos.lat, pos.lon, radius.m),
-            loadMetroStations()
+            // A large radius can exceed a provider's API cap; the station list
+            // still works, so a bus failure must not blank the panel.
+            fetchStopsNear(pos.lat, pos.lon, radius.m).catch(() => []),
+            loadMetroStations().catch(() => [])
         ]);
         if (token !== favNearToken) return;
         const rows = [];

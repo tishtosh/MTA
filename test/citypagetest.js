@@ -288,6 +288,9 @@ async function settle(board) {
   nyc.sandbox.setNearRadius("10mi");
   check(nres, "nyc: near-me radius setting switches to 10 miles",
     nyc.sandbox.nearRadius().ft === 52800);
+  nyc.sandbox.setNearRadius("100mi");
+  check(nres, "nyc: near-me radius setting switches to 100 miles",
+    nyc.sandbox.nearRadius().ft === 528000);
   check(nres, "nyc: no bus feed → Metro mode",
     nyc.els.btnHome.title === "Nearest Metro station");
   await nyc.sandbox.loadMetroStations();
@@ -327,6 +330,18 @@ async function settle(board) {
   check(nres, "nyc: outside-NYC station shows the chip and commuter railcar band",
     outside.includes("Outside NYC") && outside.includes("Poughkeepsie") &&
     outside.includes("railcar"));
+
+  // Rail stations must resolve from the directory (stale caches used to make
+  // the Jamaica card land on a blank board and commuter lines empty).
+  nyc.sandbox.setMetroAnchor("LIRR:102");
+  const jamaica = await settle(() => nyc.els.boardHeader.innerHTML);
+  check(nres, "nyc: LIRR Jamaica station opens a board",
+    jamaica.includes("Jamaica") && jamaica.length > 0);
+  const lineStops = nyc.sandbox.document.createElement("div");
+  lineStops.dataset = {};
+  await nyc.sandbox.populateFavStops(lineStops, "metro", "LIRR:1");
+  check(nres, "nyc: commuter line lists its stations",
+    /fav-stop/.test(lineStops.innerHTML) && lineStops.innerHTML.includes("Babylon"));
   check(nres, "nyc: subway feed requested, no bus/other cities",
     nycCalls.some(u => u.includes("nyct%2Fgtfs")) &&
     nycCalls.every(u => !u.includes("api.wmata.com") &&
