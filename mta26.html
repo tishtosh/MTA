@@ -106,7 +106,10 @@
             white-space: normal; line-height: 1.2; text-wrap: balance;
             overflow-wrap: anywhere;
         }
-        .fav-conns { display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: auto; }
+        .fav-conns {
+            display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: auto;
+            min-width: 0; max-width: 100%;
+        }
         /* Settings/hero route lists put connection badges on their own line;
            board stop rows keep them inline with the stop name, right-aligned. */
         .fav-stop > .fav-conns:not(:empty) {
@@ -581,7 +584,10 @@
         .row-badge-wrap:has(.route-bullet),
         .board-next > .badge-disclosure,
         .board-next > .route-bullet { align-self: center; }
-        .fav-conns .route-bullet.sm, .bt-stoplist .route-bullet.sm { width: 20px; height: 20px; font-size: 10px; }
+        /* Small numbered bullets in chips stay 20px; named commuter rectangles
+           keep their three fixed widths (a 20px box clips the name). */
+        .fav-conns .route-bullet.sm:not(.rect),
+        .bt-stoplist .route-bullet.sm:not(.rect) { width: 20px; height: 20px; font-size: 10px; }
         .row-badge.hollow {
             background: transparent; border: 2px solid currentColor;
             padding: 0 7px;
