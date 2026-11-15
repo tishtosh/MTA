@@ -824,6 +824,13 @@
         }
         .city-mark .mode-svg { width: 34px; height: 34px; }
         .city-mark-img { width: 32px; height: 32px; object-fit: contain; display: block; }
+        /* Station outside the NYC bbox (through-running LIRR/Metro-North). */
+        .outside-chip {
+            flex: none; display: inline-block; margin-left: 6px; padding: 0 6px;
+            border-radius: 10px; background: #fff3cd; color: #8a4b00;
+            font: 700 10px/1.7 system-ui, -apple-system, sans-serif;
+            letter-spacing: .04em; text-transform: uppercase; vertical-align: middle;
+        }
         .hero-connections .fav-conns { margin-left: 0; }
         .hero-route-toggle { border: 0; cursor: pointer; font: inherit; }
         .hero-route-toggle .bt-chevron { font-size: 9px; margin-left: 4px; transition: transform .15s ease; }
@@ -3601,6 +3608,7 @@ function renderMetro() {
     const headSt = {
         StopID: station.Code, Name: station.Name, Metro: true,
         Lines: station.Lines || [],
+        Outside: !!station.Outside,
         MetroScheduledNext: nextSched
             ? { at: nextSched.at, route: nextSched.route, heads: nextSched.heads }
             : null,
@@ -3643,7 +3651,7 @@ function renderMetro() {
         let html = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
             + `<span class="hero-line-band${lineBandClass(primaryRoute)}" style="background:${metroLineColor(primaryRoute)}"></span>`
             + `<div class="nearby-card-head"><div class="nearby-card-main">`
-            + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute), false, primaryRoute)}${esc(stopName(stn.Name) || stn.Code)}</div>`
+            + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute), false, primaryRoute)}${esc(stopName(stn.Name) || stn.Code)}${stn.Outside ? ` <span class="outside-chip">Outside NYC</span>` : ""}</div>`
             + `<div class="nearby-card-sub">${esc([dist, "#" + stn.Code].filter(Boolean).join(" · "))}</div>`
             + `</div></div></div>`;
         if (rows.length)
@@ -5426,7 +5434,7 @@ async function populateFavStops(container, kind, key) {
                 .filter(s => s.Lines.includes(key))
                 .sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
             container.innerHTML = list.length ? list.map(s =>
-                `<div class="fav-stop">${favStarHtml("metro", s.Code, s.Name, key)}${favGotoHtml("metro", s.Code, s.Name, stopName(s.Name) || s.Code)}</div>`
+                `<div class="fav-stop">${favStarHtml("metro", s.Code, s.Name, key)}${favGotoHtml("metro", s.Code, s.Name, stopName(s.Name) || s.Code)}${s.Outside ? ` <span class="outside-chip">Outside NYC</span>` : ""}</div>`
             ).join("") : `<div class="fav-empty">no stations on this line</div>`;
         }
     } catch (e) {
@@ -6363,6 +6371,7 @@ function heroCardHtml(st, arrivals) {
         + `<div class="hero-title-row">`
         + `${heroModeIcon(st.Metro, commuter, st.Metro ? metroLineColor(displayRoute) : "", heroRoute)}`
         + `<span class="board-stopname">${esc(label)}</span>`
+        + (st.Outside ? ` <span class="outside-chip">Outside NYC</span>` : "")
         + `</div>`
         + `<div class="hero-connections" hidden>`
         + `<span class="hero-connections-label">Connections</span>`

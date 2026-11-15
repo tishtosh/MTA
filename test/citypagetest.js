@@ -305,6 +305,11 @@ async function settle(board) {
   check(nres, "nyc: route drop-down resolves ordered stops",
     nycStops.length > 2 && nycStops[0].StopID === "127" &&
     nycStops[nycStops.length - 1].StopID === "101");
+  nyc.sandbox.setMetroAnchor("MNR:51");
+  const outside = await settle(() => nyc.els.boardHeader.innerHTML);
+  check(nres, "nyc: outside-NYC station shows the chip and commuter railcar band",
+    outside.includes("Outside NYC") && outside.includes("Poughkeepsie") &&
+    outside.includes("railcar"));
   check(nres, "nyc: subway feed requested, no bus/other cities",
     nycCalls.some(u => u.includes("nyct%2Fgtfs")) &&
     nycCalls.every(u => !u.includes("api.wmata.com") &&

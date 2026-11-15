@@ -1,12 +1,13 @@
-// Build js/cities/nyc-data.js from the MTA NYCT static GTFS feed.
+// Build js/cities/nyc-data.js from the MTA static GTFS feeds (subway + SIR,
+// LIRR, Metro-North).
 //
 //   node scripts/build-nyc-data.mjs                 # download + regenerate
-//   node scripts/build-nyc-data.mjs path/to/gtfs.zip
+//   node scripts/build-nyc-data.mjs <subway.zip> <lirr.zip> <mnr.zip>
 //
-// No dependencies: the zip reader uses zlib.inflateRawSync, and the CSV reader
-// is a small state machine (GTFS fields are quoted and may contain commas).
-// The page itself never unzips anything — it loads the generated classic
-// script, so a file:// copy works without fetch/CORS.
+// No dependencies: the zip reader uses zlib.inflateRawSync and the CSV reader
+// is a small state machine. LIRR/MNR stop ids are numeric and collide with the
+// subway's, so every rail id is namespaced ("LIRR:1", "MNR:46"). The page never
+// unzips anything — it loads the generated classic script, so file:// works.
 "use strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -18,7 +19,12 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..");
 const OUT = path.join(ROOT, "js", "cities", "nyc-data.js");
-const URL = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip";
+
+const FEEDS = [
+    { name: "subway", prefix: "", url: "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip" },
+    { name: "lirr", prefix: "LIRR:", url: "https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip" },
+    { name: "mnr", prefix: "MNR:", url: "https://rrgtfsfeeds.s3.amazonaws.com/gtfsmnr.zip" },
+];
 
 function fetchBuffer(url) {
     return new Promise((resolve, reject) => {
@@ -34,8 +40,6 @@ function fetchBuffer(url) {
 }
 
 // ── zip ───────────────────────────────────────────────────────────────
-// Central-directory walk; entries are stored (0) or deflated (8), which is
-// all the MTA feeds use.
 function readZip(buf) {
     let eocd = buf.length - 22;
     while (eocd >= 0 && buf.readUInt32LE(eocd) !== 0x06054b50) eocd--;
@@ -100,81 +104,66 @@ function table(text) {
     });
 }
 
-// ── build ─────────────────────────────────────────────────────────────
-async function main() {
-    const arg = process.argv[2];
-    const zipPath = arg || path.join(os.tmpdir(), "mta-gtfs-subway.zip");
-    let buf;
-    if (arg) buf = fs.readFileSync(path.resolve(arg));
-    else {
-        if (!fs.existsSync(zipPath)) {
-            console.log("downloading", URL);
-            fs.writeFileSync(zipPath, await fetchBuffer(URL));
-        }
-        buf = fs.readFileSync(zipPath);
-    }
+function readFeed(buf, prefix) {
     const zip = readZip(buf);
     const read = name => {
         const b = zip.read(name);
         if (!b) throw new Error("missing zip entry " + name);
         return b.toString("utf8");
     };
-
     const routes = table(read("routes.txt"));
     const stops = table(read("stops.txt"));
     const trips = table(read("trips.txt"));
     const stopTimes = table(read("stop_times.txt"));
 
-    // route_id → order (for the bullet order) and display name/colour.
     const routeSort = new Map();
     const routeOut = {};
     for (const r of routes) {
-        const id = r.route_id;
+        const id = prefix + r.route_id;
         routeSort.set(id, Number(r.route_sort_order) || 999);
         const color = /^[0-9a-f]{6}$/i.test(r.route_color || "")
             ? "#" + r.route_color.toUpperCase() : "#5d4037";
-        // MTA bullets use the short name; SIR is a single blue route.
-        routeOut[id] = [r.route_short_name || id, color];
+        const isRail = prefix !== "";
+        const name = isRail
+            ? String(r.route_long_name || r.route_short_name || r.route_id)
+                .replace(/\s+(Branch|Line)$/i, "").trim()
+            : String(r.route_short_name || r.route_id);
+        routeOut[id] = [name, color];
     }
 
-    // Platforms → parent station.
     const platform = {};
     const stations = {};
     for (const s of stops) {
         const id = s.stop_id;
         if (!id) continue;
-        if (s.parent_station) platform[id] = s.parent_station;
-        else platform[id] = id;
-        if (s.location_type === "1") {
+        const parent = s.parent_station ? prefix + s.parent_station : prefix + id;
+        platform[prefix + id] = parent;
+        if (s.location_type === "1" || !s.parent_station) {
             const lat = Number(s.stop_lat), lon = Number(s.stop_lon);
             if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-            stations[id] = [s.stop_name || id, lat, lon, []];
+            stations[prefix + id] = [s.stop_name || id, lat, lon, []];
         }
     }
 
-    // Lines per station, from the trips that actually call there.
-    const routeOfTrip = new Map();
-    for (const t of trips) routeOfTrip.set(t.trip_id, t.route_id);
     const linesByStation = new Map();
+    const routeOfTrip = new Map();
+    for (const t of trips) routeOfTrip.set(t.trip_id, prefix + t.route_id);
     for (const st of stopTimes) {
         const route = routeOfTrip.get(st.trip_id);
         if (!route) continue;
-        const parent = platform[st.stop_id];
+        const parent = platform[prefix + st.stop_id];
         if (!parent) continue;
         let set = linesByStation.get(parent);
         if (!set) linesByStation.set(parent, set = new Set());
         set.add(route);
     }
     for (const [code, station] of Object.entries(stations)) {
-        const set = linesByStation.get(code);
-        station[3] = set
-            ? [...set].sort((a, b) => (routeSort.get(a) ?? 999) - (routeSort.get(b) ?? 999))
-            : [];
+        station[3] = [...(linesByStation.get(code) || [])]
+            .sort((a, b) => (routeSort.get(a) ?? 999) - (routeSort.get(b) ?? 999));
+        if (!station[3].length) delete stations[code];
     }
 
-    // Ordered station sequences per route, for the "Next stops…" disclosure and
-    // route maps. Short-turn/branch variants are kept and deduped; the page
-    // picks the sequence that contains both ends of the requested trip.
+    // Ordered station sequences per route for "Next stops…" and route maps.
     const byTrip = new Map();
     for (const st of stopTimes) {
         let arr = byTrip.get(st.trip_id);
@@ -189,7 +178,7 @@ async function main() {
         arr.sort((a, b) => a[0] - b[0]);
         const ids = [];
         for (const [, stopId] of arr) {
-            const parent = platform[stopId] || stopId;
+            const parent = platform[prefix + stopId];
             if (!parent || !stations[parent]) continue;
             if (ids[ids.length - 1] !== parent) ids.push(parent);
         }
@@ -199,30 +188,43 @@ async function main() {
         seenPattern.add(key);
         (patterns[route] || (patterns[route] = [])).push(ids);
     }
-    // Longest first: a full-length pattern is the better default for a route.
     for (const route of Object.keys(patterns))
         patterns[route].sort((a, b) => b.length - a.length);
 
-    // Drop stations with no service (defensive: GTFS should not have them).
-    for (const code of Object.keys(stations))
-        if (!stations[code][3].length) delete stations[code];
+    return { routeOut, stations, platform, patterns };
+}
 
+async function main() {
+    const args = process.argv.slice(2);
     const out = {
         built: new Date().toISOString().slice(0, 10),
-        source: "MTA NYCT gtfs_subway.zip",
-        routes: routeOut,
-        stations,
-        platform,
-        patterns,
+        source: "MTA NYCT + LIRR + Metro-North static GTFS",
+        routes: {}, stations: {}, platform: {}, patterns: {},
     };
+    for (let i = 0; i < FEEDS.length; i++) {
+        const feed = FEEDS[i];
+        const zipPath = args[i] || path.join(os.tmpdir(), `mta-gtfs-${feed.name}.zip`);
+        if (!args[i] && !fs.existsSync(zipPath)) {
+            console.log("downloading", feed.url);
+            fs.writeFileSync(zipPath, await fetchBuffer(feed.url));
+        }
+        const buf = args[i] ? fs.readFileSync(path.resolve(args[i])) : fs.readFileSync(zipPath);
+        const part = readFeed(buf, feed.prefix);
+        Object.assign(out.routes, part.routeOut);
+        Object.assign(out.stations, part.stations);
+        Object.assign(out.platform, part.platform);
+        for (const [route, list] of Object.entries(part.patterns))
+            out.patterns[route] = list;
+    }
+
     const js = "// Generated by scripts/build-nyc-data.mjs — do not edit by hand.\n"
         + "// Source: " + out.source + " (" + out.built + ").\n"
         + "window.MTA_NYC_DATA = " + JSON.stringify(out) + ";\n";
     fs.writeFileSync(OUT, js);
-    const patternCount = Object.values(patterns).reduce((n, list) => n + list.length, 0);
+    const patternCount = Object.values(out.patterns).reduce((n, l) => n + l.length, 0);
     const kb = (Buffer.byteLength(js) / 1024).toFixed(1);
-    console.log(`wrote ${path.relative(ROOT, OUT)} — ${Object.keys(stations).length} stations, `
-        + `${Object.keys(routeOut).length} routes, ${patternCount} patterns, ${kb} KB`);
+    console.log(`wrote ${path.relative(ROOT, OUT)} — ${Object.keys(out.stations).length} stations, `
+        + `${Object.keys(out.routes).length} routes, ${patternCount} patterns, ${kb} KB`);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

@@ -178,6 +178,46 @@ check("nyc: icon is the MTA city mark",
   check("nyc: metroPath reverses when the pattern runs the other way",
     p2[0].StationCode === "101" && p2[p2.length - 1].StationCode === "127");
 
+  // ── P2: LIRR + Metro-North ─────────────────────────────────────────
+  const stations = nyc.provider.metroStations();
+  check("nyc: rail stations and routes merged",
+    Object.keys(D.routes).length === 48 && !!D.stations["LIRR:102"] &&
+    !!D.stations["MNR:1"]);
+  check("nyc: rail lines are commuter, subway is not",
+    nyc.theme.isCommuter("LIRR:1") && nyc.theme.isCommuter("MNR:1") &&
+    !nyc.theme.isCommuter("1"));
+  check("nyc: outside-NYC stations flagged",
+    stations.some(s => s.Code === "MNR:51" && s.Outside) &&
+    stations.every(s => s.Code !== "127" || !s.Outside));
+  check("nyc: airport links cover Jamaica (LIRR) and Howard Beach",
+    nyc.airportDefaults.metro.some(e => e.id === "LIRR:102") &&
+    nyc.airportDefaults.metro.some(e => e.id === "H03"));
+
+  const railNow = Date.now();
+  feedBytesByUrl = {
+    "mnr/gtfs-mnr": feedBytes([{
+      tripId: "M1", routeId: "1", dir: 0,
+      stops: [
+        { stopId: "1", at: railNow + 190000 },     // Grand Central
+        { stopId: "46", at: railNow + 2400000 },   // Beacon (terminus)
+      ],
+    }], railNow),
+  };
+  nyc.provider.resetCaches();
+  calls = [];
+  const rail = await nyc.provider.metroLive(["MNR:1"]);
+  const railRows = rail["MNR:1"] || [];
+  check("nyc rail: MNR feed decoded for the station",
+    railRows.length === 1 && railRows[0].route === "MNR:1");
+  check("nyc rail: headsign is the terminus name",
+    railRows[0] && railRows[0].heads === D.stations["MNR:46"][0]);
+  check("nyc rail: only the MNR feed is requested",
+    calls.length === 1 && calls[0].includes("mnr%2Fgtfs-mnr"));
+  const pm = await nyc.provider.metroPath("MNR:1", "MNR:46", "MNR:1");
+  check("nyc rail: patterns resolve ordered stops",
+    pm.length > 2 && pm[0].StationCode === "MNR:1" &&
+    pm[pm.length - 1].StationCode === "MNR:46");
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

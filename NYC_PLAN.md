@@ -235,8 +235,12 @@ naive. Mitigate:
    "Next stops…" from the stored patterns.
 2. **P1 — buses.** Bus Time key blob + `departures`, nearby stops, route panel,
    terminating drop.
-3. **P2 — LIRR + MNR.** Rail route names, commuter styling, patterns, "Outside NYC"
-   chip, airport links (Jamaica/Howard Beach).
+3. **P2 — LIRR + MNR (done).** Rail route names and colours from the static GTFS,
+   namespaced station/route ids (`LIRR:`/`MNR:`), commuter styling (circular mode icon,
+   railcar-gapped band, "train" phrasing), ordered patterns for "Next stops…", the
+   "Outside NYC" chip on stations beyond the bbox, and JFK airport links (A to Howard
+   Beach, LIRR to Jamaica). Verified against the live feeds: Grand Central, Jamaica and
+   Poughkeepsie all return typed rows with terminus headsigns.
 4. **P3 — polish.** Alerts feed as a board banner, scheduled fallback from static
    GTFS, `place()` for maps, elevator/accessibility notes.
 

@@ -98,15 +98,18 @@ The **Settings** section of the search dropdown selects the transport system:
 - London uses a registered TfL key (500 requests/minute) stored encrypted in
   `TFL_KEY_BLOB` in `mta26.html`; the provider appends `app_key` automatically. If the
   blob is cleared, the keyless 50 requests/minute limit still applies.
-- **New York City** is a rail-only phase 0: subway + Staten Island Railway from the
-  keyless MTA GTFS-Realtime feeds (protobuf, decoded in `js/core/gtfsrt.js`). Station,
-  route and platform data come from the generated `js/cities/nyc-data.js`
-  (`node scripts/build-nyc-data.mjs`). Colours come from the NYC Core Framework palette
-  (`#181A7B` primary, `#e6ecf7` light); the route bullets keep the MTA line colours.
-  Default likes are LGA (M60 at Terminal B — the bus feed is deferred, so the card says
-  so) and JFK (A to Howard Beach). MTA Bus Time needs a free key and is deferred; NJ
-  Transit, PATH, AirTrain and NY Waterway are out of scope. The MTA logo/roundel is
-  licensed, so the city uses the neutral subway glyph for mode icons. Feed ids need
+- **New York City** (MTA): subway + Staten Island Railway + Long Island Rail Road +
+  Metro-North, from the keyless MTA GTFS-Realtime feeds (protobuf, decoded in
+  `js/core/gtfsrt.js`). Station, route and pattern data come from the generated
+  `js/cities/nyc-data.js` — 735 stations, 48 routes, ~1,000 ordered patterns
+  (`node scripts/build-nyc-data.mjs` over the three static GTFS zips). LIRR/MNR ids are
+  namespaced (`LIRR:1`, `MNR:46`) because their raw numeric ids collide with the
+  subway's; rail lines are commuter-styled and stations outside the NYC bbox carry an
+  "Outside NYC" chip. Colours come from the NYC Core Framework palette (`#181A7B`
+  primary, `#e6ecf7` light); subway/rail bullets keep the MTA line colours. Default
+  likes are LGA (M60 at Terminal B — the bus feed is deferred, so the card says so) and
+  JFK (A to Howard Beach, LIRR to Jamaica). MTA Bus Time needs a free key and is
+  deferred; NJ Transit, PATH, AirTrain and NY Waterway are out of scope. Feed ids need
   `%2F` in the path, and LIRR/Metro-North have no JSON mirror — hence the protobuf
   reader.
 - Nearby stop cards show stops/stations within **1,000 ft**, nearest first. Bus hero

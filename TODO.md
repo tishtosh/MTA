@@ -44,3 +44,17 @@ Single-file page, inline CSS, vanilla JS, existing static hosting; all new endpo
 - [x] Tests: `nyctest.js` (decoder + provider + TTL/outage), `citypagetest.js`
       `?city=nyc` smoke. 15 suites pass.
 - [ ] P1 buses (MTA Bus Time key), P2 LIRR/Metro-North, P3 alerts + schedule.
+
+## NYC P2 (LIRR + Metro-North, shipped)
+
+- [x] Static data merged from three GTFS zips: 735 stations, 48 routes, ~1,039
+      patterns; LIRR/MNR ids namespaced (`LIRR:1`, `MNR:46`) to avoid subway clashes.
+- [x] `metroLive` decodes the LIRR/MNR protobuf feeds (raw route ids back-mapped),
+      terminus headsigns, terminating trains dropped, one feed per agency per tick.
+- [x] Commuter styling: `isCommuter()` true for rail lines (circle mode icon, "train"
+      phrasing, railcar-gapped band), rail names from `route_long_name`.
+- [x] "Outside NYC" chip on hero, nearby cards and line station lists for stations
+      outside the bbox (Poughkeepsie, most of Long Island).
+- [x] Airport links: JFK via A (Howard Beach) and LIRR (Jamaica); LGA M60 placeholder.
+- [x] Tests: provider rail feed/headsign/path/outside/airport assertions + page chip
+      check; 15 suites pass; live probe verified GCT/Jamaica/Poughkeepsie.
