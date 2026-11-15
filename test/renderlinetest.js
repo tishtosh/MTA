@@ -44,18 +44,20 @@ sandbox.mode = "bus";
 sandbox.favorites = [];
 vm.createContext(sandbox);
 vm.runInContext(
-  [extractConst("ROUTE_COLORS"), "const stopScheduleCache = {};", "let shortcuts = {};",
+  ['const ROUTE_COLORS = ["#c62828","#1565c0","#2e7d32","#ef6c00","#6a1b9a","#00838f","#ad1457","#5d4037","#455a64","#827717","#37474f","#9e9d24"];', "const stopScheduleCache = {};", "let shortcuts = {};",
    'const SHORTCUT_SLOTS = ["home", "work", "airport", "fav"];',
    extractFn("shortcutLabel"), extractFn("isFavorite"),
    "function slotHas(kind, slot, id){ const v = shortcuts[slot]; const list = !v ? [] : (Array.isArray(v) ? v : (v.id ? [v] : [])); return list.some(e => String(e.id) === String(id)); }",
    extractFn("shortcutButtonsHtml"),
+   "function cityCfg(){ return { defaultStopId: '1002135' }; }",
+   "function cityTheme(){ return { routeColor: (id) => { let h=0; for (const c of String(id||\'\')) h=(h*31+c.charCodeAt(0))>>>0; return ROUTE_COLORS[h % ROUTE_COLORS.length]; }, routeTextColor: () => \'#fff\', badgeClass: () => \'\', metroColor: () => \'#c62828\', metroName: (l) => l, isCommuter: () => false }; }",
    extractFn("routeColor"), extractFn("esc"), extractFn("stopName"),
    "var metroRoutesCache = null;",
    extractFn("isCommuterRoute"),
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),
-   extractFn("heroVerbHtml"), extractFn("heroModeIcon"), extractFn("statusChipHtml"), extractFn("statusReplacesDue"), extractFn("etaToken"), extractFn("predictionRank"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
+   extractFn("modeMark"), extractFn("modeIconHtml"), extractFn("heroVerbHtml"), extractFn("heroModeIcon"), extractFn("statusChipHtml"), extractFn("statusReplacesDue"), extractFn("etaToken"), extractFn("predictionRank"), extractFn("busBandAttr"), extractFn("busBadgeClass"),
    extractFn("busTextColor"), extractFn("heroCardHtml")].join("\n")
    + "\nglobalThis.__stopScheduleCache = stopScheduleCache;"
    + "\nglobalThis.__shortcuts = shortcuts;",

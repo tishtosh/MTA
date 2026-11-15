@@ -46,7 +46,7 @@
             outline-offset: 2px;
         }
         .mode-icon i { color: #adb5bd; }
-        .mode-icon.active i { color: #2e7d32; }
+        .mode-icon.active i { color: var(--city-accent, #2e7d32); }
         .add-fav-btn { margin-right: 2px; }
         .add-fav-btn i { font-size: 1.6em; width: 36px; color: #3f2b1e; }
 
@@ -412,12 +412,14 @@
             font: 600 15px/1.3 system-ui, -apple-system, sans-serif; color: inherit;
         }
         .nearby-mode-icon { margin-right: 5px; font-size: 13px; color: #2b2b2b; }
+        .nearby-mode-icon .mode-svg { width: 1em; height: 1em; display: inline-block; vertical-align: -0.125em; }
         .nearby-mode-icon.commuter-rail-icon {
             width: 18px; height: 18px; box-sizing: border-box;
             display: inline-flex; align-items: center; justify-content: center;
             border: 1.5px solid currentColor; border-radius: 50%;
             font-size: 9px; vertical-align: -3px;
         }
+        .commuter-rail-icon .mode-svg { width: 10px; height: 10px; }
         .nearby-card-sub { margin: 1px 0 0; font-size: 12px; color: #3d3d3d; }
 
         .board-head {
@@ -429,11 +431,12 @@
         /* Route badge: white code on the route's saturated color (the palette
            is dark enough to keep it legible). */
         .row-badge {
-            flex: none; min-width: 58px; padding: 2px 9px; border-radius: 5px;
+            flex: none; min-width: 58px; padding: 2px 9px; border-radius: var(--badge-radius, 5px);
             color: #fff; font-weight: 700; font-size: 13px; line-height: 1.4;
             text-align: center;
         }
         .row-badge.boston-bus { padding-left: 11px; padding-right: 11px; }
+        .row-badge.london-bus { border-radius: 2px; }
         .row-badge.hollow {
             background: transparent; border: 2px solid currentColor;
             padding: 0 7px;
@@ -532,11 +535,12 @@
             border-radius: 10px 10px 0 0;
         }
         /* Hero tint by mode: bus = medium-light grey, Metro = light brown. */
-        .hero-card.hero-bus { background: #d8d8d8; color: #2f2f2f; }
-        .hero-card.hero-metro { background: #ece1cd; color: #46301a; }
+        .hero-card.hero-bus { background: var(--hero-bus-bg, #d8d8d8); color: var(--hero-bus-color, #2f2f2f); }
+        .hero-card.hero-metro { background: var(--hero-metro-bg, #ece1cd); color: var(--hero-metro-color, #46301a); }
         .hero-title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .hero-mode-icon { flex: none; display: inline-flex; align-items: center; }
         .hero-mode-icon i { font-size: 17px; }
+        .hero-mode-icon .mode-svg { width: 17px; height: 17px; display: inline-block; }
         .hero-mode-icon.commuter-rail-icon {
             width: 21px; height: 21px; box-sizing: border-box;
             justify-content: center; border: 1.5px solid currentColor;
@@ -619,6 +623,7 @@
         .board-next .bt-next-rest { color: #5f5f5f; }
         .hero-verb { display: inline-flex; align-items: center; margin-right: 3px; }
         .hero-verb i { font-size: 18px; }
+        .hero-verb .mode-svg { width: 18px; height: 18px; display: inline-block; }
         .hero-verb.commuter-rail-icon {
             width: 21px; height: 21px; box-sizing: border-box;
             justify-content: center; border: 1.5px solid currentColor;
@@ -787,6 +792,7 @@
             <select id="citySelect" class="form-select form-select-sm fav-city-select" aria-label="City">
                 <option value="dc">Washington DC</option>
                 <option value="boston">Boston</option>
+                <option value="london">London</option>
             </select>
         </div>
         <div class="fav-setting fav-setting-static">
@@ -847,6 +853,13 @@
 
 <div id="hovertip" class="hovertip" hidden></div>
 
+<!-- City adapters: transport + normalization + theme/icons. No build step. -->
+<script src="js/core/http.js"></script>
+<script src="js/cities/index.js"></script>
+<script src="js/cities/dc.js"></script>
+<script src="js/cities/boston.js"></script>
+<script src="js/cities/london.js"></script>
+<script src="js/ui/icons.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════
 // Configuration
@@ -858,9 +871,13 @@
 //    password via PBKDF2-SHA-256 (salt and IV are stored with the ciphertext).
 const KEY_BLOB = "5iUncaMBYE7uFbNF/sa4No2ZSSmC3OhN6cevnbrGAfnFyGRzaRvlN14ZCuRDjJxTz0OT+EGRuXJbjkp+m8ACl5Qkq6tF2EnR3MBw0g==";
 const MBTA_KEY_BLOB = "+SZJ27k1QG5H2Hm9P2oAyrXAAopq/FaRuF6qsbcJ0gaqAL7PxSW4c+61/NLmO4ZUPFqB3zmUWrrZEAWIOb8hO2b0NIRPhWyImGunRw==";
+// TfL works keyless at low volume. When the key arrives, paste its
+// encrypted blob here (or set TFL_KEY in the console for a session).
+const TFL_KEY_BLOB = "";
 const PBKDF2_ITERATIONS = 210000;
 let API_KEY = "";
 let MBTA_KEY = "";
+let TFL_KEY = "";
 
 // WMATA public API — WMATA operates the DC (Metrobus) bus system.
 // Portal / docs / key registration: https://developer.wmata.com
@@ -868,7 +885,6 @@ const WMATA_API = "https://api.wmata.com";
 
 // MBTA v3 API — Boston's bus, subway, and light rail.
 // Portal / docs / key registration: https://www.mbta.com/developers/v3-api
-const MBTA_API = "https://api-v3.mbta.com";
 
 function b64Bytes(b64) {
     return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -892,6 +908,7 @@ async function unlockAccess(pass) {
     try {
         API_KEY = await decryptKey(pass, KEY_BLOB);
         MBTA_KEY = await decryptKey(pass, MBTA_KEY_BLOB);
+        TFL_KEY = TFL_KEY_BLOB ? await decryptKey(pass, TFL_KEY_BLOB).catch(() => "") : "";
     } catch (e) {
         return false;               // wrong password: AES-GCM auth failed
     }
@@ -928,40 +945,6 @@ function showGate() {
 // if the IDs change again; see README → "Maintenance".
 //
 
-// Park Rd NW, Cleveland Park (20010) — the DC "home" corner
-const HOME = { lat: 38.93468, lon: -77.04512 };
-const DC_CENTER = { lat: 38.89790, lon: -77.03661 };
-
-// ── Cities ───────────────────────────────────────────────────────────
-// Each city has its own transport data source and its own favorites and
-// Home/Work bookmarks. "Near me" auto-selects the city from geolocation.
-const CITIES = {
-    dc: {
-        id: "dc", name: "Washington DC",
-        center: HOME, metroCenter: DC_CENTER,
-        defaultFavorite: { kind: "metro", id: "N10",
-            name: "Washington Dulles International Airport", route: "SV" },
-        airportDefaults: {
-            bus: [{ id: "6000892", name: "Crystal Dr+23 St S", route: "A1X" }],
-            metro: [
-                { id: "C10", name: "Ronald Reagan Washington National Airport", route: "BL" },
-                { id: "N10", name: "Washington Dulles International Airport", route: "SV" }
-            ]
-        }
-    },
-    boston: {
-        id: "boston", name: "Boston",
-        center: { lat: 42.3601, lon: -71.0589 },
-        metroCenter: { lat: 42.3564, lon: -71.0624 },
-        defaultFavorite: { kind: "bus", id: "17091",
-            name: "Boston Logan Airport Terminal A", route: "SL1" },
-        airportDefaults: {
-            bus: [{ id: "17091", name: "Boston Logan Airport Terminal A", route: "SL1" }],
-            metro: [{ id: "place-aport", name: "Airport", route: "Blue" }]
-        }
-    }
-};
-const CITY_COOKIE = "mta_city";
 const MAPS_COOKIE = "mta_maps";
 
 function readMapsProvider() {
@@ -981,27 +964,6 @@ function writeMapsProvider() {
 }
 
 let mapsProvider = readMapsProvider();
-
-function readCityCookie() {
-    try {
-        const hit = String(document.cookie || "").split("; ")
-            .find(p => p.startsWith(CITY_COOKIE + "="));
-        const v = hit ? decodeURIComponent(hit.slice(CITY_COOKIE.length + 1)) : "";
-        return v === "boston" ? "boston" : "dc";
-    } catch (e) { return "dc"; }
-}
-
-function writeCityCookie() {
-    try {
-        document.cookie = `${CITY_COOKIE}=${city}; max-age=31536000; path=/; SameSite=Lax`;
-    } catch (e) { /* session-only */ }
-}
-
-let city = readCityCookie();
-function cityCfg() { return CITIES[city] || CITIES.dc; }
-function isBoston() { return city === "boston"; }
-function cityHome() { return cityCfg().center; }
-function defaultFavorite() { return Object.assign({}, cityCfg().defaultFavorite); }
 
 // ── Topology cache ───────────────────────────────────────────────────
 // Stops, stations, routes, route details, terminals, and connections change
@@ -1049,16 +1011,6 @@ function dropCache(name) {
     } catch (e) { /* ignore */ }
 }
 
-function nearestCity(lat, lon) {
-    let best = "dc", bestD = Infinity;
-    for (const key of Object.keys(CITIES)) {
-        const c = CITIES[key].center;
-        const d = distance(lat, lon, c.lat, c.lon, "m");
-        if (d < bestD) { bestD = d; best = key; }
-    }
-    return best;
-}
-
 // ── URL parameters ───────────────────────────────────────────────────
 //   ?busstop=1002135,1002130   explicit stops (lat/lon/radius ignored)
 //   ?lat=38.934&lon=-77.045    search for stops near this point
@@ -1080,8 +1032,9 @@ const stopListFromURL =
 // point at all (null). The no-param view then defaults to DEFAULT_STOP_ID;
 // "Home" restores the 20010 corner as the search point.
 const hasLatLon = params.has("lat") && params.has("lon");
+const defaultCenter = cityCfg().center;
 const urlPoint = hasLatLon
-    ? { lat: num(params.get("lat"), HOME.lat), lon: num(params.get("lon"), HOME.lon) }
+    ? { lat: num(params.get("lat"), defaultCenter.lat), lon: num(params.get("lon"), defaultCenter.lon) }
     : null;
 
 const gRadius = num(params.get("radius"), 300);
@@ -1146,52 +1099,11 @@ const METRO_NEARBY_FT = 1000;
 const metroPathCache = {};
 const metroPathInflight = {};
 
-const METRO_COLORS = {
-    RD: "#c62828", BL: "#1565c0", OR: "#ef6c00",
-    SV: "#6c757d", GR: "#2e7d32", YL: "#9e9d24"
-};
-const METRO_LINE_NAMES = {
-    RD: "Red", BL: "Blue", OR: "Orange",
-    SV: "Silver", GR: "Green", YL: "Yellow"
-};
-// Boston subway/light-rail/commuter-rail routes (loaded from MBTA /routes type 0,1,2).
-let metroRoutesCache = null;
-let metroRoutesCacheAt = 0;
-let metroRoutesLoad = null;
-{
-    const cached = readCache("metroroutes");
-    if (cached && cached.v && typeof cached.v === "object") {
-        metroRoutesCache = cached.v;
-        metroRoutesCacheAt = cached.at;
-    }
-}
-
-function metroLineColor(line) {
-    const key = String(line || "");
-    if (isBoston()) {
-        const m = metroRoutesCache && metroRoutesCache[key];
-        return m ? (m.color.startsWith("#") ? m.color : "#" + m.color) : "#5d4037";
-    }
-    return METRO_COLORS[key.toUpperCase()] || "#5d4037";
-}
-function metroLineName(line) {
-    const key = String(line || "");
-    if (isBoston()) {
-        const m = metroRoutesCache && metroRoutesCache[key];
-        return m ? m.name : key;
-    }
-    return METRO_LINE_NAMES[key.toUpperCase()] || key;
-}
-
-// MBTA commuter rail is route_type 2. It shares the rail board with subway
-// and light rail but gets the circled train icon.
-function isCommuterRoute(line) {
-    const key = String(line || "");
-    if (!key) return false;
-    if (/^CR-/i.test(key)) return true;
-    const m = metroRoutesCache && metroRoutesCache[key];
-    return !!(m && Number(m.type) === 2);
-}
+// Line presentation is theme-owned (colors differ per city; MBTA line
+// metadata is loaded by the Boston provider).
+function metroLineColor(line) { return cityTheme().metroColor(line); }
+function metroLineName(line) { return cityTheme().metroName(line); }
+function isCommuterRoute(line) { return cityTheme().isCommuter(line); }
 
 // ── Mode (bus / metro) and shortcut locations ─────────────────────────
 // Bookmarks are stored per mode; home/work/favorite are not shared.
@@ -1217,7 +1129,8 @@ function writeModeCookie() {
 
 function shortcutCookieName(kind) {
     const modeKey = kind || mode;
-    return isBoston() ? `mta_shortcuts_boston_${modeKey}` : `mta_shortcuts_${modeKey}`;
+    const key = cityCfg().storageKey;
+    return key ? `mta_shortcuts_${key}_${modeKey}` : `mta_shortcuts_${modeKey}`;
 }
 
 function readShortcutsFor(kind) {
@@ -1226,7 +1139,7 @@ function readShortcutsFor(kind) {
         let hit = String(document.cookie || "").split("; ")
             .find(p => p.startsWith(name + "="));
         // Legacy bus cookie from before per-mode bookmarks.
-        if (!hit && kind === "bus" && !isBoston())
+        if (!hit && kind === "bus" && !cityCfg().storageKey)
             hit = String(document.cookie || "").split("; ")
                 .find(p => p.startsWith("mta_shortcuts="));
         if (!hit) return {};
@@ -1312,7 +1225,8 @@ function shortcutLabel(slot) {
 // ── Multi-favorites from the Add Favorite panel ───────────────────────
 const FAVORITES_COOKIE = "mta_favorites";   // legacy DC key
 function favoritesCookieName() {
-    return isBoston() ? "mta_favorites_boston" : FAVORITES_COOKIE;
+    const key = cityCfg().storageKey;
+    return key ? `mta_favorites_${key}` : FAVORITES_COOKIE;
 }
 let favorites = readFavorites();
 let busRouteDirectory = null;
@@ -1521,173 +1435,13 @@ const gShortcutBtns = {
     fav: document.getElementById("btnFav"),
 };
 
-// ════════════════════════════════════════════════════════════════════
-// WMATA API
-// ════════════════════════════════════════════════════════════════════
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-// Very short GET memo: a timer tick, a route expansion, and a hover can ask
-// for the same static resource together. Live prediction endpoints are
-// excluded so the board never shows a suppressed refresh.
-const apiMemo = new Map();
-function apiMemoKey(base, path, qs) {
-    return `${base}${path}?${qs.toString()}`;
-}
-function apiMemoGet(key) {
-    const hit = apiMemo.get(key);
-    if (!hit) return null;
-    if (Date.now() - hit.at > API_MEMO_MS) { apiMemo.delete(key); return null; }
-    return hit.data;
-}
-function apiMemoSet(key, data) {
-    apiMemo.set(key, { at: Date.now(), data });
-    if (apiMemo.size > 200) {
-        const cutoff = Date.now() - API_MEMO_MS;
-        for (const [k, v] of apiMemo)
-            if (v.at < cutoff) apiMemo.delete(k);
-    }
-}
-
-// One GET against the WMATA API. One retry after backoff on 429/timeout.
-// Never throws: returns { data, error } so callers decide how to surface it.
-async function apiGet(path, query, timeoutMs = 10000) {
-    const qs = new URLSearchParams(Object.assign({ api_key: API_KEY }, query));
-    const memoKey = /jPredictions/i.test(path)
-        ? "" : apiMemoKey(WMATA_API, path, qs);
-    if (memoKey) {
-        const hit = apiMemoGet(memoKey);
-        if (hit) return { data: hit, error: null };
-    }
-    for (let attempt = 0; ; attempt++) {
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), timeoutMs);
-        try {
-            const res = await fetch(`${WMATA_API}${path}?${qs}`, { signal: ctl.signal });
-            const data = await res.json().catch(() => ({}));
-            if (res.status === 429 && attempt === 0) {   // back off, retry once
-                await sleep(1500);
-                continue;
-            }
-            const error = res.ok ? null : Object.assign(
-                new Error(data.Message || `HTTP ${res.status}`),
-                { status: res.status, rateLimited: res.status === 429 });
-            if (!error && memoKey) apiMemoSet(memoKey, data);
-            return { data, error };
-        } catch (e) {                                     // network error / timeout
-            if (attempt === 0) {
-                await sleep(1500);
-                continue;
-            }
-            return { data: null, error: e };
-        } finally {
-            clearTimeout(timer);
-        }
-    }
-}
-
-// One GET against the MBTA v3 API (JSON:API). Same retry policy as apiGet.
-async function mbtaGet(path, query, timeoutMs = 15000) {
-    const qs = new URLSearchParams(Object.assign({ api_key: MBTA_KEY }, query || {}));
-    const memoKey = /\/predictions/i.test(path)
-        ? "" : apiMemoKey(MBTA_API, path, qs);
-    if (memoKey) {
-        const hit = apiMemoGet(memoKey);
-        if (hit) return { data: hit, error: null };
-    }
-    for (let attempt = 0; ; attempt++) {
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), timeoutMs);
-        try {
-            const res = await fetch(`${MBTA_API}${path}?${qs}`, { signal: ctl.signal });
-            const data = await res.json().catch(() => ({}));
-            if (res.status === 429 && attempt === 0) { await sleep(1500); continue; }
-            const detail = data && data.errors && data.errors[0] && data.errors[0].detail;
-            const error = res.ok ? null : Object.assign(
-                new Error(detail || `HTTP ${res.status}`),
-                { status: res.status, rateLimited: res.status === 429 });
-            if (!error && memoKey) apiMemoSet(memoKey, data);
-            return { data, error };
-        } catch (e) {
-            if (attempt === 0) { await sleep(1500); continue; }
-            return { data: null, error: e };
-        } finally {
-            clearTimeout(timer);
-        }
-    }
-}
-
-// MBTA's nearby radius is in degrees: 0.02° ≈ 1 mile.
-function mbtaRadiusDeg(meters) {
-    return Math.max(0.001, (meters / 1609.344) * 0.02);
-}
-
-function mbtaIncluded(data) {
-    const by = new Map();
-    for (const item of (data && data.included) || [])
-        by.set(item.type + ":" + item.id, item);
-    return by;
-}
-
-function mbtaStop(s) {
-    return {
-        StopID: String(s.id),
-        Name: (s.attributes && s.attributes.name) || "",
-        Lat: Number(s.attributes && s.attributes.latitude),
-        Lon: Number(s.attributes && s.attributes.longitude),
-        Routes: []
-    };
-}
-
-function mbtaRouteShort(route, fallback) {
-    const a = (route && route.attributes) || {};
-    return String(a.short_name || (route && route.id) || fallback || "");
-}
-
-// Nearby stops: WMATA jStops, or MBTA /stops within the same radius.
-// Returns [{ StopID, Name, Lat, Lon, Routes }] (or [] if none in range).
+// Endpoints and normalization live in js/cities/*. The page keeps caching,
+// refresh tiers, and rendering.
 async function fetchStopsNear(lat, lon, radius) {
-    if (isBoston()) {
-        const { data, error } = await mbtaGet("/stops", {
-            "filter[latitude]": lat,
-            "filter[longitude]": lon,
-            "filter[radius]": mbtaRadiusDeg(radius),
-            "filter[route_type]": 3,
-            "filter[location_type]": "0",
-            "page[limit]": 200
-        });
-        if (error) throw error;
-        return ((data && data.data) || []).map(mbtaStop);
-    }
-    const { data, error } = await apiGet("/Bus.svc/json/jStops", { Lat: lat, Lon: lon, Radius: radius });
-    if (error) throw error;
-    return (data && data.Stops) || [];
+    return cityProvider().nearbyStops(lat, lon, radius);
 }
-
-// All stops: GET /Bus.svc/json/jStops (no params)
-// The API silently IGNORES a StopID-only query and returns every stop in the
-// system (~7.5k, ~800 KB). Each entry is { StopID, Name, Lon, Lat, Routes[] }
-// — that dump is the only source of stop names, coordinates and routes.
-// Fetched once per page load via loadStopDirectory(); it powers the
-// shared entry field's autocomplete and the route picture.
 async function fetchAllStops() {
-    if (isBoston()) {
-        const out = [];
-        for (let offset = 0; offset < 12000; offset += 1000) {
-            const { data, error } = await mbtaGet("/stops", {
-                "filter[route_type]": 3,
-                "filter[location_type]": "0",
-                "page[limit]": 1000,
-                "page[offset]": offset
-            }, 30000);
-            if (error) throw error;
-            out.push(...((data && data.data) || []).map(mbtaStop));
-            if (!(data && data.links && data.links.next)) break;
-        }
-        return out;
-    }
-    const { data, error } = await apiGet("/Bus.svc/json/jStops", {}, 30000);
-    if (error) throw error;
-    return (data && data.Stops) || [];
+    return cityProvider().allStops();
 }
 
 // The stop directory, deduped: concurrent callers (the entry field, the
@@ -1745,269 +1499,11 @@ function allStopsName(id) {
 // the row. Rows are deduped per stop+trip, falling back to
 // vehicle+route+direction when the trip is missing; rows with neither ID
 // are kept (the ETA list stays whole).
-function mbtaPredictionStatus(a, now) {
-    const st = String((a && a.status) || "").toLowerCase();
-    if (/departing|leaving/.test(st)) return "Departing";
-    if (/all aboard|boarding|stopped/.test(st)) return "Boarding";
-    if (/incoming|arriving|approaching/.test(st)) return "Arriving";
-    const arr = Date.parse((a && a.arrival_time) || "");
-    const dep = Date.parse((a && a.departure_time) || "");
-    if (Number.isFinite(arr) && Number.isFinite(dep) && arr <= now && now <= dep)
-        return "Boarding";
-    if (Number.isFinite(dep) && dep <= now) return "Departing";
-    if (Number.isFinite(arr) && arr <= now) return "Arriving";
-    return "";
-}
-
-const mbtaTerminalCache = new Map();
-const mbtaTerminalAt = new Map();
-const mbtaPatternCache = new Map();
-{
-    const cached = readCache("terminals");
-    if (cached && Array.isArray(cached.v)) {
-        for (const row of cached.v) {
-            if (!Array.isArray(row) || row.length < 2) continue;
-            const key = String(row[0] || "");
-            const stops = Array.isArray(row[1]) ? row[1] : [];
-            if (!key || !stops.length) continue;
-            mbtaTerminalCache.set(key, new Set(stops.map(String)));
-            mbtaTerminalAt.set(key, Number(row[2]) || cached.at || 0);
-        }
-    }
-}
-
-function persistMbtaTerminals() {
-    const rows = [];
-    for (const [key, set] of mbtaTerminalCache) {
-        if (!set || !set.size) continue;
-        rows.push([key, [...set], mbtaTerminalAt.get(key) || 0]);
-    }
-    writeCache("terminals", rows);
-}
-
-// One route_patterns request can describe every route at a stop. The route
-// profiles are static, so keep them for the page and batch the initial load.
-async function mbtaPatternsForRoutes(routeIds) {
-    const missing = [...new Set((routeIds || []).map(String).filter(Boolean))]
-        .filter(id => !mbtaPatternCache.has(id));
-    if (!missing.length) return;
-    const { data, error } = await mbtaGet("/route_patterns", {
-        "filter[route]": missing.join(",")
-    });
-    if (error) throw error;
-    const grouped = new Map(missing.map(id => [id, []]));
-    for (const p of (data && data.data) || []) {
-        const rel = p.relationships || {};
-        const routeId = rel.route && rel.route.data && rel.route.data.id;
-        if (!grouped.has(routeId)) continue;
-        grouped.get(routeId).push({
-            dir: p.attributes.direction_id,
-            canonical: !!(p.attributes && p.attributes.canonical),
-            name: (p.attributes && p.attributes.name) || "",
-            tripId: rel.representative_trip && rel.representative_trip.data
-                ? rel.representative_trip.data.id : null
-        });
-    }
-    for (const id of missing) mbtaPatternCache.set(id, grouped.get(id) || []);
-}
-
-async function buildMbtaTerminals(routeIds, useParent) {
-    const ids = [...new Set((routeIds || []).map(String).filter(Boolean))];
-    const out = new Map();
-    if (!ids.length) return out;
-    await mbtaPatternsForRoutes(ids);
-    const plan = [];
-    for (const id of ids) {
-        const byDir = new Map();
-        for (const p of mbtaPatternCache.get(id) || []) {
-            const cur = byDir.get(p.dir);
-            if (!cur || (p.canonical && !cur.canonical)) byDir.set(p.dir, p);
-        }
-        for (const [dir, p] of byDir) {
-            if (p.tripId) plan.push({ route: id, dir, tripId: p.tripId });
-        }
-    }
-    const tripIds = [...new Set(plan.map(p => p.tripId))];
-    let stopMap = new Map();
-    if (tripIds.length) {
-        try {
-            stopMap = await mbtaTripStopsMany(tripIds, useParent);
-        } catch (e) { /* fall back below */ }
-    }
-    for (const p of plan) {
-        if (stopMap.has(p.tripId)) continue;
-        const stops = await mbtaTripStops(p.tripId, useParent);
-        stopMap.set(p.tripId, stops);
-    }
-    for (const id of ids) {
-        const terminals = new Set();
-        for (const p of plan) {
-            if (p.route !== id) continue;
-            const stops = stopMap.get(p.tripId) || [];
-            if (stops.length)
-                terminals.add(`${p.dir}|${stops[stops.length - 1].StopID}`);
-        }
-        const key = id + ":" + (useParent ? "p" : "s");
-        if (terminals.size) {
-            mbtaTerminalCache.set(key, terminals);
-            mbtaTerminalAt.set(key, Date.now());
-        } else {
-            mbtaTerminalCache.delete(key);
-            mbtaTerminalAt.delete(key);
-        }
-        out.set(id, terminals);
-    }
-    persistMbtaTerminals();
-    return out;
-}
-
-// Stops where each direction terminates for a route. Used to drop arrivals
-// whose trip ends at the stop (they are arrivals, not departures).
-async function mbtaTerminalsForRoutes(routeIds, useParent) {
-    const ids = [...new Set((routeIds || []).map(String).filter(Boolean))];
-    const out = new Map();
-    if (!ids.length) return out;
-    const missing = [], stale = [];
-    for (const id of ids) {
-        const key = id + ":" + (useParent ? "p" : "s");
-        const set = mbtaTerminalCache.get(key);
-        if (!set) { missing.push(id); continue; }
-        out.set(id, set);
-        if (Date.now() - (mbtaTerminalAt.get(key) || 0) > TOPOLOGY_TTL_MS)
-            stale.push(id);
-    }
-    if (missing.length) {
-        const built = await buildMbtaTerminals(missing, useParent);
-        for (const [id, set] of built) out.set(id, set);
-    }
-    if (stale.length)
-        buildMbtaTerminals(stale, useParent).catch(() => {});
-    return out;
-}
-
-async function mbtaTerminals(routeId, useParent) {
-    const map = await mbtaTerminalsForRoutes([routeId], useParent);
-    return map.get(String(routeId)) || new Set();
-}
-
-
-function mbtaPredictionRow(p, inc, now) {
-    const a = p.attributes || {};
-    const at = Date.parse(a.departure_time || a.arrival_time || "");
-    if (!Number.isFinite(at)) return null;
-    const rels = p.relationships || {};
-    const routeRel = rels.route && rels.route.data;
-    const tripRel = rels.trip && rels.trip.data;
-    const stopRel = rels.stop && rels.stop.data;
-    const route = inc.get("route:" + (routeRel && routeRel.id));
-    const trip = inc.get("trip:" + (tripRel && tripRel.id));
-    const dir = Number(a.direction_id) || 0;
-    const heads = (trip && trip.attributes && trip.attributes.headsign) ||
-        ((route && route.attributes && (route.attributes.direction_destinations || [])[dir]) || "");
-    return {
-        stopId: (stopRel && stopRel.id) || null,
-        pred: {
-            min: Math.max(0, Math.round((at - now) / 60000)),
-            at,
-            route: mbtaRouteShort(route).toUpperCase(),
-            routeRef: (routeRel && routeRel.id) || "",
-            dir, dirNum: String(dir), heads, dirText: heads,
-            vehicle: null,
-            trip: (tripRel && tripRel.id) || null,
-            status: mbtaPredictionStatus(a, now)
-        }
-    };
-}
-
-// MBTA accepts multiple stop IDs in one predictions request. Bus boards use
-// this so a stop cluster costs one request instead of one per stop.
-async function fetchMbtaPredictionsBatch(stopIds) {
-    const ids = [...new Set((stopIds || []).map(String).filter(Boolean))];
-    const out = new Map();
-    if (!ids.length) return out;
-    const { data, error } = await mbtaGet("/predictions", {
-        "filter[stop]": ids.join(","),
-        "filter[route_type]": 3,
-        "include": "route,trip,stop",
-        "sort": "departure_time",
-        "page[limit]": Math.min(1000, Math.max(200, ids.length * 80))
-    });
-    if (error) throw error;
-    const inc = mbtaIncluded(data);
-    const now = Date.now();
-    const by = new Map(ids.map(id => [id, []]));
-    for (const p of (data && data.data) || []) {
-        const row = mbtaPredictionRow(p, inc, now);
-        if (!row) continue;
-        const sid = row.stopId;
-        if (!sid || !by.has(sid)) continue;
-        by.get(sid).push(row.pred);
-    }
-    const routeIds = [...new Set([...by.values()].flat()
-        .map(p => p.routeRef).filter(Boolean))];
-    let terminals = new Map();
-    try {
-        terminals = await mbtaTerminalsForRoutes(routeIds, false);
-    } catch (e) { /* keep predictions even if terminal filtering fails */ }
-    for (const id of ids) {
-        const kept = by.get(id).filter(p =>
-            !(terminals.get(p.routeRef) || new Set()).has(`${p.dirNum}|${id}`));
-        kept.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
-        out.set(id, { name: allStopsName(id) || "", predictions: kept });
-    }
-    return out;
-}
-
-async function fetchMbtaPredictions(stopId) {
-    const map = await fetchMbtaPredictionsBatch([stopId]);
-    return map.get(String(stopId)) || { name: allStopsName(stopId) || "", predictions: [] };
-}
-
+// Departures: the active provider owns batching and normalization. WMATA
+// is one request per stop; MBTA and TfL accept a stop set.
 async function fetchPredictions(stopId) {
-    if (isBoston()) return fetchMbtaPredictions(stopId);
-    const { data, error } = await apiGet("/NextBusService.svc/json/jPredictions", { StopID: stopId });
-    if (error) throw error;
-    if (!data || !Array.isArray(data.Predictions)) throw new Error("malformed prediction response");
-    const name = data.StopName || null;
-    const preds = [];
-    const seen = new Set();
-    for (const p of data.Predictions) {
-        const min = Number(p.Minutes);
-        if (!Number.isFinite(min) || min < 0) continue;    // malformed / off-service artifact
-        const route = String(p.RouteID || "").toUpperCase();
-        if (!route) continue;
-        const dirNum = p.DirectionNum != null ? String(p.DirectionNum) : "";
-        const vehicle = p.VehicleID != null ? String(p.VehicleID) : "";
-        const trip = p.TripID != null ? String(p.TripID) : "";
-        const dir = String(p.DirectionText || "");
-        const key = trip ? route + "|" + trip
-                  : vehicle ? route + "|" + vehicle + "|" + dirNum
-                  : null;
-        if (key !== null) {
-            if (seen.has(key)) continue;
-            seen.add(key);
-        }
-        preds.push({ min, route, dir, dirNum, heads: String(p.TripHeadsign || "") || dir,
-                     vehicle: vehicle || null, trip: trip || null,
-                     status: min === 0 ? "Arriving" : "" });
-    }
-    preds.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
-    // Drop arrivals whose published pattern terminates at this stop. Route
-    // details may not be cached yet on the first cycle; the next refresh
-    // applies the filter once they are.
-    const terminalDirs = new Set();
-    for (const r of new Set(preds.map(p => p.route))) {
-        const details = (typeof routeDetailsCache !== "undefined" && routeDetailsCache[r]) || null;
-        for (const dir of (details && details.directions) || []) {
-            const last = (dir.stops || [])[dir.stops.length - 1];
-            if (last && String(last.id) === String(stopId))
-                terminalDirs.add(String(dir.dirNum));
-        }
-    }
-    const out = terminalDirs.size
-        ? preds.filter(p => !terminalDirs.has(String(p.dirNum)))
-        : preds;
-    return { name, predictions: out };
+    const map = await cityProvider().departures([stopId]);
+    return map.get(String(stopId)) || { name: allStopsName(stopId) || "", predictions: [] };
 }
 
 // Recently departed buses: WMATA drops a prediction once the bus leaves the
@@ -2070,21 +1566,11 @@ function scheduleDayKey() {
 }
 
 async function fetchStopSchedule(stopId) {
-    const { data, error } = await apiGet("/Bus.svc/json/jStopSchedule", { StopID: stopId });
-    if (error) throw error;
-    const arrivals = ((data && data.ScheduleArrivals) || []).map(s => ({
-        at: new Date(s.ScheduleTime).getTime(),
-        route: String(s.RouteID || "").toUpperCase(),
-        dirNum: s.DirectionNum != null ? String(s.DirectionNum) : "",
-        heads: String(s.TripHeadsign || ""),
-        dirText: String(s.TripDirectionText || ""),
-    })).filter(s => s.route && Number.isFinite(s.at));
-    arrivals.sort((a, b) => a.at - b.at);
-    return arrivals;
+    return cityProvider().stopSchedule(stopId);
 }
 
 function ensureStopSchedule(stopId) {
-    if (isBoston()) return Promise.resolve([]);   // MBTA has no WMATA stop schedule
+    if (!cityCfg().capabilities.scheduleFallback) return Promise.resolve([]);
     const id = String(stopId || "");
     if (!id) return Promise.resolve([]);
     const day = scheduleDayKey();
@@ -2168,56 +1654,8 @@ function persistRouteDetails() {
     writeCache("routedetails", out);
 }
 
-function normalizeRouteDetails(routeId, raw) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const route = String(raw.RouteID || routeId || "").toUpperCase();
-    const dirs = [];
-    [raw.Direction0, raw.Direction1].forEach((d, i) => {
-        (Array.isArray(d) ? d : (d && typeof d === "object" ? [d] : [])).forEach((dd) => {
-            if (!dd || typeof dd !== "object") return;
-            const stops = [];
-            const seenS = new Set();
-            (Array.isArray(dd.Stops) ? dd.Stops : []).forEach((s) => {
-                if (!s || !s.StopID) return;
-                const k = String(s.StopID);
-                if (seenS.has(k)) return;          // keep the FIRST occurrence (pattern order)
-                seenS.add(k);
-                stops.push({ id: k, name: String(s.Name || "") || allStopsName(k),
-                             lat: Number(s.Lat), lon: Number(s.Lon) });
-            });
-            if (!stops.length) return;
-            const shape = (Array.isArray(dd.Shape) ? dd.Shape : [])
-                .filter(s => s && Number.isFinite(Number(s.Lat)) && Number.isFinite(Number(s.Lon)))
-                .sort((a, b) => (Number(a.SeqNum) || 0) - (Number(b.SeqNum) || 0));
-            const pts = [], seenP = new Set();
-            shape.forEach(pt => {
-                const k = pt.Lat + "|" + pt.Lon;
-                if (seenP.has(k)) return;
-                seenP.add(k);
-                pts.push({ lat: Number(pt.Lat), lon: Number(pt.Lon) });
-            });
-            dirs.push({ route,
-                         dirNum: dd.DirectionNum != null ? String(dd.DirectionNum) : String(i),
-                         heads: String(dd.TripHeadsign || "").trim(),
-                         dirText: String(dd.DirectionText || "").trim(),
-                         stops, shape: pts,
-                         byId: Object.fromEntries(stops.map(s => [s.id, s])) });
-        });
-    });
-    const seenD = new Set();
-    const out = [];
-    dirs.forEach(d => {
-        if (!d.dirNum || seenD.has(d.dirNum)) return;
-        seenD.add(d.dirNum);
-        out.push(d);
-    });
-    if (!out.length) return null;
-    return { route, name: String(raw.Name || "").trim(), directions: out };
-}
-
 async function fetchRouteDetails(routeId) {
-    if (isBoston()) return null;   // MBTA profiles do not expose WMATA-style patterns
-    routeId = String(routeId || "").toUpperCase();
+    routeId = String(routeId || "");
     if (!routeId) return null;
     const cached = routeDetailsCache[routeId];
     const age = Date.now() - (routeDetailsAt[routeId] || 0);
@@ -2235,9 +1673,7 @@ function refreshRouteDetails(routeId) {
     if (routeDetailsInflight[routeId]) return routeDetailsInflight[routeId];
     routeDetailsInflight[routeId] = (async () => {
         try {
-            const { data, error } = await apiGet("/Bus.svc/json/jRouteDetails", { RouteID: routeId });
-            if (error) return null;
-            const out = normalizeRouteDetails(routeId, data);
+            const out = await cityProvider().routeDetails(routeId);
             if (out) {
                 routeDetailsCache[routeId] = out;
                 routeDetailsAt[routeId] = Date.now();
@@ -2457,13 +1893,12 @@ const ACROSS_OPPOSE_DEG = 120;    // local bearings must differ by at least this
 // The board's default anchor when a ?busstop= deep link names no stop: the
 // first corner of the 20010 intersection (C87 / D72). runFlow() uses it to
 // keep the picture useful for a bare /mta26.html or an empty ?busstop=.
-const DEFAULT_STOP_ID = "1002135";
 
 // The default anchor as a jStops-shaped record. Coordinates come from the
 // stop directory once it has loaded — until then the stop is nameless and
 // unlocatable, exactly like any other URL-listed stop.
 function defaultStopRec() {
-    const id = String(DEFAULT_STOP_ID);
+    const id = String(cityCfg().defaultStopId || "");
     const dir = allStopsCache && allStopsCache.find(s => String(s.StopID) === id);
     return makeStop(id, dir ? (dir.Name || null) : null,
                      dir ? dir.Lat : null, dir ? dir.Lon : null);
@@ -2713,11 +2148,32 @@ async function ensureCrossBusNearby(station) {
     }
 }
 
-function nearbyModeIcon(metro, commuter, color, drag) {
+function modeMark(metro, commuter) {
+    return metro ? (commuter ? "commuter" : "subway") : "bus";
+}
+
+function modeIconHtml(metro, commuter, route) {
+    let mode = modeMark(metro, commuter);
+    if (typeof cityCfg === "function" && cityCfg().id === "london" && metro && !commuter) {
+        const key = String(route || "").toLowerCase();
+        if (key.includes("elizabeth")) mode = "elizabeth";
+        else if (key.includes("overground")) mode = "overground";
+        else if (key === "dlr") mode = "dlr";
+        else if (key === "tram") mode = "tram";
+    }
+    if (typeof MTA !== "undefined" && MTA.icons && typeof cityCfg === "function")
+        return MTA.icons.html(cityCfg().id, mode);
+    // Test/standalone fallback when the icon module is not loaded.
+    return `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"}" aria-hidden="true"></i>`;
+}
+
+function nearbyModeIcon(metro, commuter, color, drag, route) {
     const base = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
     const label = drag ? `${base} — drag to reorder` : base;
     const style = metro && color ? ` style="color:${esc(color)}"` : "";
-    return `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"} nearby-mode-icon${commuter ? " commuter-rail-icon" : ""}${drag ? " bookmark-drag" : ""}"${style} role="img" aria-label="${label}" title="${label}"></i>`;
+    return `<span class="nearby-mode-icon${commuter ? " commuter-rail-icon" : ""}${drag ? " bookmark-drag" : ""}"${style} role="img" aria-label="${label}" title="${label}">`
+        + modeIconHtml(metro, commuter, route)
+        + `</span>`;
 }
 
 function crossMetroSectionHtml(st) {
@@ -2728,7 +2184,7 @@ function crossMetroSectionHtml(st) {
         + ` data-cross="metro" data-stop="${esc(st.Code)}" data-name="${esc(st.Name || "")}">`
         + `<span class="hero-line-band" style="background:${metroLineColor(primaryRoute)}"></span>`
         + `<div class="nearby-card-head"><div class="nearby-card-main">`
-        + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute))}${esc(stopName(st.Name) || st.Code)}</div>`
+        + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute), false, primaryRoute)}${esc(stopName(st.Name) || st.Code)}</div>`
         + `<div class="nearby-card-sub">${esc([dist, "#" + st.Code].filter(Boolean).join(" · "))}</div>`
         + `</div></div></div>`;
     const line = st.next ? nextArrivalHtml("metro", st.next)
@@ -3127,7 +2583,7 @@ function boardRowHead(row, color, g, k, scheduled) {
         : esc(row.dest || row.dir || "");
     const departed = !!row.departed;
     const badgeText = row.metro ? metroLineName(row.route) : row.route;
-    const hasMbtaTrip = typeof isBoston === "function" && isBoston() &&
+    const hasMbtaTrip = typeof cityProvider().tripStops === "function" &&
         !row.metro && row.rep && row.rep.trip;
     const hasList = (g && g.hasTrack && (g.stops || []).length >= 2) ||
         (row.metro && row.toCode) || hasMbtaTrip;
@@ -3176,7 +2632,7 @@ function boardHtml(geom, rows) {
         // Piece 11: the ordered stop list behind the badge chevron.
         // No numeric index; each stop is a button that re-anchors the board.
         const trip = row.rep && row.rep.trip;
-        const mbtaList = (typeof isBoston === "function" && isBoston() &&
+        const mbtaList = (typeof cityProvider().tripStops === "function" &&
             !row.metro && trip)
             ? `<ul class="bt-stoplist"${open ? "" : " hidden"}`
               + ` data-trip="${esc(trip)}" data-line="${esc(row.route)}"`
@@ -3244,9 +2700,9 @@ async function runFlow() {
         resetPick();                     // a new flow starts from the session's list (any picked stop is undone)
         noteSelectionChange();           // void the old counterpart + any in-flight refresh
         scrollPageTop();
-        // Boston has no fixed default stop: start from downtown when there is
-        // no saved Home bookmark and no URL/search point.
-        if (!stopListFromURL && !searchPoint && isBoston()
+        // Cities without a fixed default stop start from their center when
+        // there is no saved Home bookmark and no URL/search point.
+        if (!stopListFromURL && !searchPoint && cityCfg().nearbyByDefault
             && !shortcutList(shortcuts.home).length) {
             searchPoint = { lat: cityHome().lat, lon: cityHome().lon };
         }
@@ -3264,10 +2720,10 @@ async function runFlow() {
                 : [defaultStopRec()];
         } else {
             // ?lat&lon URL point: find stops near the search point
-            const center = isBoston() ? cityCfg().metroCenter : DC_CENTER;
+            const center = cityCfg().metroCenter || cityCfg().center;
             const d = distance(center.lat, center.lon, searchPoint.lat, searchPoint.lon, "m");
-            const at = d > 50 ? center : searchPoint;     // fa-regular from the city → search its center
-            const where = isBoston() ? "downtown Boston" : "the Whitehouse";
+            const at = d > 50 ? center : searchPoint;     // far from the city → search its center
+            const where = cityCfg().nearbyLabel || cityCfg().name;
             gStatus.textContent = `${d.toFixed(1)} mi to ${where}` + (at === center ? " (searching city center)" : "") + " …";
             const raw = await fetchStopsNear(at.lat, at.lon, gRadius);
             // Distance is measured from the point we actually searched —
@@ -3300,7 +2756,7 @@ async function runFlow() {
         refreshPredictions().catch(() => {});
     } catch (e) {
         // Stops lookup failed (bad key / network): keep whatever is shown.
-        gStatus.textContent = `Could not reach ${isBoston() ? "MBTA" : "WMATA"}: ${e.message}`;
+        gStatus.textContent = `Could not reach ${cityCfg().agency}: ${e.message}`;
     } finally {
         busy = false;
         scheduleRefresh();
@@ -3311,33 +2767,11 @@ async function runFlow() {
 // Metro rail
 // ════════════════════════════════════════════════════════════════════
 
-function normalizeMetroStation(s) {
-    const lines = [s.LineCode1, s.LineCode2, s.LineCode3, s.LineCode4].filter(Boolean);
-    return { Code: String(s.Code || ""), Name: s.Name || "",
-             Lat: Number(s.Lat), Lon: Number(s.Lon), Lines: lines, distFt: null };
-}
-
 function fetchMetroRoutesFresh() {
     if (metroRoutesLoad) return metroRoutesLoad;
-    metroRoutesLoad = mbtaGet("/routes", { "filter[type]": "0,1,2", "page[limit]": 100 })
-        .then(({ data, error }) => {
-            if (error) throw error;
-            const map = {};
-            for (const r of (data && data.data) || []) {
-                const type = Number(r.attributes.type);
-                const crName = String(r.attributes.long_name || "")
-                    .replace(/\s+Line$/i, "").trim();
-                map[r.id] = {
-                    name: /^Green-/.test(r.id)
-                        ? "Green " + (r.attributes.short_name || r.id.replace(/^Green-/, ""))
-                        : type === 2
-                            ? (crName || r.id.replace(/^CR-/, ""))
-                            : (r.attributes.short_name || r.id),
-                    color: r.attributes.color || "5d4037",
-                    type,
-                    destinations: r.attributes.direction_destinations || []
-                };
-            }
+    metroRoutesLoad = Promise.resolve(cityProvider().metroRoutes())
+        .then(map => {
+            if (!map) return null;
             metroRoutesCache = map;
             metroRoutesCacheAt = Date.now();
             writeCache("metroroutes", map);
@@ -3348,7 +2782,7 @@ function fetchMetroRoutesFresh() {
 }
 
 function loadMetroRoutes() {
-    if (!isBoston()) return Promise.resolve(null);
+    if (!cityCfg().capabilities.metroRoutes) return Promise.resolve(null);
     if (metroRoutesCache) {
         if (Date.now() - metroRoutesCacheAt > TOPOLOGY_TTL_MS)
             fetchMetroRoutesFresh().catch(() => {});
@@ -3359,47 +2793,9 @@ function loadMetroRoutes() {
 
 function fetchMetroStationsFresh() {
     if (metroStationsLoad) return metroStationsLoad;
-    if (isBoston()) {
-        metroStationsLoad = (async () => {
-            const lines = await loadMetroRoutes();
-            const found = new Map();
-            await Promise.all(Object.keys(lines).map(async line => {
-                const { data, error } = await mbtaGet("/stops", {
-                    "filter[route]": line,
-                    "filter[location_type]": 1,
-                    "page[limit]": 300
-                });
-                if (error) return;
-                for (const s of (data && data.data) || []) {
-                    let st = found.get(s.id);
-                    if (!st) {
-                        st = {
-                            Code: s.id, Name: s.attributes.name || "",
-                            Lat: Number(s.attributes.latitude),
-                            Lon: Number(s.attributes.longitude),
-                            Lines: [], distFt: null
-                        };
-                        found.set(s.id, st);
-                    }
-                    if (!st.Lines.includes(line)) st.Lines.push(line);
-                }
-            }));
-            metroStationsCache = [...found.values()]
-                .filter(s => s.Code && Number.isFinite(s.Lat) && Number.isFinite(s.Lon));
-            const order = Object.keys(lines);
-            for (const st of metroStationsCache)
-                st.Lines.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-            metroStationsCacheAt = Date.now();
-            writeCache("stations", metroStationsCache);
-            return metroStationsCache;
-        })().finally(() => { metroStationsLoad = null; });
-        return metroStationsLoad;
-    }
-    metroStationsLoad = apiGet("/Rail.svc/json/jStations", {})
-        .then(({ data, error }) => {
-            if (error) throw error;
-            metroStationsCache = ((data && data.Stations) || [])
-                .map(normalizeMetroStation)
+    metroStationsLoad = Promise.resolve(cityProvider().metroStations())
+        .then(list => {
+            metroStationsCache = (list || [])
                 .filter(s => s.Code && Number.isFinite(s.Lat) && Number.isFinite(s.Lon));
             metroStationsCacheAt = Date.now();
             writeCache("stations", metroStationsCache);
@@ -3423,7 +2819,7 @@ function metroRefPoint() {
     const st = anchorStop();
     if (st && st.Lat != null && st.Lon != null)
         return { lat: Number(st.Lat), lon: Number(st.Lon) };
-    return isBoston() ? cityCfg().metroCenter : HOME;
+    return cityCfg().metroCenter || cityCfg().center;
 }
 
 function populateMetroSelect(stations) {
@@ -3502,41 +2898,6 @@ function hydrateCityCaches() {
             routeDetailsAt[id] = rec.at || details.at;
         }
     }
-    const terminals = readCache("terminals");
-    if (terminals && Array.isArray(terminals.v)) {
-        for (const row of terminals.v) {
-            if (!Array.isArray(row) || row.length < 2) continue;
-            const key = String(row[0] || "");
-            const stops = Array.isArray(row[1]) ? row[1] : [];
-            if (!key || !stops.length) continue;
-            mbtaTerminalCache.set(key, new Set(stops.map(String)));
-            mbtaTerminalAt.set(key, Number(row[2]) || terminals.at || 0);
-        }
-    }
-    const conns = readCache("connections");
-    if (conns && Array.isArray(conns.v)) {
-        for (const row of conns.v) {
-            if (!Array.isArray(row) || row.length < 2) continue;
-            const key = String(row[0] || "");
-            const rec = row[1] || {};
-            if (!key || !rec.v) continue;
-            stopConnections.set(key, rec.v);
-            stopConnectionsAt.set(key, Number(rec.at) || conns.at || 0);
-        }
-    }
-    const routeStops = readCache("mbta_route_stops");
-    if (routeStops && Array.isArray(routeStops.v)) {
-        for (const row of routeStops.v) {
-            if (!Array.isArray(row) || row.length < 2) continue;
-            const key = String(row[0] || "");
-            const rec = row[1] || {};
-            if (!key || !Array.isArray(rec.v) || !rec.v.length) continue;
-            mbtaRouteStopsCache.set(key, {
-                at: Number(rec.at) || routeStops.at || 0,
-                groups: rec.v
-            });
-        }
-    }
     const stopSched = readCache("stopschedule");
     if (stopSched && stopSched.v && typeof stopSched.v === "object") {
         for (const id of Object.keys(stopSched.v)) {
@@ -3587,12 +2948,8 @@ function clearCityCaches() {
     stopConnections.clear();
     stopConnectionsAt.clear();
     stopConnectionsInflight.clear();
-    mbtaTerminalCache.clear();
-    mbtaTerminalAt.clear();
-    mbtaPatternCache.clear();
-    mbtaTripStopCache.clear();
-    mbtaRouteStopsCache.clear();
-    apiMemo.clear();
+    if (typeof cityProvider().resetCaches === "function") cityProvider().resetCaches();
+    MTA.http.clearMemo();
     hydrateCityCaches();
     crossNearbyKey = "";
     crossMetroNearby = [];
@@ -3680,90 +3037,10 @@ function setMetroAnchor(code) {
     refreshMetro();
 }
 
-function metroMin(v) {
-    if (v === "BRD" || v === "ARR") return 0;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-}
-
-async function fetchMbtaMetroLive(codes) {
-    const { data, error } = await mbtaGet("/predictions", {
-        "filter[stop]": codes.join(","),
-        "filter[route_type]": "0,1,2",
-        "include": "route,trip,stop",
-        "page[limit]": 500
-    });
-    if (error) throw error;
-    const inc = mbtaIncluded(data);
-    const by = {};
-    for (const c of codes) by[c] = [];
-    for (const p of (data && data.data) || []) {
-        const a = p.attributes || {};
-        const at = Date.parse(a.departure_time || a.arrival_time || "");
-        if (!Number.isFinite(at)) continue;
-        const rels = p.relationships || {};
-        const stopRel = rels.stop && rels.stop.data;
-        const stop = inc.get("stop:" + (stopRel && stopRel.id));
-        const parent = stop && stop.relationships && stop.relationships.parent_station
-            && stop.relationships.parent_station.data;
-        const code = (parent && parent.id) || (stopRel && stopRel.id);
-        if (!by[code]) continue;
-        const routeRel = rels.route && rels.route.data;
-        const route = inc.get("route:" + (routeRel && routeRel.id));
-        const tripRel = rels.trip && rels.trip.data;
-        const trip = inc.get("trip:" + (tripRel && tripRel.id));
-        const heads = (trip && trip.attributes && trip.attributes.headsign) ||
-            ((route && route.attributes && (route.attributes.direction_destinations || [])[a.direction_id]) || "");
-        by[code].push({
-            min: Math.max(0, Math.round((at - Date.now()) / 60000)),
-            at,
-            route: (routeRel && routeRel.id) || "",
-            dir: heads, heads, dirNum: String(a.direction_id == null ? "" : a.direction_id),
-            vehicle: null, trip: (tripRel && tripRel.id) || null,
-            status: mbtaPredictionStatus(a, Date.now())
-        });
-    }
-    const routes = [...new Set(Object.values(by).flat()
-        .map(t => t.route).filter(Boolean))];
-    let terminals = new Map();
-    try {
-        terminals = await mbtaTerminalsForRoutes(routes, true);
-    } catch (e) { /* keep predictions even if terminal filtering fails */ }
-    for (const c of codes) {
-        by[c] = by[c].filter(t =>
-            !(terminals.get(t.route) || new Set()).has(`${t.dirNum}|${c}`));
-        by[c].sort((a, b) => a.min - b.min);
-    }
-    return by;
-}
-
+// Rail departures: provider-owned (WMATA StationPrediction, MBTA
+// /predictions with parent stations, TfL StopPoint arrivals).
 async function fetchMetroLive(codes) {
-    if (isBoston()) return fetchMbtaMetroLive(codes);
-    const { data, error } = await apiGet(
-        "/StationPrediction.svc/json/GetPrediction/" + codes.join(","), {});
-    if (error) throw error;
-    const by = {};
-    for (const t of (data && data.Trains) || []) {
-        const min = metroMin(t.Min);
-        const rawMin = String(t.Min || "").trim().toUpperCase();
-        const status = rawMin === "BRD" ? "Boarding" : rawMin === "ARR" ? "Arriving" : "";
-        const code = String(t.LocationCode || "");
-        const line = String(t.Line || "").toUpperCase();
-        const dest = t.DestinationName || t.Destination || "";
-        if (min == null || !code || !line || line === "NO" || /no passenger/i.test(dest))
-            continue;
-        const stName = (metroStationsCache || []).find(s => s.Code === code);
-        if (dest && ((metroDestCode(dest) === code) ||
-            (stName && normHeads(dest) === normHeads(stName.Name)))) continue;
-        (by[code] || (by[code] = [])).push({
-            min, route: line,
-            dir: dest, heads: dest,
-            dirNum: t.Group != null ? String(t.Group) : "",
-            vehicle: null, trip: null, status
-        });
-    }
-    for (const code of Object.keys(by)) by[code].sort((a, b) => a.min - b.min);
-    return by;
+    return cityProvider().metroLive(codes);
 }
 
 function metroRowsFor(station, skipFirst) {
@@ -3823,17 +3100,12 @@ function metroDestCode(name) {
     return hit ? hit.Code : "";
 }
 
+// Rail path: provider-owned. The page keeps the 24 h in-memory cache.
 async function fetchMetroPath(from, to, line) {
     const key = from + "|" + to + "|" + (line || "");
     if (metroPathCache[key]) return metroPathCache[key];
     if (metroPathInflight[key]) return metroPathInflight[key];
-    const p = (isBoston()
-        ? fetchMbtaMetroPath(from, to, line)
-        : apiGet("/Rail.svc/json/jPath", { FromStationCode: from, ToStationCode: to })
-            .then(({ data, error }) => {
-                if (error) throw error;
-                return (data && data.Path) || [];
-            }))
+    const p = cityProvider().metroPath(from, to, line)
         .then(path => {
             metroPathCache[key] = path;
             return path;
@@ -3841,31 +3113,6 @@ async function fetchMetroPath(from, to, line) {
         .finally(() => { delete metroPathInflight[key]; });
     metroPathInflight[key] = p;
     return p;
-}
-
-// Boston: use a representative trip for the line/direction whose ordered
-// stops contain both the boarding station and the destination.
-async function fetchMbtaMetroPath(from, to, line) {
-    await mbtaPatternsForRoutes([line]);
-    const patterns = mbtaPatternCache.get(String(line)) || [];
-    const tripIds = [...new Set(patterns.map(p => p.tripId).filter(Boolean))];
-    const stopMap = await mbtaTripStopsMany(tripIds, true).catch(() => new Map());
-    for (const p of patterns) {
-        if (!p.tripId) continue;
-        const stops = stopMap.get(p.tripId) || [];
-        const ids = stops.map(s => String(s.StopID));
-        const a = ids.indexOf(String(from)), b = ids.indexOf(String(to));
-        if (a < 0 || b < 0) continue;
-        const slice = a <= b ? ids.slice(a, b + 1) : ids.slice(b, a + 1).reverse();
-        return slice.map(id => {
-            const st = (metroStationsCache || []).find(s => s.Code === id);
-            return {
-                StationCode: id,
-                StationName: (st && st.Name) || allStopsName(id) || id
-            };
-        });
-    }
-    return [];
 }
 
 async function loadMbtaRowStops(ul) {
@@ -4019,7 +3266,7 @@ function renderMetro() {
         let html = `<div class="nearby-stop-card nearby-metro" role="button" tabindex="0" data-metro="1" data-stop="${esc(stn.Code)}">`
             + `<span class="hero-line-band" style="background:${metroLineColor(primaryRoute)}"></span>`
             + `<div class="nearby-card-head"><div class="nearby-card-main">`
-            + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute))}${esc(stopName(stn.Name) || stn.Code)}</div>`
+            + `<div class="nearby-card-title">${nearbyModeIcon(true, commuter, metroLineColor(primaryRoute), false, primaryRoute)}${esc(stopName(stn.Name) || stn.Code)}</div>`
             + `<div class="nearby-card-sub">${esc([dist, "#" + stn.Code].filter(Boolean).join(" · "))}</div>`
             + `</div></div></div>`;
         if (rows.length)
@@ -4268,7 +3515,7 @@ async function loadMetroGtfs() {
 }
 
 async function ensureMetroSchedule(codes) {
-    if (isBoston()) return {};   // Boston uses live MBTA predictions only
+    if (!cityCfg().capabilities.metroGtfs) return {};   // live-only rail feeds
     const d = new Date();
     const day = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
     if (codes.every(c => metroScheduleCache[c] && metroScheduleCache[c].day === day)) {
@@ -4366,10 +3613,10 @@ async function refreshPredictions() {
             tickClock();
         };
 
-        if (isBoston()) {
-            // One MBTA predictions request covers the whole stop cluster.
+        if (cityCfg().capabilities.batchDepartures) {
+            // One provider request covers the whole stop cluster.
             try {
-                const batch = await fetchMbtaPredictionsBatch([...target.keys()]);
+                const batch = await cityProvider().departures([...target.keys()]);
                 for (const stop of target.values()) {
                     const result = batch.get(String(stop.StopID));
                     if (result) applyResult(stop, result);
@@ -4561,7 +3808,7 @@ function updateShortcutNav() {
             btn.title = `${label}: ${names.join(", ")}${entries.length > 2 ? ` +${entries.length - 2}` : ""}`;
             btn.setAttribute("aria-label", btn.title);
         } else if (slot === "home") {
-            btn.title = mode === "metro" ? "Nearest Metro station" : `Home stop (${DEFAULT_STOP_ID})`;
+            btn.title = mode === "metro" ? "Nearest Metro station" : `Home stop (${cityCfg().defaultStopId})`;
             btn.setAttribute("aria-label", btn.title);
         } else {
             btn.title = `No ${label} ${noun}s saved`;
@@ -4579,7 +3826,7 @@ function goShortcut(slot) {
         return;
     }
     if (saved && saved.id) { gotoStop(saved.id, saved.name); return; }
-    if (slot === "home") { gotoStop(DEFAULT_STOP_ID, null); return; }
+    if (slot === "home") { gotoStop(cityCfg().defaultStopId, null); return; }
     gStatus.textContent = `No ${shortcutLabel(slot)} stop saved — open a stop and tap its ${shortcutLabel(slot).toLowerCase()} icon.`;
 }
 
@@ -4663,28 +3910,31 @@ async function stopMapPoint(kind, id, name, line) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
         lat = null; lon = null;
         try {
-            if (isBoston()) {
-                const { data } = await mbtaGet(`/stops/${id}`);
-                const a = (data && data.data && data.data.attributes) || null;
-                if (a) {
-                    lat = Number(a.latitude); lon = Number(a.longitude);
-                    label = a.name || label;
+            const provider = cityProvider();
+            if (provider.place) {
+                const p = await provider.place(id).catch(() => null);
+                if (p && Number.isFinite(p.lat) && Number.isFinite(p.lon)) {
+                    lat = p.lat; lon = p.lon;
+                    label = stopName(p.name) || label;
                 }
-            } else if (kind === "metro") {
-                await loadMetroStations();
-                const st = (metroStationsCache || [])
-                    .find(s => String(s.Code) === id);
-                if (st) { lat = Number(st.Lat); lon = Number(st.Lon); }
-            } else if (line) {
-                const details = await fetchRouteDetails(line);
-                for (const d of (details && details.directions) || []) {
-                    const s = d.byId && d.byId[id];
-                    if (!s) continue;
-                    if (Number.isFinite(s.lat) && Number.isFinite(s.lon)) {
-                        lat = s.lat; lon = s.lon;
-                        label = stopName(s.name) || label;
+            }
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                if (kind === "metro") {
+                    await loadMetroStations();
+                    const st = (metroStationsCache || [])
+                        .find(s => String(s.Code) === id);
+                    if (st) { lat = Number(st.Lat); lon = Number(st.Lon); }
+                } else if (line) {
+                    const details = await fetchRouteDetails(line);
+                    for (const d of (details && details.directions) || []) {
+                        const s = d.byId && d.byId[id];
+                        if (!s) continue;
+                        if (Number.isFinite(s.lat) && Number.isFinite(s.lon)) {
+                            lat = s.lat; lon = s.lon;
+                            label = stopName(s.name) || label;
+                        }
+                        break;
                     }
-                    break;
                 }
             }
         } catch (e) { /* name-only directions */ }
@@ -4764,48 +4014,18 @@ function applyBusRouteDirectory(list) {
 
 function fetchBusRouteDirectoryFresh() {
     if (busRouteLoad) return busRouteLoad;
-    if (isBoston()) {
-        busRouteLoad = mbtaGet("/routes", { "filter[type]": 3, "page[limit]": 500 })
-            .then(({ data, error }) => {
-                if (error) throw error;
-                const seen = new Set();
-                const list = ((data && data.data) || []).map(r => {
-                    const id = String(r.attributes.short_name || r.id).toUpperCase();
-                    return {
-                        id,
-                        name: r.attributes.long_name || r.id,
-                        desc: r.attributes.long_name || r.attributes.description || "",
-                        mbtaId: r.id,
-                        color: r.attributes.color || ""
-                    };
-                }).filter(r => r.id && !seen.has(r.id) && seen.add(r.id))
-                  .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-                return applyBusRouteDirectory(list);
-            })
-            .finally(() => { busRouteLoad = null; });
-        return busRouteLoad;
-    }
-    busRouteLoad = apiGet("/Bus.svc/json/jRoutes", {})
-        .then(({ data, error }) => {
-            if (error) throw error;
-            const list = ((data && data.Routes) || [])
-                .map(r => ({ id: String(r.RouteID || "").toUpperCase(),
-                             name: r.Name || "",
-                             desc: r.LineDescription || r.Name || "" }))
-                .filter(r => r.id)
-                .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-            return applyBusRouteDirectory(list);
-        })
+    busRouteLoad = Promise.resolve(cityProvider().busRouteDirectory())
+        .then(list => applyBusRouteDirectory(list))
         .catch(() => {
+            // Offline fallback: derive what the stop directory already knows.
             const m = new Map();
             for (const s of allStopsCache || [])
                 for (const r of s.Routes || []) {
                     const id = String(r || "").toUpperCase();
                     if (id && !m.has(id)) m.set(id, { id, name: id, desc: "" });
                 }
-            const list = [...m.values()]
-                .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-            return applyBusRouteDirectory(list);
+            return applyBusRouteDirectory([...m.values()]
+                .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })));
         })
         .finally(() => { busRouteLoad = null; });
     return busRouteLoad;
@@ -4905,69 +4125,7 @@ function persistConnections() {
 }
 
 async function buildStopConnections(kind, id) {
-    const key = kind + ":" + String(id);
-    const out = { bus: [], metro: [] };
-    try {
-        if (isBoston()) {
-            if (!Object.keys(busRouteColors).length)
-                await loadBusRouteDirectory().catch(() => null);
-            const { data } = await mbtaGet("/routes", { "filter[stop]": String(id) });
-            for (const r of (data && data.data) || []) {
-                const type = r.attributes.type;
-                if (type === 3) out.bus.push(String(r.attributes.short_name || r.id).toUpperCase());
-                else if (type === 0 || type === 1 || type === 2) out.metro.push(String(r.id));
-            }
-            // MBTA links bus routes to station IDs but not rail lines to bus
-            // stops: add nearby stations' lines for a bus stop.
-            if (kind === "bus") {
-                let lat = null, lon = null;
-                const st = (allStopsCache || []).find(s => String(s.StopID) === String(id));
-                if (st && st.Lat != null && st.Lon != null) { lat = st.Lat; lon = st.Lon; }
-                else {
-                    const one = await mbtaGet(`/stops/${encodeURIComponent(id)}`).catch(() => null);
-                    const a = one && one.data && one.data.data && one.data.data.attributes;
-                    if (a) { lat = a.latitude; lon = a.longitude; }
-                }
-                if (lat != null && lon != null) {
-                    const stations = await loadMetroStations().catch(() => []);
-                    for (const s of stations) {
-                        if (distance(lat, lon, s.Lat, s.Lon, "f") <= CROSS_CONNECTION_FT)
-                            out.metro.push(...(s.Lines || []));
-                    }
-                }
-            }
-        } else if (kind === "metro") {
-            const st = (metroStationsCache || []).find(s => String(s.Code) === String(id));
-            out.metro = st ? (st.Lines || []).slice() : [];
-            // WMATA station data has no bus routes: use nearby bus stops.
-            if (st && st.Lat != null && st.Lon != null) {
-                let near = null;
-                if (allStopsCache) {
-                    near = allStopsCache.filter(s => s.Lat != null && s.Lon != null &&
-                        distance(st.Lat, st.Lon, s.Lat, s.Lon, "f") <= CROSS_CONNECTION_FT);
-                } else {
-                    near = await fetchStopsNear(st.Lat, st.Lon,
-                        CROSS_CONNECTION_FT / 3.28084).catch(() => []);
-                }
-                for (const s of near || [])
-                    out.bus.push(...((s.Routes || []).map(r => String(r).toUpperCase())));
-            }
-        } else {
-            const st = (allStopsCache || []).find(s => String(s.StopID) === String(id));
-            out.bus = ((st && st.Routes) || []).map(r => String(r).toUpperCase());
-            // Add metro lines from stations within walking distance.
-            if (st && st.Lat != null && st.Lon != null) {
-                const stations = await loadMetroStations().catch(() => []);
-                for (const s of stations) {
-                    if (distance(st.Lat, st.Lon, s.Lat, s.Lon, "f") <= CROSS_CONNECTION_FT)
-                        out.metro.push(...(s.Lines || []));
-                }
-            }
-        }
-    } catch (e) { /* show no connections on failure */ }
-    out.bus = [...new Set(out.bus)].slice(0, 6);
-    out.metro = [...new Set(out.metro)].slice(0, 6);
-    return out;
+    return cityProvider().connections(kind, id);
 }
 
 async function refreshStopConnections(kind, id) {
@@ -4975,11 +4133,10 @@ async function refreshStopConnections(kind, id) {
     if (stopConnectionsInflight.has(key)) return stopConnectionsInflight.get(key);
     const job = buildStopConnections(kind, id)
         .then(out => {
-            // Don't cache an empty DC result before its directory has loaded.
-            const missingDc = !isBoston() &&
-                ((kind === "metro" && !metroStationsCache) ||
-                 (kind !== "metro" && !allStopsCache));
-            if (!missingDc) {
+            // Don't cache an empty directory-backed result before it loads.
+            const ready = typeof cityProvider().connectionsReady === "function"
+                ? cityProvider().connectionsReady(kind) : true;
+            if (ready) {
                 stopConnections.set(key, out);
                 stopConnectionsAt.set(key, Date.now());
                 persistConnections();
@@ -5056,130 +4213,21 @@ function favOrderedBusRow(s, route, conns) {
 
 // Ordered stops for a Boston route: one representative trip per direction,
 // read from the trip's ordered `stops` relationship.
-const mbtaTripStopCache = new Map();   // "tripId:parent" -> { at, stops }
-
-function mbtaTripStopsFromTrip(tr, useParent) {
-    if (!tr || !tr.data) return [];
-    const inc = new Map(((tr.included) || [])
-        .filter(i => i.type === "stop").map(s => [s.id, s]));
-    const rel = tr.data.relationships && tr.data.relationships.stops;
-    const out = [], seen = new Set();
-    for (const x of ((rel && rel.data) || [])) {
-        const s = inc.get(x.id);
-        const p = useParent && s && s.relationships && s.relationships.parent_station
-            && s.relationships.parent_station.data;
-        const id = p ? p.id : x.id;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        const station = useParent && (metroStationsCache || []).find(st => st.Code === id);
-        out.push({
-            StopID: id,
-            Name: (station && station.Name) ||
-                (s && s.attributes && s.attributes.name) || allStopsName(id) || id
-        });
-    }
-    return out;
+// MBTA ordered stops and route stop groups live in the Boston provider.
+function mbtaTripStops(tripId, useParent) {
+    return MTA.cities.boston.provider.tripStops(tripId, useParent);
 }
-
-async function fetchMbtaTripStopsRemote(tripId, useParent) {
-    const { data: tr, error } = await mbtaGet(`/trips/${tripId}`, { include: "stops" });
-    if (error || !tr) return [];
-    const out = mbtaTripStopsFromTrip(tr, useParent);
-    mbtaTripStopCache.set(`${tripId}:${useParent ? "p" : "s"}`,
-        { at: Date.now(), stops: out });
-    return out;
-}
-
-// Batch representative-trip stop sequences. MBTA's filter[id] is used when
-// available; a failed request falls back to individual trip lookups.
-async function mbtaTripStopsMany(tripIds, useParent) {
-    const ids = [...new Set((tripIds || []).map(String).filter(Boolean))];
-    const out = new Map();
-    const need = [];
-    for (const id of ids) {
-        const hit = mbtaTripStopCache.get(`${id}:${useParent ? "p" : "s"}`);
-        if (hit && Date.now() - hit.at <= TOPOLOGY_TTL_MS) out.set(id, hit.stops);
-        else need.push(id);
-    }
-    if (!need.length) return out;
-    let batch = null;
-    try {
-        const { data, error } = await mbtaGet("/trips", {
-            "filter[id]": need.join(","),
-            "include": "stops"
-        });
-        if (!error && data)
-            batch = { rows: data.data || [], included: data.included || [] };
-    } catch (e) { /* fall back to one trip at a time */ }
-    if (batch) {
-        const wanted = new Set(need);
-        for (const tr of batch.rows) {
-            const id = tr && tr.id;
-            if (!id || !wanted.has(id)) continue;
-            const stops = mbtaTripStopsFromTrip(
-                { data: tr, included: batch.included }, useParent);
-            if (!stops.length) continue;   // single-trip fallback below
-            out.set(id, stops);
-            mbtaTripStopCache.set(`${id}:${useParent ? "p" : "s"}`,
-                { at: Date.now(), stops });
-        }
-    }
-    for (const id of need) {
-        if (out.has(id)) continue;
-        out.set(id, await fetchMbtaTripStopsRemote(id, useParent));
-    }
-    return out;
-}
-
-async function mbtaTripStops(tripId, useParent) {
-    if (!tripId) return [];
-    const map = await mbtaTripStopsMany([tripId], useParent);
-    return map.get(String(tripId)) || [];
-}
-
-function heroRouteListHtml(stops, kind, route, anchor, connsMap) {
-    if (!stops.length) return `<div class="fav-empty">no stops available</div>`;
-    // Start after the selected stop; the current stop is not repeated.
-    const at = stops.findIndex(s => String(s.StopID || s.id) === String(anchor));
-    const list = at >= 0 ? stops.slice(at + 1) : stops;
-    const anchorStopRow = at >= 0 ? stops[at] : null;
-    const terminal = stops[stops.length - 1] || null;
-    const label = at >= 0 ? `<span class="next-stops-label">Next stops…</span>` : "";
-    const actions = routeActionsHtml(kind, route, anchor,
-        (anchorStopRow && (anchorStopRow.Name || anchorStopRow.name)) || "",
-        terminal ? (terminal.StopID || terminal.id) : "",
-        terminal ? (terminal.Name || terminal.name) : "", label);
-    if (!list.length) return actions + `<div class="fav-empty">no further stops</div>`;
-    return actions + list.map(s => {
-        const id = String(s.StopID || s.id || "");
-        const name = s.Name || s.name || "";
-        const conns = connsMap && connsMap.get(id);
-        const badges = conns ? connectionBadgesHtml(conns, kind, route) : "";
-        return `<div class="fav-stop">`
-            + `${favStarHtml(kind, id, name, route)}`
-            + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}`
-            + (badges ? `<span class="fav-conns">${badges}</span>` : "")
-            + `</div>`;
-    }).join("");
+function fetchMbtaRouteStops(routeKey, useParent) {
+    return MTA.cities.boston.provider.routeStops(routeKey, useParent);
 }
 
 async function loadHeroRouteStops(btn) {
     const ds = btn.dataset || {};
     const route = ds.heroRoute || "";
     const anchor = ds.heroAnchor || "";
-    if (isBoston()) {
-        if (ds.heroTrip) {
-            const stops = await mbtaTripStops(ds.heroTrip, ds.heroKind === "metro");
-            if (stops.length) return stops;
-        }
-        const groups = await fetchMbtaRouteStops(route, ds.heroKind === "metro");
-        if (!groups.length) return [];
-        const heads = normHeads(ds.heroHeads || "");
-        const g = groups.find(x => {
-            const n = normHeads(x.name || "");
-            return n && (n.includes(heads) || heads.includes(n));
-        }) || groups[0];
-        return (g.stops || []).map(s => ({ StopID: s.StopID, Name: s.Name }));
+    if (typeof cityProvider().heroStops === "function") {
+        const stops = await cityProvider().heroStops(ds);
+        if (stops.length) return stops;
     }
     if (ds.heroKind === "metro") {
         if (!ds.heroTo) return [];
@@ -5195,104 +4243,12 @@ async function loadHeroRouteStops(btn) {
     return ((dir && dir.stops) || []).map(s => ({ StopID: s.id, Name: s.name }));
 }
 
-async function toggleHeroRouteStops(btn) {
-    const card = btn.closest ? btn.closest(".hero-card") : null;
-    const box = card && card.nextElementSibling;
-    if (!box || !box.classList || !box.classList.contains("hero-route-stops")) return;
-    const open = box.hidden;
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-    if (!open) { box.hidden = true; return; }
-    box.hidden = false;
-    if (box.dataset.loaded) return;
-    box.dataset.loaded = "1";
-    box.innerHTML = `<div class="fav-empty">loading stops…</div>`;
-    let stops = [];
-    try { stops = await loadHeroRouteStops(btn); } catch (e) { stops = []; }
-    const kind = btn.dataset.heroKind;
-    const anchor = btn.dataset.heroAnchor;
-    const at = stops.findIndex(s => String(s.StopID || s.id) === String(anchor));
-    const shown = at >= 0 ? stops.slice(at) : stops;
-    let conns = new Map();
-    try {
-        conns = await loadStopConnections(shown.map(s =>
-            Object.assign({}, s, { kind })));
-    } catch (e) { /* no badges */ }
-    box.innerHTML = heroRouteListHtml(shown, kind, btn.dataset.heroRoute,
-        anchor, conns);
-    applyStopNameWidth(box);
-}
-
-const mbtaRouteStopsCache = new Map();
-{
-    const cached = readCache("mbta_route_stops");
-    if (cached && Array.isArray(cached.v)) {
-        for (const row of cached.v) {
-            if (!Array.isArray(row) || row.length < 2) continue;
-            const key = String(row[0] || "");
-            const rec = row[1] || {};
-            if (!key || !Array.isArray(rec.v) || !rec.v.length) continue;
-            mbtaRouteStopsCache.set(key, {
-                at: Number(rec.at) || cached.at || 0,
-                groups: rec.v
-            });
-        }
-    }
-}
-
-function persistMbtaRouteStops() {
-    const rows = [];
-    for (const [key, rec] of mbtaRouteStopsCache) {
-        if (!rec.groups || !rec.groups.length) continue;
-        rows.push([key, { at: rec.at || 0, v: rec.groups }]);
-    }
-    writeCache("mbta_route_stops", rows);
-}
-
-async function refreshMbtaRouteStops(routeKey, useParent) {
-    const routeId = busRouteMbtaIds[routeKey] || routeKey;
-    const key = routeId + ":" + (useParent ? "p" : "s");
-    await mbtaPatternsForRoutes([routeId]);
-    const byDir = new Map();
-    for (const p of mbtaPatternCache.get(routeId) || []) {
-        const cur = byDir.get(p.dir);
-        if (!cur || (p.canonical && !cur.canonical)) byDir.set(p.dir, p);
-    }
-    const plan = [...byDir.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .filter(([, p]) => p.tripId);
-    const stopMap = await mbtaTripStopsMany(
-        plan.map(([, p]) => p.tripId), !!useParent).catch(() => new Map());
-    const groups = [];
-    for (const [dir, p] of plan) {
-        const stops = stopMap.get(p.tripId) || [];
-        if (stops.length)
-            groups.push({ dir, name: p.name || "", stops });
-    }
-    if (groups.length) {
-        mbtaRouteStopsCache.set(key, { at: Date.now(), groups });
-        persistMbtaRouteStops();
-    }
-    return groups;
-}
-
-async function fetchMbtaRouteStops(routeKey, useParent) {
-    const routeId = busRouteMbtaIds[routeKey] || routeKey;
-    const key = routeId + ":" + (useParent ? "p" : "s");
-    const hit = mbtaRouteStopsCache.get(key);
-    if (hit && hit.groups && hit.groups.length) {
-        if (Date.now() - (hit.at || 0) > TOPOLOGY_TTL_MS)
-            refreshMbtaRouteStops(routeKey, useParent).catch(() => {});
-        return hit.groups;
-    }
-    return refreshMbtaRouteStops(routeKey, useParent);
-}
-
 let favBusFilterToken = 0;
 let favBusDebounce = 0;
 
 // Boston: routes are expanded from stop-name matches. MBTA has no cheap
 // stop→routes index, so resolve the first 25 matching stops in parallel.
-async function renderFavBusRoutesMbta(raw) {
+async function renderFavBusRoutesByStop(raw) {
     if (!gFavBusRoutes) return;
     const token = ++favBusFilterToken;
     const q = raw.toLowerCase();
@@ -5301,7 +4257,7 @@ async function renderFavBusRoutesMbta(raw) {
             .then(() => {
                 if (gFavBusFilter && gFavBusFilter.value.trim() === raw &&
                     !gFavBusRoutes.querySelector(".fav-stops:not([hidden])"))
-                    renderFavBusRoutesMbta(raw);
+                    renderFavBusRoutesByStop(raw);
             })
             .catch(() => {});
     }
@@ -5311,7 +4267,7 @@ async function renderFavBusRoutesMbta(raw) {
             .filter(s => String(s.Name || "").toLowerCase().includes(q))
             .slice(0, 25);
         await Promise.all(matched.map(async s => {
-            const { data } = await mbtaGet("/routes", {
+            const { data } = await cityProvider().http("/routes", {
                 "filter[stop]": s.StopID, "filter[type]": 3
             });
             for (const r of (data && data.data) || []) {
@@ -5351,7 +4307,7 @@ function renderFavBusRoutes(query) {
     if (!gFavBusRoutes) return;
     const raw = String(query || "").trim();
     const q = raw.toLowerCase();
-    if (isBoston()) return renderFavBusRoutesMbta(raw);
+    if (cityCfg().capabilities.routeSearchByStop) return renderFavBusRoutesByStop(raw);
     favBusFilterToken++;
     if (q && !allStopsCache) {
         loadStopDirectory()
@@ -5385,13 +4341,9 @@ function renderFavBusRoutes(query) {
 
 async function renderFavMetroLines() {
     if (!gFavMetroLines) return;
-    let lines;
-    if (isBoston()) {
+    if (cityCfg().capabilities.metroRoutes)
         await loadMetroRoutes().catch(() => null);
-        lines = Object.keys(metroRoutesCache || {});
-    } else {
-        lines = ["RD", "GR", "YL", "BL", "OR", "SV"];
-    }
+    const lines = cityTheme().metroLineIds();
     gFavMetroLines.innerHTML = lines.map(line =>
         `<button type="button" class="fav-route" data-fav-line="${line}" aria-expanded="false">`
         + `<span class="fav-badge line" style="background:${metroLineColor(line)}">${esc(metroLineName(line))}</span>`
@@ -5525,7 +4477,7 @@ function bookmarkCardHtml(row) {
     const route = row.route || shortcutRoute(row.kind, row.id);
     const commuter = row.kind === "metro" && isCommuterRoute(route);
     const modeIcon = nearbyModeIcon(row.kind === "metro", commuter,
-        row.kind === "metro" ? metroLineColor(route) : "", true);
+        row.kind === "metro" ? metroLineColor(route) : "", true, route);
     const band = row.kind === "metro"
         ? `<span class="hero-line-band" data-band="${esc(row.kind)}:${esc(row.id)}"`
           + ` style="background:${metroLineColor(route)}"></span>`
@@ -5592,7 +4544,7 @@ async function fillBookmarkArrivals(rows, token) {
                 const metro = row.kind === "metro";
                 const commuter = metro && isCommuterRoute(next.route);
                 icon.outerHTML = nearbyModeIcon(metro, commuter,
-                    metro ? metroLineColor(next.route) : "", true);
+                    metro ? metroLineColor(next.route) : "", true, next.route);
             }
         }
     }));
@@ -5767,7 +4719,7 @@ async function goBack() {
 
 async function renderBookmarkList(slot) {
     clearHeroCountdown();
-    if (isBoston()) {
+    if (cityCfg().capabilities.preloadBookmarks) {
         await Promise.all([
             loadMetroRoutes().catch(() => null),
             loadBusRouteDirectory().catch(() => null)
@@ -5884,7 +4836,7 @@ async function populateFavStops(container, kind, key) {
     container.innerHTML = `<div class="fav-empty">loading stops…</div>`;
     try {
         if (kind === "bus") {
-            if (isBoston()) {
+            if (typeof cityProvider().routeStops === "function") {
                 const groups = await fetchMbtaRouteStops(key);
                 let conns = new Map();
                 if (groups.length) {
@@ -5907,10 +4859,14 @@ async function populateFavStops(container, kind, key) {
                 return;
             }
             let list;
-            const all = await loadStopDirectory();
-            list = (all || [])
-                .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === key));
-            list = list.sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
+            if (cityCfg().capabilities.routeStopsOnDemand && typeof cityProvider().stopsForRoute === "function") {
+                list = await cityProvider().stopsForRoute(key);
+            } else {
+                const all = await loadStopDirectory();
+                list = (all || [])
+                    .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === key));
+            }
+            list = (list || []).sort((a, b) => String(a.Name || "").localeCompare(String(b.Name || "")));
             container.innerHTML = list.length ? list.map(s =>
                 `<div class="fav-stop">${favStarHtml("bus", s.StopID, s.Name, key)}${favGotoHtml("bus", s.StopID, s.Name, stopName(s.Name) || "#" + s.StopID)}</div>`
             ).join("") : `<div class="fav-empty">no stops for this route</div>`;
@@ -6312,8 +5268,8 @@ function collapseBusStopPicker() {
 if (gBusRoutesToggle) gBusRoutesToggle.addEventListener("click", () => {
     const open = gBusRoutePanel ? gBusRoutePanel.hidden : false;
     if (open) {
-        if (allStopsCache && (!gBusRoutePanel.innerHTML || !gBusRoutePanel.children.length))
-            populateBusRoutes(allStopsCache);
+        if (!gBusRoutePanel.innerHTML || !gBusRoutePanel.children.length)
+            populateBusRoutes(allStopsCache || []);
         gBusRoutePanel.hidden = false;
     } else {
         gBusRoutePanel.hidden = true;
@@ -6327,6 +5283,14 @@ function populateBusRoutes(all) {
     for (const s of all || [])
         for (const r of s.Routes || [])
             if (r) routes.add(String(r).toUpperCase());
+    for (const r of busRouteDirectory || [])
+        if (r && r.id) routes.add(String(r.id).toUpperCase());
+    if (!routes.size && !busRouteDirectory) {
+        loadBusRouteDirectory()
+            .then(() => populateBusRoutes(all))
+            .catch(() => {});
+        return;
+    }
     const list = [...routes].sort((a, b) =>
         a.localeCompare(b, undefined, { numeric: true }));
     gBusRoutePanel.innerHTML = list.map(r =>
@@ -6335,7 +5299,8 @@ function populateBusRoutes(all) {
     resetBusPickers();
 }
 
-function populateBusStops(route) {
+let busStopsToken = 0;
+async function populateBusStops(route) {
     if (!gBusStopSelect) return;
     if (!route) { resetBusPickers(); return; }
     if (gBusRoutePanel) {
@@ -6345,11 +5310,19 @@ function populateBusStops(route) {
             b.setAttribute("aria-selected", on ? "true" : "false");
         });
     }
-    const list = (allStopsCache || [])
-        .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === route))
-        .sort((a, b) =>
-            String(a.Name || "").localeCompare(String(b.Name || "")) ||
-            String(a.StopID).localeCompare(String(b.StopID), undefined, { numeric: true }));
+    const token = ++busStopsToken;
+    let list;
+    if (cityCfg().capabilities.routeStopsOnDemand && typeof cityProvider().stopsForRoute === "function") {
+        try { list = await cityProvider().stopsForRoute(route); }
+        catch (e) { list = []; }
+    } else {
+        list = (allStopsCache || [])
+            .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === route));
+    }
+    if (token !== busStopsToken) return;
+    list = (list || []).slice().sort((a, b) =>
+        String(a.Name || "").localeCompare(String(b.Name || "")) ||
+        String(a.StopID).localeCompare(String(b.StopID), undefined, { numeric: true }));
     gBusStopSelect.innerHTML = list.length
         ? `<option value="">Select a stop…</option>`
           + list.map(s => `<option value="${esc(s.StopID)}">${esc(stopName(s.Name) || "#" + s.StopID)} (${esc(s.StopID)})</option>`).join("")
@@ -6387,47 +5360,20 @@ if (gBusStopSelect) gBusStopSelect.addEventListener("change", () => {
 // own named section, riding the same scale and the same guide.
 // ════════════════════════════════════════════════════════════════════
 
-// A small distinguishable palette; routes hash into it (stable across loads).
-const ROUTE_COLORS = ["#c62828", "#1565c0", "#2e7d32", "#ef6c00", "#6a1b9a", "#00838f",
-    "#ad1457", "#5d4037", "#455a64", "#827717", "#37474f", "#9e9d24"];
-
-function routeColor(routeId) {
-    const key = String(routeId || "").toUpperCase();
-    // Boston: MBTA publishes each route's own color; use it when known.
-    if (typeof isBoston === "function" && isBoston()
-        && typeof busRouteColors !== "undefined" && busRouteColors[key]) {
-        return "#" + String(busRouteColors[key]).replace(/^#/, "");
-    }
-    let h = 0;
-    for (const c of String(routeId)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    return ROUTE_COLORS[h % ROUTE_COLORS.length];
-}
+// Route/line presentation is theme-owned (see js/cities/*/theme).
+function routeColor(routeId) { return cityTheme().routeColor(routeId); }
 
 // Bus hero stripe: the route's color on the left, grey on the right, with
-// the shared 45° slice. Boston uses the MBTA route color; DC uses the
-// app's stable route palette.
+// the shared 45° slice.
 function busBandAttr(route) {
-    if (!route || typeof routeColor !== "function") return "";
+    if (!route || typeof cityTheme !== "function") return "";
     const c = routeColor(route);
     return c ? ` style="--bus-band-color:${c}"` : "";
 }
 
-// Black text on light (yellow) MBTA bus colors; white otherwise.
-function busTextColor(route) {
-    if (typeof isBoston !== "function" || !isBoston()) return "#fff";
-    const raw = typeof busRouteColors !== "undefined"
-        && busRouteColors[String(route || "").toUpperCase()];
-    const hex = String(raw || "").replace(/^#/, "");
-    if (!/^[0-9a-f]{6}$/i.test(hex)) return "#fff";
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    return (0.299 * r + 0.587 * g + 0.114 * b) > 160 ? "#000" : "#fff";
-}
+function busTextColor(route) { return cityTheme().routeTextColor(route); }
 
-function busBadgeClass() {
-    return (typeof isBoston === "function" && isBoston()) ? " boston-bus" : "";
-}
+function busBadgeClass() { return cityTheme().badgeClass(); }
 // The hover card: a stop's live arrivals, fetched once per page load and
 // then cached (a hover is a peek — the arrivals table already refreshes the
 // stops it tracks; the dots it peeks at are usually not among them).
@@ -6700,7 +5646,7 @@ function anchorStop() {
     if (pickedStop) {
         want = String(pickedStop);
     } else {
-        const def = shown.find(s => String(s.StopID) === DEFAULT_STOP_ID);
+        const def = shown.find(s => String(s.StopID) === String(cityCfg().defaultStopId));
         want = String((def || shown[0] || {}).StopID || "");
     }
     if (!want) return null;
@@ -6740,20 +5686,22 @@ function shortcutButtonsHtml(id) {
 }
 
 // Bus/train icon for the hero title row.
-function heroModeIcon(metro, commuter, color) {
+function heroModeIcon(metro, commuter, color, route) {
     const label = commuter ? "Commuter rail" : metro ? "Train" : "Bus";
     const style = metro && color ? ` style="color:${esc(color)}"` : "";
     return `<span class="hero-mode-icon${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}">`
-        + `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"}" aria-hidden="true"></i></span>`;
+        + modeIconHtml(metro, commuter, route)
+        + `</span>`;
 }
 
 // "Next bus" / "Next train" is represented by the mode icon; the label is
 // kept for assistive technology and the hover tooltip.
-function heroVerbHtml(metro, commuter, color) {
+function heroVerbHtml(metro, commuter, color, route) {
     const label = commuter ? "Next commuter rail" : metro ? "Next train" : "Next bus";
     const style = metro && color ? ` style="color:${esc(color)}"` : "";
     return `<span class="hero-verb${commuter ? " commuter-rail-icon" : ""}"${style} role="img" aria-label="${label}" title="${label}">`
-        + `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"}" aria-hidden="true"></i></span>`;
+        + modeIconHtml(metro, commuter, route)
+        + `</span>`;
 }
 
 // Stop header: a dark hero card — eyebrow, name + ID, then the next bus in
@@ -6836,7 +5784,7 @@ function heroCardHtml(st, arrivals) {
         + lineBand
         + shortcutButtonsHtml(id)
         + `<div class="hero-title-row">`
-        + `${heroModeIcon(st.Metro, commuter, st.Metro ? metroLineColor(displayRoute) : "")}`
+        + `${heroModeIcon(st.Metro, commuter, st.Metro ? metroLineColor(displayRoute) : "", heroRoute)}`
         + `<span class="board-stopname">${esc(label)}</span>`
         + `</div>`
         + `<div class="hero-connections" hidden>`
@@ -6962,7 +5910,7 @@ function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, ancho
     const liveRows = buildBoardRows(anchorId, rowPreds, routeDetails, posRows);
     // Boston compact rows carry no pattern anchor; remember the boarding stop
     // so their stop-list dropdown can slice from here.
-    if (typeof isBoston === "function" && isBoston())
+    if (typeof cityProvider().tripStops === "function")
         liveRows.forEach(r => { if (!r.anchorId) r.anchorId = anchorId; });
     sortHeroRows(liveRows, anchorId, nowMs);
     const mainRows = [...liveRows, ...departedRows];
@@ -7086,7 +6034,7 @@ function renderLines() {
     }
     // Boston bus stripes use the MBTA route color; warm the route directory
     // once, then repaint with the real colors.
-    if (isBoston() && !Object.keys(busRouteColors).length) {
+    if (cityCfg().capabilities.routeColorsFromDirectory && !Object.keys(busRouteColors).length) {
         loadBusRouteDirectory()
             .then(() => { if (token === boardToken) renderLines(); })
             .catch(() => {});
@@ -7219,8 +6167,9 @@ function setRefreshEnabled(on) {
 }
 gRefreshToggle.addEventListener("click", () => setRefreshEnabled(!refreshEnabled));
 if (gClearFavorites) gClearFavorites.addEventListener("click", resetFavorites);
+applyCityChrome(city);
 if (gCitySelect) {
-    gCitySelect.value = city;
+    populateCitySelect(gCitySelect);
     gCitySelect.addEventListener("change", () => setCity(gCitySelect.value));
 }
 if (gMapsSelect) {

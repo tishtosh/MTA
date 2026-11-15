@@ -1,8 +1,8 @@
 # like a bus 🚌
 
-A tiny, single-file web app (no backend, no build step) that shows **live DC Metrobus
+A tiny, single-page web app (no backend, no build step) that shows **live DC Metrobus
 arrival predictions** for a handful of bus stops around **Cleveland Park (20010)** — the
-Park Rd NW / 19 St NW corner — and now also supports **Boston** (MBTA bus, subway, light rail, and commuter rail). It's
+Park Rd NW / 19 St NW corner — and now also supports **Boston** (MBTA bus, subway, light rail, and commuter rail) and **London** (TfL Tube, bus, Overground, DLR, Elizabeth line, tram, and river bus). It's
 a static HTML page hosted on **GitHub Pages**, so it costs nothing to run.
 
 Open it: **https://tishtosh.github.io/MTA/mta26.html**
@@ -27,7 +27,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   Work, and Airport each keep their own order per city.
 - Airports are seeded per city with a bus stop and a rail station.
 - **Search** opens a dropdown with **Favorites**, **Near me**, **Bus**, **Rail**, and
-  **Settings**. Settings includes the **City** selector (**Washington DC** or **Boston**),
+  **Settings**. Settings includes the **City** selector (**Washington DC**, **Boston**, or **London**),
   the **Maps app** choice (**Apple Maps** or **Google Maps**, default Google, used by the
   hero map button and route actions), auto-refresh, and Delete all favorites.
 - **Near me** lists bus stops and Metro/subway/commuter-rail stations within 1,000 ft of the current
@@ -83,17 +83,60 @@ The **Settings** section of the search dropdown selects the transport system:
 |------|-------------|-------|
 | **Washington DC** | WMATA (`api.wmata.com`) | Metrobus + Metrorail |
 | **Boston** | MBTA v3 (`api-v3.mbta.com`) | MBTA bus + subway/light rail + commuter rail |
+| **London** | TfL Unified API (`api.tfl.gov.uk`) | Tube, bus, Overground, DLR, Elizabeth line, tram, river bus |
 
-- The choice is stored in the `mta_city` cookie; the default is Washington DC.
+- The choice is stored in the `mta_city` cookie and can be forced with `?city=dc|boston|london`.
 - Favorites and Home/Work bookmarks are per city (separate storage keys), so switching
   cities swaps the saved lists.
 - **Near me** uses the device location to pick the nearer city automatically before
   listing nearby stops and stations.
 - Boston uses the MBTA stop IDs (`place-…` for stations) and line IDs (`Red`, `Orange`,
-  `Green-B`, …); DC uses WMATA stop/station codes.
+  `Green-B`, …); DC uses WMATA stop/station codes; London uses NaPTAN IDs
+  (`940GZZLUOXC` for Tube stations, `490…` for bus stops) and TfL line IDs
+  (`victoria`, `elizabeth`, `overground`, …).
+- London is **keyless for low-volume development** (about 50 requests/minute). When the
+  key arrives, put its encrypted blob in `TFL_KEY_BLOB` in `mta26.html`; the provider
+  appends `app_key` automatically. A registered key raises the limit to 500 requests/minute.
 - Nearby stop cards show stops/stations within **1,000 ft**, nearest first. Bus hero
-  stripes use the bus route color (MBTA route color in Boston; the app palette in DC)
-  sliced at 45° into medium grey.
+  stripes use the route color (MBTA route color in Boston, TfL red in London, the app
+  palette in DC) sliced at 45° into medium grey.
+
+## Code layout
+
+`mta26.html` is still the only page and needs no build step. The city-specific code now
+lives in classic scripts under `js/`, loaded before the inline app:
+
+```
+js/core/http.js        shared JSON GET: timeout, one retry, 429 backoff, 6 s memo
+js/cities/index.js     registry, active-city state, cookie/city switching
+js/cities/dc.js        WMATA config + provider + theme
+js/cities/boston.js    MBTA config + provider + theme
+js/cities/london.js    TfL config + provider + theme
+js/ui/icons.js         standalone SVG transit marks per city
+```
+
+Each city registers one object with:
+
+- **config** — name, agency, center, labels, default favorite/airport stops, storage key.
+- **provider** — `nearbyStops`, `allStops`, `departures`, `stopSchedule`, `routeDetails`,
+  `metroStations`, `metroRoutes`, `metroLive`, `metroPath`, `busRouteDirectory`,
+  `connections`, plus optional `place`/`tripStops`/`routeStops`/`heroStops`.
+- **theme** — route/line colors, badge class, commuter detection, metro line IDs, and CSS
+  variables for the hero/badge styling.
+
+The page keeps the caches, refresh tiers, and rendering. It asks for
+`cityProvider()` / `cityTheme()` instead of branching on a city name; there are no
+`isBoston()` checks left in the app. Live endpoints are never memoized; static topology
+stays on the existing 24 h stale-while-revalidate caches.
+
+Transit icons are standalone SVGs (the WMATA **M**, the MBTA **T**, the TfL roundel,
+local bus/tram/ferry marks), not Font Awesome. Generic chrome (star, home, share) stays
+Font Awesome.
+
+Tests: `node test/run.js` runs all suites, including `providertest.js` (endpoint/
+normalization contract for all three cities) and `citypagetest.js` (full-page Boston and
+London smoke tests with stubbed feeds).
+
 
 
 ## URL parameters
@@ -201,6 +244,27 @@ Both require an `api_key` query parameter.
   migrated the data. The pre-2025 stop IDs used by the old pages (`1002141`, `1002148`)
   no longer exist and now return HTTP 400. See [Maintenance](#maintenance).
 
+### TfL (London)
+
+The TfL Unified API is JSON and browser-callable. The key is optional at low volume;
+the provider adds `app_key` when one is configured.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET https://api.tfl.gov.uk/StopPoint?lat=&lon=&radius=` | Nearby stops/stations |
+| `GET https://api.tfl.gov.uk/StopPoint/{naptanId}/Arrivals` | Live arrivals for every mode at a station |
+| `GET https://api.tfl.gov.uk/Line/{lineId}/Route/Sequence/{direction}` | Ordered pattern |
+| `GET https://api.tfl.gov.uk/Line/Mode/{modes}` | Line metadata |
+| `GET https://api.tfl.gov.uk/Line/Mode/bus` | Bus route directory |
+
+- **Developer portal / docs:** <https://api.tfl.gov.uk> (register for an `app_key`).
+- `?city=london` forces the city; the default favorite is Oxford Circus.
+- A User-Agent header is sent because TfL's edge rejects some default client strings.
+- TfL's whole-mode stop dumps are tens of MB, so London does **not** preload a bus
+  directory. The route picker requests one line's stops on demand
+  (`/Line/{id}/StopPoints`) and Tube/Overground/DLR stations are merged from per-line
+  stop lists (about 500 stations, one cached fetch per line per day).
+
 ### MBTA (Boston)
 
 The MBTA v3 API uses JSON:API and an `api_key` query parameter:
@@ -288,7 +352,10 @@ export default {
 
 | Path | What |
 |------|------|
-| `mta26.html` | **Current app.** Single-file: inline CSS + vanilla JS, no build step. |
+| `mta26.html` | **Current app shell.** Inline CSS + the page app; no build step. |
+| `js/core/http.js` | Shared JSON transport (timeout, retry, 429, memo). |
+| `js/cities/*.js` | City providers, config, and themes for DC, Boston, London. |
+| `js/ui/icons.js` | Standalone SVG transit marks per city. |
 | `mta4a.html` | Previous version (kept for reference). |
 | `mta2.html` | Earlier iteration (kept for reference). |
 | `scratchpad.html` | Scratch / experiments. |

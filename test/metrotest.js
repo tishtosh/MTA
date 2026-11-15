@@ -22,6 +22,8 @@ vm.runInContext([
   "var metroLive = {}; var metroSchedule = {}; var metroStationsCache = [];",
   "var city = 'dc'; var metroRoutesCache = null; function isBoston() { return city === 'boston'; }",
   "var METRO_LINE_NAMES = {RD:'Red',BL:'Blue',OR:'Orange',SV:'Silver',GR:'Green',YL:'Yellow'};",
+  "function cityTheme(){ return { metroName: (l) => METRO_LINE_NAMES[l] || l, metroColor: () => '#c62828', isCommuter: () => false, routeColor: () => '#c62828', routeTextColor: () => '#fff', badgeClass: () => '' }; }",
+  "function ensureMbtaStaticCache() {}",
   "function nextScheduledFor() { return null; }",
   extractFn("normHeads"),
   extractFn("metroMin"),

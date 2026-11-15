@@ -1,0 +1,203 @@
+// Full-page smoke tests for the Boston and London adapters. Each city runs
+// in a fresh VM with a stubbed network, unlocks the key gate, and renders a
+// deep-linked stop, so provider wiring is exercised end to end.
+"use strict";
+const vm = require("vm");
+const { pageScript } = require("./lib/extract");
+
+const script = pageScript();
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+function makeEl(id) {
+  return {
+    id, innerHTML: "", textContent: "", value: "", hidden: false,
+    children: [], style: {}, dataset: {},
+    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+    _l: {},
+    addEventListener(t, f) { (this._l[t] = this._l[t] || []).push(f); },
+    removeEventListener() {},
+    appendChild(c) { this.children.push(c); return c; },
+    setAttribute() {}, getAttribute() { return null; },
+    querySelector() { return null; },
+    querySelectorAll: () => [],
+    clientWidth: 0, clientHeight: 0, scrollWidth: 0,
+    focus() {}, blur() {}, click() {}, scrollTo() {},
+    getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }; },
+    offsetWidth: 100, offsetHeight: 50, scrollTop: 0, scrollLeft: 0,
+  };
+}
+
+function harness(city, stop, fetchImpl) {
+  const els = {};
+  const document = {
+    cookie: "",
+    getElementById: id => (els[id] = els[id] || makeEl(id)),
+    addEventListener() {},
+    createElement: tag => makeEl(tag),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  const sandbox = {
+    console, JSON, Date, Number, String, Boolean, Math, Object, Array, Set, Map,
+    Promise, Symbol, RegExp, Error, TypeError, RangeError, parseInt, parseFloat, isNaN,
+    URL, URLSearchParams, AbortController,
+    setTimeout, clearTimeout, setInterval, clearInterval,
+    btoa, atob, TextDecoder, Uint8Array, crypto, TextEncoder,
+    fetch: fetchImpl,
+    document,
+    location: { search: `?city=${city}&busstop=${stop}`, href: "http://localhost/", reload() {} },
+    navigator: { geolocation: null },
+    matchMedia: q => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }),
+    innerWidth: 1280, innerHeight: 800, devicePixelRatio: 2,
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(script, sandbox, { filename: `${city}-page.js` });
+  for (const fn of ["renderLines", "refreshPredictions", "renderBoardNow"]) {
+    const orig = sandbox[fn];
+    if (typeof orig !== "function") continue;
+    sandbox[fn] = function (...args) {
+      try { return orig.apply(this, args); }
+      catch (e) { console.error("ERR " + fn + ":", e && e.stack || e); throw e; }
+    };
+  }
+  return { sandbox, els };
+}
+
+function result() {
+  return { pass: 0, fail: 0 };
+}
+function check(r, name, cond) {
+  if (cond) { r.pass++; console.log("PASS " + name); }
+  else { r.fail++; console.log("FAIL " + name); }
+}
+
+async function settle(board) {
+  const t0 = Date.now();
+  let last = "", quiet = 0;
+  for (;;) {
+    const cur = board();
+    if (cur === last) quiet += 100; else { last = cur; quiet = 0; }
+    if (cur && quiet >= 400) break;
+    if (Date.now() - t0 > 15000) break;
+    await wait(100);
+  }
+  return board();
+}
+
+(async () => {
+  // ── Boston ────────────────────────────────────────────────────────
+  const bostonCalls = [];
+  const boston = harness("boston", "17091", async (url) => {
+    bostonCalls.push(String(url));
+    const u = new URL(url);
+    const p = u.pathname;
+    const now = Date.now();
+    const ok = body => ({ ok: true, status: 200, json: async () => body });
+    if (p.endsWith("/predictions")) {
+      return ok({
+        data: [{
+          id: "p1",
+          attributes: {
+            arrival_time: new Date(now + 4 * 60000).toISOString(),
+            departure_time: new Date(now + 4 * 60000).toISOString(),
+            direction_id: 0,
+          },
+          relationships: {
+            route: { data: { id: "741" } },
+            trip: { data: { id: "t1" } },
+            stop: { data: { id: "17091" } },
+          },
+        }],
+        included: [
+          { type: "route", id: "741", attributes: { short_name: "SL1", direction_destinations: ["Logan Airport"] } },
+          { type: "trip", id: "t1", attributes: { headsign: "Logan Airport" } },
+          { type: "stop", id: "17091", attributes: { name: "Boston Logan Airport Terminal A" } },
+        ],
+      });
+    }
+    if (p === "/stops" && u.searchParams.has("filter[latitude]"))
+      return ok({ data: [{ id: "17091", attributes: { name: "Boston Logan Airport Terminal A", latitude: 42.366, longitude: -71.02 } }] });
+    if (p === "/stops" && u.searchParams.get("location_type") === "0")
+      return ok({ data: [{ id: "17091", attributes: { name: "Boston Logan Airport Terminal A", latitude: 42.366, longitude: -71.02 } }] });
+    if (p === "/stops/17091")
+      return ok({ data: { id: "17091", attributes: { name: "Boston Logan Airport Terminal A", latitude: 42.366, longitude: -71.02 } } });
+    if (p === "/routes" && u.searchParams.get("filter[type]") === "3")
+      return ok({ data: [{ id: "741", attributes: { short_name: "SL1", long_name: "Logan Airport", color: "7C878E", type: 3 } }] });
+    if (p === "/routes" && u.searchParams.has("filter[stop]")) return ok({ data: [] });
+    if (p === "/routes") return ok({ data: [] });
+    if (p === "/route_patterns") return ok({ data: [] });
+    if (p === "/trips") return ok({ data: [], included: [] });
+    if (p.startsWith("/predictions")) return ok({ data: [], included: [] });
+    throw new Error("unstubbed Boston URL: " + url);
+  });
+
+  const bres = result();
+  await boston.sandbox.unlockAccess("bus");
+  const bBoard = await settle(() => boston.els.linesScroll.innerHTML);
+  const bHeader = boston.els.boardHeader.innerHTML;
+  const bAll = bHeader + bBoard;
+  check(bres, "boston: hero painted", bHeader.length > 0);
+  check(bres, "boston: header names the SL1", bAll.includes("SL1"));
+  check(bres, "boston: destination from MBTA headsign", bAll.includes("Logan Airport"));
+  check(bres, "boston: standalone SVG mode mark", bAll.includes("<svg"));
+  check(bres, "boston: no WMATA calls",
+    bostonCalls.every(u => !u.includes("api.wmata.com")));
+
+  // ── London ────────────────────────────────────────────────────────
+  const londonCalls = [];
+  const london = harness("london", "940GZZLUOXC", async (url) => {
+    londonCalls.push(String(url));
+    const u = new URL(url);
+    const p = u.pathname;
+    const now = Date.now();
+    const ok = body => ({ ok: true, status: 200, json: async () => body });
+    if (p === "/StopPoint/940GZZLUOXC/Arrivals") {
+      return ok([{
+        lineId: "victoria", lineName: "Victoria", modeName: "tube",
+        direction: "inbound", destinationName: "Brixton",
+        expectedArrival: new Date(now + 3 * 60000).toISOString(),
+        timeToStation: 180, vehicleId: "v1", stationName: "Oxford Circus",
+        platformName: "Platform 4",
+      }]);
+    }
+    if (p === "/StopPoint/940GZZLUOXC") {
+      return ok({
+        naptanId: "940GZZLUOXC", commonName: "Oxford Circus Underground Station",
+        lat: 51.515, lon: -0.141,
+        lines: [{ id: "victoria", name: "Victoria", modes: ["tube"] }],
+      });
+    }
+    if (p === "/Line/victoria/Route/Sequence/all") {
+      return ok({ stopPointSequences: [{
+        direction: "inbound", name: "Brixton",
+        stopPoint: [
+          { naptanId: "940GZZLUOXC", name: "Oxford Circus", lat: 51.515, lon: -0.141 },
+          { naptanId: "940GZZLUGPK", name: "Green Park", lat: 51.506, lon: -0.142 },
+        ],
+      }] });
+    }
+    if (p === "/StopPoint/Mode/bus") return ok({ stopPoints: [] });
+    if (p === "/Line/Mode/bus") return ok([]);
+    throw new Error("unstubbed London URL: " + url);
+  });
+
+  const lres = result();
+  await london.sandbox.unlockAccess("bus");
+  const lBoard = await settle(() => london.els.linesScroll.innerHTML);
+  const lHeader = london.els.boardHeader.innerHTML;
+  const lAll = lHeader + lBoard;
+  check(lres, "london: hero painted", lHeader.length > 0);
+  check(lres, "london: header names the Victoria line", lAll.includes("Victoria"));
+  check(lres, "london: destination from TfL", lAll.includes("Brixton"));
+  check(lres, "london: roundel SVG, not Font Awesome",
+    lAll.includes("<circle") && !lAll.includes("fa-train-subway"));
+  check(lres, "london: no WMATA/MBTA calls",
+    londonCalls.every(u => !u.includes("api.wmata.com") && !u.includes("api-v3.mbta.com")));
+
+  const pass = bres.pass + lres.pass;
+  const fail = bres.fail + lres.fail;
+  console.log(`\n${pass} passed, ${fail} failed`);
+  process.exit(fail ? 1 : 0);
+})().catch(e => { console.error("HARNESS ERROR:", e); process.exit(2); });

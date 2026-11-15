@@ -189,7 +189,7 @@ const board = () => els.linesScroll.innerHTML;
     const mainOnly = nearIdx > -1 ? b.slice(0, nearIdx) : b;
     check("135: no service rows in the primary section", !mainOnly.includes("TENLEYTOWN"));
     check("135: nearby stop gets its own heading bar",
-      nearIdx > -1 && b.slice(nearIdx, nearIdx + 400).includes("#1002130"));
+      nearIdx > -1 && b.slice(nearIdx, nearIdx + 900).includes("#1002130"));
     check("135: hero service not repeated in the primary rows",
       h.includes("D72") && h.includes("2 min") &&
       !/row-badge[^>]*>D72[^]*?2 min/.test(mainOnly));

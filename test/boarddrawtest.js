@@ -27,9 +27,12 @@ function constBlock(name) {
   return lines.slice(i, j + 1).join("\n");
 }
 const names = ["BOARD_MAX_SIDE_PX", "BOARD_MIN_EXTENT_FT", "BOARD_MIN_EXTENT_PX",
-  "LAT_FT_PER_DEG", "ROUTE_COLORS", "stopScheduleCache",
+  "LAT_FT_PER_DEG", "stopScheduleCache",
   "expandedStops", "rowKey"];
 let src = [names.map(constBlock).join("\n"),
+  'const ROUTE_COLORS = ["#c62828","#1565c0","#2e7d32","#ef6c00","#6a1b9a","#00838f","#ad1457","#5d4037","#455a64","#827717","#37474f","#9e9d24"];',
+  "function cityTheme(){ return { routeColor: (id) => { let h=0; for (const c of String(id||'')) h=(h*31+c.charCodeAt(0))>>>0; return ROUTE_COLORS[h % ROUTE_COLORS.length]; }, routeTextColor: () => '#fff', badgeClass: () => '', metroColor: () => '#c62828', metroName: (l) => l, isCommuter: () => false }; }",
+  "function cityProvider(){ return {}; }",
   extractFn("distance"), extractFn("localXY"), extractFn("projArcOnShape"),
   extractFn("trackArcs"), extractFn("rowLayout"), extractFn("boardScale"),
   extractFn("boardGeometry"), extractFn("esc"), extractFn("stopName"), extractFn("routeColor"),
@@ -56,7 +59,7 @@ function t(label, ok, extra) {
 const S = (id, name, lat, lon) => ({ id, name, lat, lon });
 const dlon = (ft) => ft / (Number(script.match(/const LAT_FT_PER_DEG = (\d+)/)[1]) * Math.cos(40 * Math.PI / 180));
 // Mirror of the page's routeColor hash, for an independent expectation.
-const palette = eval(constBlock("ROUTE_COLORS").replace(/^const ROUTE_COLORS = /, "").replace(/;\s*$/, ""));
+const palette = ["#c62828","#1565c0","#2e7d32","#ef6c00","#6a1b9a","#00838f","#ad1457","#5d4037","#455a64","#827717","#37474f","#9e9d24"];
 const expectColor = (r) => { let h = 0; for (const c of String(r)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return palette[h % palette.length]; };
 
 // ── routeColor / fmtEta / boardEtasHtml ───────────────────────────────

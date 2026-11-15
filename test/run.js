@@ -8,6 +8,8 @@ const path = require("path");
 // both live-capture anchors (expect NO across section) and the synthesized
 // across variant (route_C87_across.json — see fullpagetest.js header).
 const SUITES = [
+  ["providertest.js"],     // city adapters: DC / Boston / London normalization
+  ["citypagetest.js"],     // Boston + London full-page smoke tests
   ["markertest.js"],       // piece 2: marker math
   ["geombtest.js"],        // piece 3: board geometry
   ["boardtest.js"],        // piece 4: board row model
