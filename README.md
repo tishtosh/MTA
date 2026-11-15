@@ -26,12 +26,15 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 - Bookmark cards can be dragged by their bus/train/commuter icon to reorder them. Likes, Home,
   Work, and Airport each keep their own order per city.
 - Airports are seeded per city with a bus stop and a rail station.
-- **Search** opens a dropdown with **Likes**, **Near me**, **Bus**, **Rail**, and
-  **Settings**. Settings includes the **City** selector (**Washington DC**, **Boston**, or **London**),
-  the **Maps app** choice (**Apple Maps** or **Google Maps**, default Google, used by the
-  hero map button and route actions), auto-refresh, and Delete all likes.
-- **Near me** lists bus stops and Metro/subway/commuter-rail stations within 1,000 ft of the current
-  location, and auto-selects Boston or Washington DC from that location. Likes and
+- **Search** opens a dropdown with **Near me**, **Bus**, **Rail**, and
+  **Settings**. Settings includes the **City** selector (**Washington DC**, **Boston**,
+  **London**, **New York City**), the **Maps app** choice (**Apple Maps** or
+  **Google Maps**, default Google, used by the hero map button and route actions),
+  the **Near me radius** (1,000 feet, 1 mile, or 10 miles), auto-refresh, and Delete
+  all likes.
+- **Near me** lists bus stops and Metro/subway/commuter-rail stations within the
+  chosen radius of the current location, and auto-selects the nearest city from that
+  location. Rails are grouped as Metro/Subway/Tube and Commuter in Settings. Likes and
   Home/Work bookmarks are stored separately per city.
 - The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
   each matching route to only the matching stops.
@@ -114,7 +117,9 @@ The **Settings** section of the search dropdown selects the transport system:
   reader.
 - Nearby stop cards show stops/stations within **1,000 ft**, nearest first. Bus hero
   stripes use the route color (MBTA route color in Boston, TfL red in London, the app
-  palette in DC) sliced at 45° into medium grey.
+  palette in DC) with a 45° slice; the right third is transparent so the card
+  background shows through. Metro/Overground/commuter bands stay full width, with
+  railcar gaps for Overground and commuter services.
 
 ## Code layout
 

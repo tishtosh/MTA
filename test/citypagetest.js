@@ -277,6 +277,14 @@ async function settle(board) {
     String(nyc.els.citySelect.innerHTML).includes("New York City"));
   check(nres, "nyc: city mark is the local MTA icon",
     String(nyc.els.cityMark.innerHTML).includes("img/nyc.png"));
+  check(nres, "nyc: near-me radius defaults to 1,000 ft",
+    nyc.sandbox.nearRadius().ft === 1000);
+  nyc.sandbox.setNearRadius("mile");
+  check(nres, "nyc: near-me radius setting switches to 1 mile",
+    nyc.sandbox.nearRadius().ft === 5280);
+  nyc.sandbox.setNearRadius("10mi");
+  check(nres, "nyc: near-me radius setting switches to 10 miles",
+    nyc.sandbox.nearRadius().ft === 52800);
   check(nres, "nyc: no bus feed → Metro mode",
     nyc.els.btnHome.title === "Nearest Metro station");
   await nyc.sandbox.loadMetroStations();

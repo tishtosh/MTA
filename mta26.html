@@ -986,13 +986,6 @@
 </div>
 
 <div id="favPanel" class="fav-panel" hidden>
-    <button type="button" class="fav-header" data-fav-panel="likes" aria-expanded="false">
-        <span>Likes</span>
-        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
-    </button>
-    <div id="favFavBody" class="fav-body" hidden>
-        <div id="favFavList" class="fav-list"></div>
-    </div>
     <button type="button" class="fav-header" data-fav-panel="near" aria-expanded="false">
         <span>Near me</span>
         <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
@@ -1036,6 +1029,15 @@
             <select id="mapsSelect" class="form-select form-select-sm fav-city-select" aria-label="Maps app">
                 <option value="apple">Apple Maps</option>
                 <option value="google">Google Maps</option>
+            </select>
+        </div>
+        <div class="fav-setting fav-setting-static">
+            <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+            <label class="fav-setting-name" for="nearRadiusSelect">Near me radius</label>
+            <select id="nearRadiusSelect" class="form-select form-select-sm fav-city-select" aria-label="Near me radius">
+                <option value="1000">1,000 feet</option>
+                <option value="mile">1 mile</option>
+                <option value="10mi">10 miles</option>
             </select>
         </div>
         <button id="btnRefreshToggle" class="fav-setting" type="button"
@@ -1696,6 +1698,7 @@ const gCitySelect = document.getElementById("citySelect");
 const gCityMark = document.getElementById("cityMark");
 const gBtnSettings = document.getElementById("btnSettings");
 const gMapsSelect = document.getElementById("mapsSelect");
+const gNearRadiusSelect = document.getElementById("nearRadiusSelect");
 const gFavBusBody = document.getElementById("favBusBody");
 const gFavBusFilter = document.getElementById("favBusFilter");
 const gFavBusRoutes = document.getElementById("favBusRoutes");
@@ -5364,10 +5367,37 @@ function syncFavStars() {
     });
     syncHeaderShortcuts();
 }
-// "Near me": bus stops and Metro stations within 1,000 ft of the device's
-// current position, nearest first.
-const NEAR_ME_FT = 1000;
-const NEAR_ME_M = 305;           // WMATA jStops radius is meters
+// "Near me": bus stops and Metro/rail stations within the radius chosen in
+// Settings (1,000 ft / 1 mile / 10 miles), nearest first.
+const NEAR_RADIUS_COOKIE = "mta_near_radius";
+const NEAR_RADII = {
+    "1000": { label: "1,000 feet", ft: 1000, m: 305 },
+    mile: { label: "1 mile", ft: 5280, m: 1609 },
+    "10mi": { label: "10 miles", ft: 52800, m: 16093 },
+};
+function readNearRadius() {
+    try {
+        const hit = String(document.cookie || "").split("; ")
+            .find(p => p.startsWith(NEAR_RADIUS_COOKIE + "="));
+        const v = hit ? decodeURIComponent(hit.slice(NEAR_RADIUS_COOKIE.length + 1)) : "";
+        if (NEAR_RADII[v]) return v;
+    } catch (e) { /* fall through */ }
+    return "1000";
+}
+let nearRadiusId = readNearRadius();
+function nearRadius() { return NEAR_RADII[nearRadiusId] || NEAR_RADII["1000"]; }
+function writeNearRadius() {
+    try {
+        document.cookie = `${NEAR_RADIUS_COOKIE}=${nearRadiusId}; max-age=31536000; path=/; SameSite=Lax`;
+    } catch (e) { /* session-only */ }
+}
+function setNearRadius(id) {
+    if (!NEAR_RADII[id]) return;
+    nearRadiusId = id;
+    writeNearRadius();
+    if (gNearRadiusSelect) gNearRadiusSelect.value = nearRadiusId;
+}
+const MAX_NEAR_ROWS = 100;
 let favNearToken = 0;
 
 function getUserPosition() {
@@ -5383,6 +5413,7 @@ function getUserPosition() {
 async function populateNearMe() {
     if (!gFavNearList) return;
     const token = ++favNearToken;
+    const radius = nearRadius();
     gFavNearList.innerHTML = `<div class="fav-empty">locating…</div>`;
     const pos = await getUserPosition();
     if (token !== favNearToken) return;
@@ -5395,14 +5426,14 @@ async function populateNearMe() {
     if (targetCity !== city) setCity(targetCity, { keepPanel: true });
     try {
         const [busStops, stations] = await Promise.all([
-            fetchStopsNear(pos.lat, pos.lon, NEAR_ME_M),
+            fetchStopsNear(pos.lat, pos.lon, radius.m),
             loadMetroStations()
         ]);
         if (token !== favNearToken) return;
         const rows = [];
         for (const s of busStops || []) {
             const d = distance(pos.lat, pos.lon, s.Lat, s.Lon, "f");
-            if (d > NEAR_ME_FT) continue;
+            if (d > radius.ft) continue;
             rows.push({
                 kind: "bus", id: s.StopID, name: s.Name,
                 route: (s.Routes || [])[0] || "", dist: d
@@ -5410,19 +5441,22 @@ async function populateNearMe() {
         }
         for (const s of stations || []) {
             const d = distance(pos.lat, pos.lon, s.Lat, s.Lon, "f");
-            if (d > NEAR_ME_FT) continue;
+            if (d > radius.ft) continue;
             rows.push({
                 kind: "metro", id: s.Code, name: s.Name,
                 route: (s.Lines || [])[0] || "", dist: d
             });
         }
         rows.sort((a, b) => a.dist - b.dist);
-        gFavNearList.innerHTML = rows.length ? rows.map(r =>
+        const shown = rows.slice(0, MAX_NEAR_ROWS);
+        gFavNearList.innerHTML = shown.length ? shown.map(r =>
             `<div class="fav-stop">${favBadgeHtml(r.kind, r.route)}`
             + `${favStarHtml(r.kind, r.id, r.name, r.route)}`
             + `${favGotoHtml(r.kind, r.id, r.name, stopName(r.name) || "#" + r.id)}`
             + `<small class="fav-dist">${Math.round(r.dist)} ft</small></div>`
-        ).join("") : `<div class="fav-empty">nothing within 1,000 ft</div>`;
+        ).join("") + (rows.length > shown.length
+            ? `<div class="fav-empty">showing the ${MAX_NEAR_ROWS} nearest of ${rows.length}</div>`
+            : "") : `<div class="fav-empty">nothing within ${radius.label}</div>`;
     } catch (e) {
         gFavNearList.innerHTML = `<div class="fav-empty">could not load nearby stops</div>`;
     }
@@ -6807,6 +6841,11 @@ if (gMapsSelect) {
         mapsProvider = gMapsSelect.value === "apple" ? "apple" : "google";
         writeMapsProvider();
     });
+}
+if (gNearRadiusSelect) {
+    gNearRadiusSelect.value = nearRadiusId;
+    gNearRadiusSelect.addEventListener("change",
+        () => setNearRadius(gNearRadiusSelect.value));
 }
 
 // Access gate: check the password, decode the API key, then start the app.
