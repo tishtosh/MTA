@@ -54,6 +54,7 @@ vm.runInContext(
    extractFn("routeColor"), extractFn("esc"), extractFn("stopName"),
    "var metroRoutesCache = null;",
    extractFn("isCommuterRoute"),
+   extractFn("etaAtOf"), extractFn("etaMinutes"), extractFn("refreshEtaMinutes"),
    extractFn("fmtEta"), extractFn("normHeads"), extractFn("scheduleDayKey"),
    extractFn("nextScheduledFor"), extractFn("fmtScheduleTime"),
    extractFn("shownStops"), extractFn("anchorStop"),

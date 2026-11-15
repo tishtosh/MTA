@@ -55,6 +55,9 @@ t("M2 numeric and unknown minutes", sandbox.metroMin("5") === 5 && sandbox.metro
 t("M3 abbreviated destinations match",
   sandbox.metroHeadsMatch("Shady Grv", "Shady Grove") &&
   !sandbox.metroHeadsMatch("Glenmont", "Shady Grove"));
+t("M3b different terminal numbers never match",
+  !sandbox.metroHeadsMatch("Heathrow Terminal 4", "Heathrow Terminal 5") &&
+  sandbox.metroHeadsMatch("Heathrow Terminal 5", "Heathrow Terminal 5 Underground Station"));
 t("M4 full line names", sandbox.metroLineName("RD") === "Red" &&
   sandbox.metroLineName("GR") === "Green" && sandbox.metroLineName("YL") === "Yellow");
 t("M4b quoted GTFS CSV", (() => {

@@ -18,7 +18,8 @@ function extractFn(src, name) {
 }
 
 const src = require("./lib/extract").pageScript();
-const names = ["parseFeedTime", "normalizeRouteDetails", "normHeads", "posDirFor",
+const names = ["etaAtOf", "etaMinutes", "refreshEtaMinutes",
+               "parseFeedTime", "normalizeRouteDetails", "normHeads", "posDirFor",
                "matchPattern", "containsStopId", "buildBoardRows",
                "predKey", "updateDeparted"];
 const sandbox = { allStopsName: () => "", console, JSON, Date, Number, String,

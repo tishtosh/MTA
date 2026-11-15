@@ -218,6 +218,8 @@ API budget on static lookups.
    refreshes it.
 5. **Coalesce and back off** — in-flight requests are deduped, identical static GETs are memoized for
    6 s, a 429 stretches the next cycle 5×, and polling stops in hidden tabs.
+6. **Keep absolute times** — providers return `etaAt` (epoch ms); the board recomputes
+   `min` from it at every paint, so a 30 s poll still counts down correctly between requests.
 
 
 ---
@@ -264,6 +266,9 @@ the provider adds `app_key` when one is configured.
   directory. The route picker requests one line's stops on demand
   (`/Line/{id}/StopPoints`) and Tube/Overground/DLR stations are merged from per-line
   stop lists (about 500 stations, one cached fetch per line per day).
+- TfL returns Tube branches as separate route-sequence segments. London builds a small
+  stop graph and stitches them, so "Next stops…" works across Heathrow/Uxbridge
+  branches instead of stopping at the Acton Town junction.
 
 ### MBTA (Boston)
 

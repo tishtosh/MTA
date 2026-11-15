@@ -1519,6 +1519,7 @@ function predKey(p) {
 }
 
 function updateDeparted(stop, nextPreds, at) {
+    refreshEtaMinutes(nextPreds, at);
     const prev = stop.Arrivals || [];
     const prevAt = stop.ArrivalsAt || at;
     const nextKeys = new Set(nextPreds.map(predKey).filter(Boolean));
@@ -1532,9 +1533,10 @@ function updateDeparted(stop, nextPreds, at) {
     for (const p of prev) {
         const key = predKey(p);
         if (!key || nextKeys.has(key)) continue;
-        if (p.min > 2) continue;                              // not an imminent departure
+        if (etaMinutes(p, at) > 2) continue;                  // not an imminent departure
         if (keep.some(d => predKey(d) === key)) continue;
-        const departedAt = prevAt + Math.max(0, p.min) * 60000;
+        const departedAt = Number.isFinite(etaAtOf(p))
+            ? etaAtOf(p) : prevAt + Math.max(0, p.min) * 60000;
         if (at - departedAt > DEPARTED_WINDOW_MS) continue;
         keep.push(Object.assign({}, p, { departed: true, departedAt }));
     }
@@ -1763,6 +1765,7 @@ function containsStopId(pattern, stopId) {
 }
 
 function buildBoardRows(anchorId, predictions, routeDetails, posRows) {
+    refreshEtaMinutes(predictions);
     const anchor = String(anchorId || "");
     const compactNote = (typeof city !== "undefined" && city === "boston")
         ? "" : "route details unavailable";
@@ -2450,6 +2453,7 @@ function clearHeroCountdown() {
 }
 
 function startHeroCountdown(st, arrivals) {
+    refreshEtaMinutes(arrivals);
     const next = (arrivals || []).slice().sort((a, b) => a.min - b.min)[0];
     const span = document.querySelector("#boardHeader .hero-countdown");
     if (!next || next.min > 1 || !span) { clearHeroCountdown(); return; }
@@ -2457,8 +2461,8 @@ function startHeroCountdown(st, arrivals) {
     const key = [mode, id, next.route, next.trip || "", next.heads || next.dir || ""].join("|");
     if (key !== heroCountdownKey) {
         heroCountdownKey = key;
-        heroCountdownDeadline = Number.isFinite(next.at) && next.at > Date.now() + 500
-            ? next.at : Date.now() + 60000;
+        heroCountdownDeadline = Number.isFinite(etaAtOf(next)) && etaAtOf(next) > Date.now() + 500
+            ? etaAtOf(next) : Date.now() + 60000;
     }
     if (heroCountdownTimer) clearInterval(heroCountdownTimer);
     const tick = () => {
@@ -2516,8 +2520,39 @@ function etaToken(m) {
     return m === 0 ? "Due" : String(m);
 }
 
+// Absolute arrival time is the source of truth. Providers set etaAt (epoch
+// ms); min is a presentation value recomputed from it at every paint so a
+// 30 s poll still counts down correctly between requests.
+function etaAtOf(p) {
+    if (!p || typeof p !== "object") return NaN;
+    if (Number.isFinite(p.etaAt)) return p.etaAt;
+    if (Number.isFinite(p.at)) return p.at;
+    if (Number.isFinite(p.min)) {
+        const base = Number.isFinite(p.observedAt) ? p.observedAt
+            : (Number.isFinite(p.fetchedAt) ? p.fetchedAt : NaN);
+        if (Number.isFinite(base)) return base + p.min * 60000;
+    }
+    return NaN;
+}
+
+function etaMinutes(p, now) {
+    const at = etaAtOf(p);
+    if (Number.isFinite(at)) return Math.max(0, Math.round((at - (now || Date.now())) / 60000));
+    const n = Number(p && p.min);
+    return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+function refreshEtaMinutes(list, now) {
+    const at = now || Date.now();
+    for (const p of list || []) {
+        if (!p) continue;
+        p.min = etaMinutes(p, at);
+    }
+    return list;
+}
+
 function predictionRank(p) {
-    if (!p || p.min > 1) return 3;
+    if (!p || etaMinutes(p) > 1) return 3;
     const s = String(p.status || "").toLowerCase();
     if (/departing/.test(s)) return 0;
     if (/arriving/.test(s)) return 1;
@@ -3061,7 +3096,7 @@ function metroRowsFor(station, skipFirst) {
             r = { kind: "compact", route: t.route, dirNum: t.dirNum || "",
                   dest: t.heads, mins: [], first: 0, metro: true,
                   status: t.status || "",
-                  fromCode: station.Code, toCode: metroDestCode(t.heads) };
+                  fromCode: station.Code, toCode: metroDestCode(t.heads, t.route) };
             groups.set(key, r);
             rows.push(r);
         }
@@ -3085,7 +3120,7 @@ function metroRowsFor(station, skipFirst) {
             schedGroups.set(key, {
                 kind: "service", route: d.route, dirNum: d.dirNum || "",
                 dest: d.heads, mins: [], first: 0, metro: true,
-                fromCode: station.Code, toCode: metroDestCode(d.heads),
+                fromCode: station.Code, toCode: metroDestCode(d.heads, d.route),
                 scheduled: { at: d.at }
             });
     }
@@ -3094,9 +3129,14 @@ function metroRowsFor(station, skipFirst) {
     return rows;
 }
 
-function metroDestCode(name) {
+function metroDestCode(name, line) {
     const stations = metroStationsCache || [];
-    const hit = stations.find(s => metroHeadsMatch(s.Name, name));
+    const key = line ? String(line).toLowerCase() : "";
+    const onLine = key
+        ? stations.filter(s => (s.Lines || []).some(l => String(l).toLowerCase() === key))
+        : [];
+    const hit = (onLine.length ? onLine : stations)
+        .find(s => metroHeadsMatch(s.Name, name));
     return hit ? hit.Code : "";
 }
 
@@ -3206,6 +3246,10 @@ async function loadMetroStops(ul) {
 function metroHeadsMatch(a, b) {
     const A = normHeads(a), B = normHeads(b);
     if (!A || !B) return false;
+    // Different terminal numbers mean different places (Heathrow T4 vs T5).
+    const na = A.match(/\d+/g) || [];
+    const nb = B.match(/\d+/g) || [];
+    if (na.length && nb.length && !na.some(n => nb.includes(n))) return false;
     if (A === B || A.includes(B) || B.includes(A)) return true;
     const n = Math.min(6, A.length, B.length);
     return n >= 5 && A.slice(0, n) === B.slice(0, n);
@@ -3220,6 +3264,7 @@ function renderMetro() {
         return;
     }
     const now = Date.now();
+    for (const code of Object.keys(metroLive)) refreshEtaMinutes(metroLive[code], now);
     const live = (metroLive[station.Code] || []).slice().sort((a, b) => a.min - b.min);
     const nextSched = (metroSchedule[station.Code] || [])
         .filter(d => d.at >= now).sort((a, b) => a.at - b.at)[0] || null;
@@ -4231,7 +4276,7 @@ async function loadHeroRouteStops(btn) {
     }
     if (ds.heroKind === "metro") {
         if (!ds.heroTo) return [];
-        const path = await fetchMetroPath(anchor, ds.heroTo, "");
+        const path = await fetchMetroPath(anchor, ds.heroTo, route);
         return path.map(p => ({ StopID: p.StationCode, Name: p.StationName }));
     }
     const details = await fetchRouteDetails(route);
@@ -4241,6 +4286,59 @@ async function loadHeroRouteStops(btn) {
         || dirs.find(d => d.byId && d.byId[String(anchor)])
         || dirs[0];
     return ((dir && dir.stops) || []).map(s => ({ StopID: s.id, Name: s.name }));
+}
+
+function heroRouteListHtml(stops, kind, route, anchor, connsMap) {
+    if (!stops.length) return `<div class="fav-empty">no stops available</div>`;
+    // Start after the selected stop; the current stop is not repeated.
+    const at = stops.findIndex(s => String(s.StopID || s.id) === String(anchor));
+    const list = at >= 0 ? stops.slice(at + 1) : stops;
+    const anchorStopRow = at >= 0 ? stops[at] : null;
+    const terminal = stops[stops.length - 1] || null;
+    const label = at >= 0 ? `<span class="next-stops-label">Next stops…</span>` : "";
+    const actions = routeActionsHtml(kind, route, anchor,
+        (anchorStopRow && (anchorStopRow.Name || anchorStopRow.name)) || "",
+        terminal ? (terminal.StopID || terminal.id) : "",
+        terminal ? (terminal.Name || terminal.name) : "", label);
+    if (!list.length) return actions + `<div class="fav-empty">no further stops</div>`;
+    return actions + list.map(s => {
+        const id = String(s.StopID || s.id || "");
+        const name = s.Name || s.name || "";
+        const conns = connsMap && connsMap.get(id);
+        const badges = conns ? connectionBadgesHtml(conns, kind, route) : "";
+        return `<div class="fav-stop">`
+            + `${favStarHtml(kind, id, name, route)}`
+            + `${favGotoHtml(kind, id, name, stopName(name) || "#" + id)}`
+            + (badges ? `<span class="fav-conns">${badges}</span>` : "")
+            + `</div>`;
+    }).join("");
+}
+
+async function toggleHeroRouteStops(btn) {
+    const card = btn.closest ? btn.closest(".hero-card") : null;
+    const box = card && card.nextElementSibling;
+    if (!box || !box.classList || !box.classList.contains("hero-route-stops")) return;
+    const open = box.hidden;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open) { box.hidden = true; return; }
+    box.hidden = false;
+    if (box.dataset.loaded) return;
+    box.dataset.loaded = "1";
+    box.innerHTML = `<div class="fav-empty">loading stops…</div>`;
+    let stops = [];
+    try { stops = await loadHeroRouteStops(btn); } catch (e) { stops = []; }
+    const kind = btn.dataset.heroKind;
+    const anchor = btn.dataset.heroAnchor;
+    const at = stops.findIndex(s => String(s.StopID || s.id) === String(anchor));
+    const shown = at >= 0 ? stops.slice(at) : stops;
+    let conns = new Map();
+    try {
+        conns = await loadStopConnections(shown.map(s =>
+            Object.assign({}, s, { kind })));
+    } catch (e) { /* no badges */ }
+    box.innerHTML = heroRouteListHtml(shown, kind, btn.dataset.heroRoute,
+        anchor, conns);
+    applyStopNameWidth(box);
 }
 
 let favBusFilterToken = 0;
@@ -4444,6 +4542,7 @@ function bookmarkRows(slot) {
 
 function nextArrivalHtml(kind, next) {
     if (!next) return `<span class="text-muted">no arrival or departure</span>`;
+    refreshEtaMinutes([next]);
     const color = kind === "metro" ? metroLineColor(next.route) : routeColor(next.route);
     const label = kind === "metro" ? metroLineName(next.route) : next.route;
     const status = next.min <= 1
@@ -5404,7 +5503,7 @@ function hoverTipHtml(st, pred) {
     const head = `${esc(stopName(st.Name) || "#" + st.StopID)} <small style="opacity:.75">(#${esc(st.StopID)})</small>`;
     if (!pred.predictions.length) return head + "<br><small>no arrivals scheduled</small>";
     const rows = pred.predictions.map(p =>
-        `<div><b>${esc(p.route)}</b> · ${esc(p.min)} min <small style="opacity:.75">${esc(p.dir || "")}</small></div>`).join("");
+        `<div><b>${esc(p.route)}</b> · ${esc(etaMinutes(p))} min <small style="opacity:.75">${esc(p.dir || "")}</small></div>`).join("");
     return head + "<br>" + rows;
 }
 
@@ -5710,6 +5809,7 @@ function heroVerbHtml(metro, commuter, color, route) {
 // Successive buses on the same route + direction follow the first ETA
 // ("9 min then 13 min, 31 min").
 function heroCardHtml(st, arrivals) {
+    refreshEtaMinutes(arrivals);
     const id = String(st.StopID || "");
     const label = st.Name ? stopName(st.Name) : `#${id}`;
     const list = (arrivals || []).slice().sort((a, b) => a.min - b.min);
@@ -5737,7 +5837,7 @@ function heroCardHtml(st, arrivals) {
             + ` data-hero-heads="${esc(next.heads || next.dir || "")}"`
             + ` data-hero-dir="${esc(next.dirNum == null ? "" : next.dirNum)}"`
             + ` data-hero-anchor="${esc(id)}"`
-            + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir) : "")}"`
+            + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir, displayRoute) : "")}"`
             + ` style="background:${badgeColor(next.route)};color:${st.Metro ? "#fff" : busTextColor(next.route)}">`
             + `${esc(badgeLabel(next.route))}`
             + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`;
@@ -5885,6 +5985,11 @@ function sortRowsBySoonest(rows, anchorId, now) {
 function renderBoardNow(anchorId, arrivals, routeDetails, posRows, across, anchorNearby, departedArrivals) {
     // Recently departed buses go above live rows, oldest departure first.
     const nowMs = Date.now();
+    refreshEtaMinutes(arrivals, nowMs);
+    for (const n of anchorNearby || []) {
+        const rec = nearbyStopObj(n);
+        refreshEtaMinutes(rec.Arrivals, nowMs);
+    }
     const departedPreds = (departedArrivals || []).filter(d => d && d.departed &&
         nowMs >= d.departedAt && nowMs - d.departedAt <= DEPARTED_WINDOW_MS);
     const departedRows = buildBoardRows(anchorId, departedPreds, routeDetails, posRows)

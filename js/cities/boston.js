@@ -244,6 +244,8 @@
                 vehicle: null,
                 trip: (tripRel && tripRel.id) || null,
                 status: mbtaPredictionStatus(a, now),
+                etaAt: at,
+                observedAt: now,
             },
         };
     }
@@ -407,6 +409,8 @@
                 dir: heads, heads, dirNum: String(a.direction_id == null ? "" : a.direction_id),
                 vehicle: null, trip: (tripRel && tripRel.id) || null,
                 status: mbtaPredictionStatus(a, Date.now()),
+                etaAt: at,
+                observedAt: now,
             });
         }
         const routes = [...new Set(Object.values(by).flat()

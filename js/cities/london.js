@@ -123,6 +123,8 @@
             vehicle: a.vehicleId != null ? String(a.vehicleId) : null,
             trip: a.vehicleId != null ? String(a.vehicleId) : null,
             status: a.timeToStation === 0 ? "Arriving" : "",
+            etaAt: at,
+            observedAt: parseTflTime(a.timestamp) || Date.now(),
             mode: String(a.modeName || ""),
             platform: a.platformName || "",
         };
@@ -277,18 +279,52 @@
     }
 
     async function metroPath(from, to, line) {
-        const details = await routeDetails(line);
-        for (const dir of (details && details.directions) || []) {
-            const ids = dir.stops.map(s => String(s.id));
-            const a = ids.indexOf(String(from)), b = ids.indexOf(String(to));
-            if (a < 0 || b < 0) continue;
-            const slice = a <= b ? ids.slice(a, b + 1) : ids.slice(b, a + 1).reverse();
-            return slice.map(id => {
-                const s = dir.byId[id] || {};
-                return { StationCode: id, StationName: s.name || id };
-            });
+        // Route/Sequence returns branches as separate segments, and the
+        // current routeDetails() keeps one per direction. Build a small
+        // stop graph from the raw segments and BFS so Heathrow/Uxbridge
+        // branches still resolve.
+        const { data, error } = await tflGet(
+            `/Line/${encodeURIComponent(line)}/Route/Sequence/all`);
+        if (error || !data) return [];
+        const adj = new Map();
+        const nodes = new Map();
+        for (const seq of (data.stopPointSequences || [])) {
+            const stops = seq.stopPoint || [];
+            for (let i = 0; i < stops.length; i++) {
+                const cur = stops[i];
+                const id = String(cur.id || cur.naptanId || cur.stationId || "");
+                if (!id) continue;
+                nodes.set(id, cur);
+                if (i === 0) continue;
+                const prev = stops[i - 1];
+                const pid = String(prev.id || prev.naptanId || prev.stationId || "");
+                if (!pid) continue;
+                if (!adj.has(pid)) adj.set(pid, new Set());
+                if (!adj.has(id)) adj.set(id, new Set());
+                adj.get(pid).add(id);
+                adj.get(id).add(pid);
+            }
         }
-        return [];
+        if (!adj.has(from) || !adj.has(to)) return [];
+        const prev = new Map([[from, null]]);
+        const queue = [from];
+        while (queue.length) {
+            const cur = queue.shift();
+            if (cur === to) break;
+            for (const next of adj.get(cur) || []) {
+                if (prev.has(next)) continue;
+                prev.set(next, cur);
+                queue.push(next);
+            }
+        }
+        if (!prev.has(to)) return [];
+        const ids = [];
+        for (let cur = to; cur != null; cur = prev.get(cur)) ids.push(cur);
+        ids.reverse();
+        return ids.map(id => ({
+            StationCode: id,
+            StationName: (nodes.get(id) && (nodes.get(id).name || nodes.get(id).commonName)) || id,
+        }));
     }
 
     async function place(id) {

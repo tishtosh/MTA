@@ -124,6 +124,22 @@ responses.push({
   check("london: pattern terminal is the headsign",
     details && details.directions[0].heads === "Green Park");
 
+  // ── London: segmented branches resolve through the stop graph ────
+  responses.push({
+    match: u => u.includes("/Line/testline/Route/Sequence/all"),
+    body: { stopPointSequences: [
+      { direction: "inbound", stopPoint: [
+        { id: "A", name: "A" }, { id: "B", name: "B" }, { id: "C", name: "C" },
+      ] },
+      { direction: "inbound", stopPoint: [
+        { id: "C", name: "C" }, { id: "D", name: "D" },
+      ] },
+    ] },
+  });
+  const branch = await lon.metroPath("A", "D", "testline");
+  check("london: branch segments stitch into one path",
+    branch.length === 4 && branch[0].StationCode === "A" && branch[3].StationCode === "D");
+
   // ── Theme + icons ────────────────────────────────────────────────
   check("london: Victoria line color", cities.london.theme.metroColor("victoria") === "#0098D4");
   check("london: bus badge is TfL red", cities.london.theme.routeColor("38") === "#DC241F");

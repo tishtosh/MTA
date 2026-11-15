@@ -197,6 +197,12 @@ async function settle(board) {
     londonCalls.every(u => !u.includes("api.wmata.com") && !u.includes("api-v3.mbta.com")));
   check(lres, "london: registered app_key is used",
     londonCalls.some(u => u.includes("app_key=")));
+  const heroStops = await london.sandbox.loadHeroRouteStops({ dataset: {
+    heroKind: "metro", heroAnchor: "940GZZLUOXC",
+    heroTo: "940GZZLUGPK", heroRoute: "victoria",
+  } });
+  check(lres, "london: hero stop list resolves",
+    heroStops.length === 2 && heroStops[0].StopID === "940GZZLUOXC");
 
   const pass = bres.pass + lres.pass;
   const fail = bres.fail + lres.fail;

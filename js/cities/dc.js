@@ -95,6 +95,7 @@
     // One stop per request: WMATA has no multi-stop prediction endpoint.
     async function departures(stopIds) {
         const out = new Map();
+        const fetchedAt = Date.now();
         await Promise.all([...new Set((stopIds || []).map(String))].map(async (stopId) => {
             const { data, error } = await dcGet(
                 "/NextBusService.svc/json/jPredictions", { StopID: stopId });
@@ -124,6 +125,9 @@
                     heads: String(p.TripHeadsign || "") || dir,
                     vehicle: vehicle || null, trip: trip || null,
                     status: min === 0 ? "Arriving" : "",
+                    at: fetchedAt + min * 60000,
+                    etaAt: fetchedAt + min * 60000,
+                    observedAt: fetchedAt,
                 });
             }
             preds.sort((a, b) => a.min - b.min || a.route.localeCompare(b.route));
@@ -194,6 +198,7 @@
             "/StationPrediction.svc/json/GetPrediction/" + codes.join(","), {});
         if (error) throw error;
         const by = {};
+        const fetchedAt = Date.now();
         for (const t of (data && data.Trains) || []) {
             const min = metroMin(t.Min);
             const rawMin = String(t.Min || "").trim().toUpperCase();
@@ -211,6 +216,9 @@
                 dir: dest, heads: dest,
                 dirNum: t.Group != null ? String(t.Group) : "",
                 vehicle: null, trip: null, status,
+                at: fetchedAt + min * 60000,
+                etaAt: fetchedAt + min * 60000,
+                observedAt: fetchedAt,
             });
         }
         for (const code of Object.keys(by)) by[code].sort((a, b) => a.min - b.min);
