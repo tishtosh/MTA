@@ -398,12 +398,12 @@
         .board-row.is-scheduled { background: #f8f9fa; }
         .board-row.is-departed { background: #f8f9fa; }
         /* A live row whose first arrival is <= 2 min away: one wash recipe for
-           every surface (rows and summary cards alike) — a green tint that
-           fades out to the right plus an inset rail. The cue lives in the box,
-           not the numerals, so nothing reflows when a minute ticks over. Row
-           focus keeps its own stronger highlight. */
-        .main-board .board-row.is-imminent:not(.row-focus),
-        .nearby-board .board-row.is-imminent:not(.row-focus) {
+           the main departures and the summary cards — a green tint that fades
+           out to the right plus an inset rail. Nearby sections stay plain, so
+           only the board the visitor is standing at shouts. The cue lives in
+           the box, not the numerals, so nothing reflows when a minute ticks
+           over. Row focus keeps its own stronger highlight. */
+        .main-board .board-row.is-imminent:not(.row-focus) {
             background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46, 125, 50, 0) 75%);
             box-shadow: inset 3px 0 0 #2e7d32;
         }
@@ -411,12 +411,19 @@
            Work / Airport / Likes cards). The soonest arrival is lifted out of
            the board rows into these cards, so the wash has to live here too.
            The tint is a pseudo-element behind the content, which leaves the
-           mode background, hover fill and the line band untouched. */
-        .hero-card.is-imminent { isolation: isolate; box-shadow: inset 3px 0 0 #2e7d32; }
+           mode background, hover fill and the line band untouched. The rail
+           marks only the arrival line — the title row above stays unmarked. */
+        .hero-card.is-imminent { isolation: isolate; }
         .hero-card.is-imminent::before {
             content: ""; position: absolute; inset: 0; z-index: -1;
             border-radius: inherit; pointer-events: none;
             background: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46, 125, 50, 0) 75%);
+        }
+        .hero-card.is-imminent .board-next { position: relative; }
+        .hero-card.is-imminent .board-next::before {
+            content: ""; position: absolute; top: 0; bottom: 0; left: -16px;
+            width: 3px; background: #2e7d32;
+            border-radius: 0 2px 2px 0;
         }
 
         /* One row = one quiet card: white surface, hairline border, rounded.
@@ -470,11 +477,14 @@
         .commuter-rail-icon .mode-svg { width: 10px; height: 10px; }
         .nearby-card-sub { margin: 1px 0 0; font-size: 12px; color: #3d3d3d; }
 
+        /* Three columns, left to right: route badge, arrival times (wraps
+           inside its own column), final stop (right-aligned, wraps too). */
         .board-head {
-            display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+            display: grid;
+            grid-template-columns: max-content minmax(0, 1.2fr) minmax(0, 1fr);
+            align-items: baseline; gap: 2px 12px;
             font: 14px/1.4 system-ui, -apple-system, sans-serif;
         }
-        .row-mainline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
         .board-routecode { flex: none; min-width: 36px; font-weight: 700; font-size: 14px; }
         /* Route badge: white code on the route's saturated color (the palette
            is dark enough to keep it legible). */
@@ -509,23 +519,26 @@
         }
         .row-badge.hollow.bt-allstops:hover { background: transparent; }
         .row-badge-wrap { display: inline-flex; align-items: center; gap: 5px; flex: none; }
-        .row-mainline .bus-status { margin-left: 2px; vertical-align: middle; }
         .bus-status { font-size: 12px; }
         .bus-status.arriving { font-size: 17px; }
         .bus-status.departed { color: #adb5bd; }
         /* Final destination: bold and set on a quiet grey highlight, sitting
-           immediately after the badge. */
+           at the right edge of the row. */
         .board-dest {
+            justify-self: end; text-align: right;
+            max-width: 100%; overflow-wrap: anywhere;
             font-family: system-ui, -apple-system, sans-serif;
             font-weight: 700; color: #182338;
             background: #e9ecef; padding: 1px 6px; border-radius: 3px;
         }
-        /* The ETA group packs left, right after the destination. */
+        /* The ETA group owns the middle column and wraps inside it. */
         .board-etas {
-            white-space: nowrap;
-            display: inline-flex; align-items: baseline; gap: 6px;
+            display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px;
+            justify-self: start; text-align: left; min-width: 0;
             font-variant-numeric: tabular-nums;
         }
+        .board-etas .status-chip,
+        .bt-next-times .status-chip { margin-right: 0; }
         .board-eta { font-size: 15px; color: #343a40; font-variant-numeric: tabular-nums; }
         .board-eta-soon { font-size: 20px; font-weight: 700; color: #2e7d32; font-variant-numeric: tabular-nums; }
         .board-eta-note { font-size: 12px; color: #6c757d; font-variant-numeric: tabular-nums; }
@@ -668,7 +681,22 @@
         .board-shortcut.active { color: #8ce99a; }
         .board-stopname { margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.25; }
         .board-stopid { margin-left: 8px; font: 500 12px/1.4 system-ui, -apple-system, sans-serif; color: #9fb0c7; }
-        .board-next { margin: 8px 0 0; font: 14px/1.4 system-ui, -apple-system, sans-serif; color: #2b2b2b; }
+        /* The hero / bookmark-card summary line uses the same three columns as
+           a board row: route, times (wrapping), final stop on the right. */
+        .board-next {
+            display: grid;
+            grid-template-columns: max-content minmax(0, 1.2fr) minmax(0, 1fr);
+            align-items: baseline; gap: 2px 12px;
+            margin: 8px 0 0; font: 14px/1.4 system-ui, -apple-system, sans-serif; color: #2b2b2b;
+        }
+        /* A lone message ("loading arrivals…", "no arrival or departure")
+           spans the whole line instead of sitting in the badge column. */
+        .board-next > :only-child { grid-column: 1 / -1; }
+        .board-next .bt-next-times {
+            display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px;
+            justify-self: start; text-align: left; min-width: 0;
+            font-variant-numeric: tabular-nums;
+        }
         .board-next .bt-next-rest { color: #5f5f5f; }
         .hero-verb { display: inline-flex; align-items: center; margin-right: 3px; }
         .hero-verb i { font-size: 18px; }
@@ -786,7 +814,7 @@
                     <i class="fa-regular fa-building fa-xl-mta"></i>
                 </button>
                 <button id="btnAirport" class="navicon nav-shortcut" title="Airport stops" aria-label="Show airport stops">
-                    <i class="fa-regular fa-paper-plane fa-xl-mta"></i>
+                    <i class="fa-solid fa-plane-up fa-xl-mta"></i>
                 </button>
             </div>
             <div class="d-flex align-items-center">
@@ -2682,9 +2710,10 @@ function boardEtasHtml(mins, scheduled, departedAt, status) {
 const expandedStops = new Set();
 const rowKey = (r) => `${r.route}\u0000${String(r.dirNum ?? "")}\u0000${r.dest || ""}${r.departed ? "\u0000departed" : ""}`;
 
-// One row's header: a route badge (white on the route color), the final
-// destination below it, then the ETA list, all left-aligned from the badge.
-// Track rows also carry the stop-list chevron on the route badge (piece 11).
+// One row's header, laid out in three columns: the route badge (left), the
+// arrival times (middle, wrapping within their column) and the final stop
+// (right, wrapping too). Track rows also carry the stop-list chevron on the
+// route badge (piece 11).
 function boardRowHead(row, color, g, k, scheduled) {
     const dest = (row.kind === "track" || row.kind === "service")
         ? (row.dest ? esc(row.dest) : "")
@@ -2704,19 +2733,19 @@ function boardRowHead(row, color, g, k, scheduled) {
         ? ` type="button" class="${badgeClass}" aria-expanded="${expandedStops.has(k)}"`
         : ` class="${badgeClass}"`;
     const badgeInner = `${esc(badgeText)}${chevron}`;
+    const textColor = badgeTextColor(color);
     const hollowColor = row.metro ? color
-        : (busTextColor(row.route) === "#000" ? "#000" : color);
+        : (textColor === "#111" ? "#111" : color);
     const badge = departed
         ? `<${badgeTag}${badgeAttrs} style="color:${hollowColor};border-color:${color}">${badgeInner}</${badgeTag}>`
-        : `<${badgeTag}${badgeAttrs} style="background:${color};color:${row.metro ? "#fff" : busTextColor(row.route)}">${badgeInner}</${badgeTag}>`;
+        : `<${badgeTag}${badgeAttrs} style="background:${color};color:${textColor}">${badgeInner}</${badgeTag}>`;
+    const statusHtml = departed ? "" : statusChipHtml(row.status);
+    const etasHtml = ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled || departed)
+        ? boardEtasHtml(row.mins, scheduled, row.departedAt, row.status) : "";
     return `<div class="board-head">`
         + `<span class="row-badge-wrap">${badge}</span>`
-        + `<div class="row-mainline">`
-        + (dest ? `<span class="board-dest">${dest}</span>` : `<span class="board-dest">Destination unavailable</span>`)
-        + `</div>`
-        + (departed ? "" : statusChipHtml(row.status))
-        + ((row.mins && row.mins.length) || (g && g.hasTrack) || scheduled || departed
-            ? `<span class="board-etas">${boardEtasHtml(row.mins, scheduled, row.departedAt, row.status)}</span>` : "")
+        + `<span class="board-etas">${statusHtml}${etasHtml}</span>`
+        + `<span class="board-dest">${dest || "Destination unavailable"}</span>`
         + `</div>`;
 }
 
@@ -4290,7 +4319,7 @@ function connBadgeHtml(kind, route, place) {
     const metro = kind === "metro";
     const label = metro ? metroLineName(r) : r;
     const color = metro ? metroLineColor(r) : routeColor(r);
-    const text = metro ? "#fff" : busTextColor(r);
+    const text = badgeTextColor(color);
     const where = place && place.name ? ` at ${place.name}` : " on this board";
     const title = `Go to ${label}${where}`;
     return `<button type="button" class="fav-badge conn-badge${metro ? " line" : busBadgeClass()}"`
@@ -4624,7 +4653,7 @@ async function renderFavMetroLines() {
     const lines = cityTheme().metroLineIds();
     gFavMetroLines.innerHTML = lines.map(line =>
         `<button type="button" class="fav-route" data-fav-line="${line}" aria-expanded="false">`
-        + `<span class="fav-badge line" style="background:${metroLineColor(line)}">${esc(metroLineName(line))}</span>`
+        + `<span class="fav-badge line" style="background:${metroLineColor(line)};color:${badgeTextColor(metroLineColor(line))}">${esc(metroLineName(line))}</span>`
         + `<span class="fav-desc">${esc(metroLineName(line))} Line</span>`
         + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
         + `<div class="fav-stops" data-fav-stops="metro" data-line="${line}" hidden></div>`
@@ -4637,7 +4666,7 @@ async function renderFavMetroLines() {
 function favBadgeHtml(kind, route) {
     const r = String(route || "");
     if (kind === "metro") {
-        return `<span class="fav-badge line" style="background:${metroLineColor(r)}">`
+        return `<span class="fav-badge line" style="background:${metroLineColor(r)};color:${badgeTextColor(metroLineColor(r))}">`
             + `${esc(r ? metroLineName(r) : "Metro")}</span>`;
     }
     return `<span class="fav-badge${busBadgeClass()}"`
@@ -4729,11 +4758,13 @@ function nextArrivalHtml(kind, next) {
     const status = next.min <= 1
         ? (next.status || (next.min === 0 ? "Arriving" : "")) : "";
     const showEta = !(next.min === 0 && statusReplacesDue(status));
+    const dest = next.heads || next.dir || "";
     return `<span class="row-badge${kind === "metro" ? " metro-line" : busBadgeClass()}"`
-        + ` style="background:${color};color:${kind === "metro" ? "#fff" : busTextColor(next.route)}">${esc(label)}</span> `
-        + `${esc(next.heads || next.dir || "")}`
-        + statusChipHtml(status)
-        + (showEta ? ` <span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>` : "");
+        + ` style="background:${color};color:${badgeTextColor(color)}">${esc(label)}</span>`
+        + `<span class="bt-next-times">${statusChipHtml(status)}`
+        + (showEta ? `<span class="bt-next-eta${next.min <= 5 ? " soon" : ""}">${esc(fmtEta(next.min))}</span>` : "")
+        + `</span>`
+        + (dest ? `<span class="board-dest">${esc(dest)}</span>` : "");
 }
 
 // Match the selected-stop hero card: dark panel, name + ID, next arrival.
@@ -4742,7 +4773,7 @@ function bmSlotHtml(row, slot) {
     const on = slotHas(row.kind, slot, row.id);
     const label = shortcutLabel(slot);
     const text = on ? `Clear ${label} bookmark` : `Save as ${label}`;
-    const icon = slot === "home" ? "house" : slot === "work" ? "briefcase" : "plane";
+    const icon = slot === "home" ? "house" : slot === "work" ? "briefcase" : "plane-up";
     return `<button type="button" class="board-shortcut bm-slot${on ? " active" : ""}"`
         + ` data-bookmark-slot="${slot}" data-fav-kind="${esc(row.kind)}"`
         + ` data-fav-id="${esc(row.id)}" data-fav-name="${esc(row.name || "")}"`
@@ -5661,7 +5692,19 @@ function busBandClass() {
     return theme && theme.bandStyle === "solid" ? " band-solid" : "";
 }
 
-function busTextColor(route) { return cityTheme().routeTextColor(route); }
+// Text colour for a filled route/line rectangle. WCAG relative luminance with
+// the #fff vs #111 crossover (L ≈ .19), so pale lines — London's Circle yellow,
+// Hammersmith & City pink, the DC Yellow line — get dark text instead of white.
+function badgeTextColor(color) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(color || ""));
+    if (!m) return "#fff";
+    const v = parseInt(m[1], 16);
+    const lin = (c) => { c /= 255; return c <= .03928 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4); };
+    const L = .2126 * lin(v >> 16 & 255) + .7152 * lin(v >> 8 & 255) + .0722 * lin(v & 255);
+    return L > .19 ? "#111" : "#fff";
+}
+
+function busTextColor(route) { return badgeTextColor(routeColor(route)); }
 
 function busBadgeClass() { return cityTheme().badgeClass(); }
 // The hover card: a stop's live arrivals, fetched once per page load and
@@ -5970,7 +6013,7 @@ function shortcutButtonsHtml(id) {
         return `<button type="button" class="board-shortcut${on ? " active" : ""}"`
             + ` data-shortcut="${slot}" aria-pressed="${on ? "true" : "false"}"`
             + ` title="${text}" aria-label="${text}">`
-            + `<i class="fa-solid fa-${slot === "home" ? "house" : slot === "work" ? "briefcase" : "plane"}" aria-hidden="true"></i>`
+            + `<i class="fa-solid fa-${slot === "home" ? "house" : slot === "work" ? "briefcase" : "plane-up"}" aria-hidden="true"></i>`
             + `</button>`;
     }).join("") + `</div>`;
 }
@@ -6030,25 +6073,23 @@ function heroCardHtml(st, arrivals) {
             + ` data-hero-dir="${esc(next.dirNum == null ? "" : next.dirNum)}"`
             + ` data-hero-anchor="${esc(id)}"`
             + ` data-hero-to="${esc(st.Metro ? metroDestCode(next.heads || next.dir, nextRef) : "")}"`
-            + ` style="background:${badgeColor(nextRef)};color:${st.Metro ? "#fff" : busTextColor(nextRef)}">`
+            + ` style="background:${badgeColor(nextRef)};color:${badgeTextColor(badgeColor(nextRef))}">`
             + `${esc(badgeLabel(nextRef))}`
             + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`;
-        const bits = [
-            routeBadge,
-            next.heads || next.dir
-                ? `<span class="board-dest">${esc(next.heads || next.dir)}</span>` : ""
-        ].filter(Boolean).join(" ");
+        const destHtml = next.heads || next.dir
+            ? `<span class="board-dest">${esc(next.heads || next.dir)}</span>` : "";
         const heroStatus = next.min <= 1
             ? (next.status || (next.min === 0 ? "Arriving" : "")) : "";
         const showEta = !(mins[0] === 0 && statusReplacesDue(heroStatus));
         const etaHtml = next.min <= 1
             ? ` <span class="bt-next-eta soon hero-countdown">0:59</span>`
             : (showEta ? ` <span class="bt-next-eta${mins[0] <= 5 ? " soon" : ""}">${esc(fmtEta(mins[0]))}</span>` : "");
-        nextLine = `${bits}`
-            + statusChipHtml(heroStatus)
-            + etaHtml;
-        if (mins.length > 1)
-            nextLine += ` <span class="bt-next-rest">then ${mins.slice(1).map(etaToken).join(", ")} min</span>`;
+        nextLine = routeBadge
+            + `<span class="bt-next-times">${statusChipHtml(heroStatus)}${etaHtml}`
+            + (mins.length > 1
+                ? ` <span class="bt-next-rest">then ${mins.slice(1).map(etaToken).join(", ")} min</span>` : "")
+            + `</span>`
+            + destHtml;
     } else if (st.Error) {
         nextLine = `<span class="text-muted">arrivals unavailable — retrying</span>`;
     } else {
@@ -6056,13 +6097,14 @@ function heroCardHtml(st, arrivals) {
         // arrival explicitly as "not seen".
         const sched = st.MetroScheduledNext || nextScheduledFor(id);
         if (sched) {
-            const schedBits = [
-                `<span class="row-badge${st.Metro ? " metro-line" : busBadgeClass()}" style="background:${badgeColor(sched.route)};color:${st.Metro ? "#fff" : busTextColor(sched.route)}">${esc(badgeLabel(sched.route))}</span>`,
-                sched.heads || sched.dirText
-                    ? `<span class="board-dest">${esc(sched.heads || sched.dirText)}</span>` : ""
-            ].filter(Boolean).join(" ");
-            nextLine = `${schedBits} <span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
-                + ` <span class="bt-next-rest">not seen</span>`;
+            const schedBadge = `<span class="row-badge${st.Metro ? " metro-line" : busBadgeClass()}" style="background:${badgeColor(sched.route)};color:${badgeTextColor(badgeColor(sched.route))}">${esc(badgeLabel(sched.route))}</span>`;
+            const schedDest = sched.heads || sched.dirText
+                ? `<span class="board-dest">${esc(sched.heads || sched.dirText)}</span>` : "";
+            nextLine = schedBadge
+                + `<span class="bt-next-times">`
+                + `<span class="bt-next-eta">${esc(fmtScheduleTime(sched.at))}</span>`
+                + ` <span class="bt-next-rest">not seen</span></span>`
+                + schedDest;
         } else {
             nextLine = `<span class="text-muted">no arrival or departure</span>`;
         }

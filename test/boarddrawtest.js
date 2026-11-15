@@ -45,7 +45,7 @@ let src = [names.map(constBlock).join("\n"),
   extractFn("routeActionsHtml"),
   extractFn("noteSelectionChange"),
   extractFn("boardRowHead"), extractFn("boardHtml"),
-  extractFn("busBadgeClass"), extractFn("busTextColor"),
+  extractFn("busBadgeClass"), extractFn("busTextColor"), extractFn("badgeTextColor"),
   extractFn("statusReplacesDue"), extractFn("isImminentMin"),
   extractFn("isImminentRow"),
   extractFn("etaToken"), extractFn("statusChipHtml")].join("\n");
@@ -103,8 +103,8 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   const html = ctx.boardHtml(ctx.boardGeometry(rows), rows);
   delete ctx.__stopScheduleCache["c"];
   t("D1 no SVG track graphic", !html.includes("board-tracksvg") && !html.includes("<svg"));
-  t("D2 badge, destination below it, then ETAs",
-    /row-badge[^]*?board-dest[^]*?board-etas/.test(html) &&
+  t("D2 badge, then ETAs, then the destination column",
+    /row-badge[^]*?board-etas[^]*?board-dest/.test(html) &&
     html.includes('class="board-eta-soon">4 min'));
   t("D3 destination is the final headsign", html.includes("TerB") && html.includes("TerC"));
   t("D3b service row with no prediction shows schedule + not seen",
@@ -194,6 +194,11 @@ t("A3b no prediction + schedule → time + not seen", (() => {
   t("G1 2-min row is imminent, 3-min and departed rows are not",
     /\bis-imminent/.test(tagged[0]) && !/imminent/.test(tagged[1]) &&
     !/imminent/.test(tagged[2]));
+  t("G2 pale line colours get dark badge text, saturated ones stay white",
+    ctx.badgeTextColor("#FFC80A") === "#111" &&
+    ctx.badgeTextColor("#F589A6") === "#111" &&
+    ctx.badgeTextColor("#DC241F") === "#fff" &&
+    ctx.badgeTextColor("#0019A8") === "#fff");
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

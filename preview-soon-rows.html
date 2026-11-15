@@ -88,10 +88,15 @@
   .hero-card .title { margin-top: 8px; font-weight: 700; }
   .hero-card .next { margin-top: 2px; }
   .hero-card .badge.mini { min-width: 0; padding: 0 6px; font-size: 12px; display: inline-block; }
-  .hero-card.is-imminent { isolation: isolate; box-shadow: inset 3px 0 0 #2e7d32; }
+  .hero-card.is-imminent { isolation: isolate; }
   .hero-card.is-imminent::before {
     content: ""; position: absolute; inset: 0; z-index: -1;
     background: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
+  }
+  .hero-card.is-imminent .next { position: relative; }
+  .hero-card.is-imminent .next::before {
+    content: ""; position: absolute; top: 0; bottom: 0; left: -16px;
+    width: 3px; background: #2e7d32; border-radius: 0 2px 2px 0;
   }
 
   /* continuous surface: hero line and rows sit on the city's hero-metro-bg */
@@ -99,6 +104,18 @@
   .v-consist .board-row.is-imminent {
     background-image: linear-gradient(90deg, var(--imminent-wash) 0%, var(--imminent-wash-fade) 45%, rgba(46,125,50,0) 75%);
     box-shadow: inset 3px 0 0 #2e7d32;
+  }
+
+  /* three-column row: route | times | final stop */
+  .board-head {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1.2fr) minmax(0, 1fr);
+    align-items: baseline; gap: 2px 12px; width: 100%;
+  }
+  .board-etas { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; min-width: 0; }
+  .board-dest {
+    justify-self: end; text-align: right; max-width: 100%; overflow-wrap: anywhere;
+    font-weight: 700; background: #e9ecef; padding: 1px 6px; border-radius: 3px;
   }
 
   .swatches { display: flex; gap: 14px; font-size: 11px; color: var(--mute); margin-top: 8px; }  .swatch { display: inline-flex; align-items: center; gap: 5px; }
@@ -143,7 +160,35 @@
     <div class="board-row"><span class="badge" style="--route:#6a6a6a">Jubilee</span><span class="dest">Willesden Green</span><span class="etas"><span class="eta">9 min</span></span></div>
     <div class="board-row"><span class="badge" style="--route:#6a6a6a">Jubilee</span><span class="dest">Wembley Park</span><span class="etas"><span class="eta">14 min</span></span></div>
   </div>
-  <p class="note">Same base colour and the same green recipe on the hero line and on each row, so only the ≤2 min entries stand out.</p>
+  <p class="note">Same base colour and the same green recipe on the hero line and on each row, so only the ≤2 min entries stand out. The rail marks just the arrival line, not the title.</p>
+</section>
+
+<section class="v-cols">
+  <h2>Three columns — route | times | final stop · dark text on pale lines</h2>
+  <div class="main-board" style="background:#dbe4f7; border-color:#c6cfdd; padding:0; overflow:hidden;">
+    <div class="board-row" style="background:transparent;">
+      <div class="board-head">
+        <span class="row-badge-wrap"><span class="badge" style="--route:#FFC80A;color:#111;">Circle</span></span>
+        <span class="board-etas"><span class="eta">1 min</span><span class="eta">then 11, 17, 18, 19, 22, 24, 26 min</span></span>
+        <span class="board-dest">Stratford Underground Station</span>
+      </div>
+    </div>
+    <div class="board-row" style="background:transparent;">
+      <div class="board-head">
+        <span class="row-badge-wrap"><span class="badge" style="--route:#F589A6;color:#111;">H&amp;C</span></span>
+        <span class="board-etas"><span class="eta-soon">2 min</span><span class="eta">then 9, 16 min</span></span>
+        <span class="board-dest">Hammersmith</span>
+      </div>
+    </div>
+    <div class="board-row" style="background:transparent;">
+      <div class="board-head">
+        <span class="row-badge-wrap"><span class="badge" style="--route:#0019A8;color:#fff;">Piccadilly</span></span>
+        <span class="board-etas"><span class="eta">4 min</span></span>
+        <span class="board-dest">Cockfosters</span>
+      </div>
+    </div>
+  </div>
+  <p class="note">Yellow and pink rectangles switch to #111 text by relative luminance; dark lines keep white. Long ETA strings wrap inside the middle column, long destinations wrap at the right edge.</p>
 </section>
 
 <section class="v-card">

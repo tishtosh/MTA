@@ -153,8 +153,8 @@ const board = () => els.linesScroll.innerHTML;
 
   check("board painted into linesScroll", b !== "");
   check("board: no SVG track graphic", !b.includes("board-tracksvg"));
-  check("board: route badge, destination, then ETAs",
-    /row-badge[^]*?board-dest[^]*?board-etas/.test(b));
+  check("board: route badge, then ETAs, then destination column",
+    /row-badge[^]*?board-etas[^]*?board-dest/.test(b));
   check("board: anchor stop list is selectable",
     !b.includes("bt-stop-item") || /class="bt-stop-item"[^>]*data-stop="/.test(b));
 
