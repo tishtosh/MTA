@@ -451,6 +451,12 @@
         }
 
         /* Auto-refresh meter: ring + pill beside the status line. */
+        .choose-stop-row {
+            flex: 0 0 100%; width: 100%; padding: 0 0 4px;
+            text-align: center; color: #6c757d;
+            font: 600 11px/1.4 system-ui, -apple-system, sans-serif;
+        }
+        .choose-stop-row[hidden] { display: none; }
         .refresh-cue {
             display: flex; flex-direction: column; align-items: center; gap: 2px;
         }
@@ -1311,6 +1317,7 @@
                 </div>
             </div>
         </div>
+        <div id="chooseStopRow" class="choose-stop-row" hidden>Choose a stop</div>
     </nav>
     <div id="cityMenu" class="city-menu" role="menu" hidden>
         <div class="city-menu-label">City</div>
@@ -2021,6 +2028,7 @@ const gStatus = document.getElementById("statusmessage");
 const gClockMeta = document.getElementById("clockMeta");
 const gRefreshCue = document.getElementById("refreshCue");
 const gRefreshRing = document.getElementById("refreshRing");
+const gChooseStopRow = document.getElementById("chooseStopRow");
 const gRefreshPill = document.getElementById("refreshPill");
 const gRefreshPillText = document.getElementById("refreshPillText");
 const gRefreshToggle = document.getElementById("btnRefreshToggle");
@@ -3758,7 +3766,7 @@ function setCity(next, opts) {
         renderCityMenu();
         return;
     }
-    const prevView = opts && opts.keepView ? null : currentViewSnapshot();
+    const keepView = !!(opts && opts.keepView);
     city = next;
     writeCityCookie();
     likes = readLikes();
@@ -3784,30 +3792,9 @@ function setCity(next, opts) {
         favNearToken++;
         closeFavPanel();
     }
-    if (!opts || !opts.keepView) {
-        // Stay on the same kind of view across the switch: Nearby, a saved
-        // category, or Likes. Nearby keeps the device anchor (or the city
-        // centre when there is none) and does not re-run the GPS city pick,
-        // so a manual choice sticks but distances stay measured from the user.
-        if (prevView && prevView.type === "search") {
-            showSearchView();
-        } else if (prevView && prevView.type === "nearby") {
-            renderNearbyView(lastNearbyPos || cityHome());
-        } else if (prevView && prevView.type === "bookmarks") {
-            renderBookmarkList(prevView.slot || "fav");
-        } else {
-            renderBookmarkList("fav");
-        }
-    }
-}
-
-function currentViewSnapshot() {
-    if (currentScreen && currentScreen.type === "nearby") return { type: "nearby" };
-    if (currentScreen && currentScreen.type === "search") return { type: "search" };
-    if (bookmarkSlot) return { type: "bookmarks", slot: bookmarkSlot };
-    if (currentScreen && currentScreen.type === "bookmarks")
-        return { type: "bookmarks", slot: currentScreen.slot || "fav" };
-    return null;
+    // A manual city change always lands on Likes. The Nearby flow opts out
+    // with keepView so its caller can repaint around the same device point.
+    if (!keepView) renderBookmarkList("fav");
 }
 
 async function runMetro() {
@@ -7897,7 +7884,7 @@ const RING_CIRCUMFERENCE = 106.8;   // 2π × 17, matches the r=17 circle
 function tickClock() {
     // The countdown is graphic now: the ring drains as the next refresh nears.
     // The meta line names non-live states; the pill is decorative (aria-hidden).
-    let meta = "", state = "live", pill = "Live", frac = 0;
+    let meta = "", state = "live", pill = "Live", frac = 0, chooseStop = false;
 
     if (refreshInFlight) {
         state = "fetching"; pill = "Updating";
@@ -7921,7 +7908,7 @@ function tickClock() {
             meta = "paused while hidden";
         } else if (!haveData) {
             pill = "Idle";
-            meta = "waiting for a stop";
+            chooseStop = true;
         } else {
             // Visible with data but the timer has not been armed yet (a view
             // transition or a just-finished refresh). Do not blame a hidden tab.
@@ -7938,6 +7925,7 @@ function tickClock() {
     if (gRefreshPill) gRefreshPill.className = "refresh-pill";
     if (gRefreshPillText) gRefreshPillText.textContent = pill;
     if (gClockMeta) gClockMeta.textContent = meta;
+    if (gChooseStopRow) gChooseStopRow.hidden = !chooseStop;
 }
 
 function setRefreshEnabled(on) {

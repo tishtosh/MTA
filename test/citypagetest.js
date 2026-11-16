@@ -476,6 +476,12 @@ async function settle(board) {
   await wait(150);
   check(nres, "nyc: city mark follows the switch",
     String(nyc.els.cityMark.innerHTML).includes("img/dc.svg"));
+  check(nres, "nyc: changing city lands on Likes",
+    nyc.els.bookmarkView.hidden === false &&
+    nyc.els.bookmarkTitle.textContent === "Likes");
+  check(nres, "nyc: choose-stop prompt is its own row",
+    nyc.els.chooseStopRow.hidden === false &&
+    nyc.els.clockMeta.textContent === "");
   nyc.sandbox.setCity("nyc");
   // Switching cities keeps the current view, so open Likes explicitly to
   // verify that the per-city saved list swapped.
