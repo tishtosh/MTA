@@ -416,11 +416,12 @@ async function settle(board) {
     /class="mode-svg"/.test(String(nyc.els.searchTabs.innerHTML)));
   check(nres, "nyc: Search view lists lines",
     /data-search-route="/.test(String(nyc.els.searchList.innerHTML)));
+  check(nres, "nyc: Search starts with no route selected",
+    !/aria-pressed="true"/.test(String(nyc.els.searchList.innerHTML)) &&
+    /Select a line/.test(String(nyc.els.searchDetail.innerHTML)));
   const nSearchTab = nyc.sandbox.searchTabsList()[0];
   const nSearchRoute = nyc.sandbox.searchRoutesFor(nSearchTab)[0];
-  nyc.sandbox.searchTab = nSearchTab.key;
-  nyc.sandbox.searchRouteId = nSearchRoute.id;
-  nyc.sandbox.renderSearchChrome();
+  await nyc.sandbox.selectSearchRoute(nSearchTab.kind, nSearchRoute.id);
   const nSearchDetail = String(await settle(() => nyc.els.searchDetail.innerHTML));
   check(nres, "nyc: Search routes are summary cards",
     /class="search-card"/.test(String(nyc.els.searchList.innerHTML)) &&

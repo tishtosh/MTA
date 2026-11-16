@@ -313,7 +313,7 @@
         .search-route .fav-badge { align-self: center; }
         /* First level: route summary cards; stops render underneath. */
         .search-cards {
-            display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 2px 0 10px;
+            display: flex; flex-wrap: wrap; gap: 2px 6px; margin: 2px 0 10px;
             align-content: flex-start; max-height: 46vh; overflow-y: auto;
         }
         .search-card {
@@ -322,15 +322,13 @@
             border: 0; border-radius: 0; background: none;
             color: inherit; cursor: pointer; text-align: left; font: inherit;
         }
-        .search-card:hover .card-open,
-        .search-card[aria-pressed="true"] .card-open { color: #0056b3; }
+        .search-card:hover .card-open { color: #0056b3; }
+        .search-card[aria-pressed="true"] .card-open {
+            color: #0056b3; font-size: 12px; transform: none;
+        }
         .search-card:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .search-card .card-route {
             display: flex; align-items: center; gap: 6px; min-width: 0;
-        }
-        .search-card .card-name {
-            min-width: 0; max-width: 100%; font-size: 12px; font-weight: 600;
-            color: #33415c; line-height: 1.25; overflow-wrap: anywhere;
         }
         .search-card .card-open {
             flex: none; margin-left: auto; color: #8a96a8; font-size: 10px;
@@ -354,7 +352,6 @@
             display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
             gap: 2px 14px; margin-top: 6px;
         }
-        .search-detail h5 { margin: 0 0 2px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
         .search-detail .sub { color: #6c757d; font-size: 11px; margin: 0 0 8px; }
         .search-detail .stop { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0; color: #33415c; }
         .search-empty { padding: 10px; color: #6c757d; font-size: 12px; }
@@ -6206,11 +6203,7 @@ async function renderSearchDetail(tab, route) {
         gSearchDetail.innerHTML = `<div class="search-empty">Select a line to see its stops.</div>`;
         return;
     }
-    const title = tab.kind === "metro" ||
-        String(route.name || "").toLowerCase() === String(route.id).toLowerCase()
-        ? searchBadge(tab, route)
-        : `${searchBadge(tab, route)} ${esc(route.name)}`;
-    gSearchDetail.innerHTML = `<h5>${title}</h5><p class="sub">loading stops…</p>`;
+    gSearchDetail.innerHTML = `<p class="sub">loading stops…</p>`;
     let stops = [];
     try {
         stops = await searchRouteStops(tab, route.id);
@@ -6220,12 +6213,11 @@ async function renderSearchDetail(tab, route) {
         return;
     }
     if (token !== searchToken) return;
-    gSearchDetail.innerHTML = `<h5>${title}</h5>`
-        + `<p class="sub">${stops.length} ${stops.length === 1 ? "stop" : "stops"}</p>`
-        + (stops.length ? `<div class="stops">` + stops.map(s => `<div class="stop">`
+    gSearchDetail.innerHTML = stops.length
+        ? `<div class="stops">` + stops.map(s => `<div class="stop">`
             + `${favStarHtml(tab.kind, s.id, s.name, route.id)}`
             + `${favGotoHtml(tab.kind, s.id, s.name, stopName(s.name) || s.id)}</div>`).join("") + `</div>`
-            : `<div class="search-empty">No stops returned.</div>`);
+        : `<div class="search-empty">No stops returned.</div>`;
 }
 
 function renderSearchChrome() {
@@ -6257,14 +6249,11 @@ function renderSearchChrome() {
     if (gSearchRouteResults) {
         gSearchRouteResults.innerHTML = routeMatches.map(r => {
             const rt = r.tab;
-            const label = rt.kind === "metro"
-                ? "" : (String(r.name || "").toLowerCase() === String(r.id).toLowerCase() ? "" : r.name);
             return `<div class="search-stop search-route" role="button" tabindex="0"`
                 + ` data-search-line="${esc(r.id)}" data-search-line-kind="${esc(rt.kind)}"`
                 + ` title="Show ${esc(r.name || r.id)}"`
                 + ` aria-label="Show ${esc(r.name || r.id)}">`
                 + `${searchBadge(rt, r)}`
-                + (label ? `<span class="name">${esc(label)}</span>` : "")
                 + `<span class="meta">›</span></div>`;
         }).join("");
     }
@@ -6300,24 +6289,20 @@ function renderSearchChrome() {
             ? `<div class="search-empty">No stops or lines match “${esc(searchQuery.trim())}”.</div>`
             : "");
     }
-    const chosen = routes.find(r => r.id === searchRouteId) || routes[0] || null;
+    const chosen = routes.find(r => r.id === searchRouteId) || null;
     if (gSearchList) {
         // Keep the card grid where the user left it when a card is selected;
         // query/tab changes reset it to the top separately.
         const cardScroll = gSearchList.scrollTop;
         gSearchList.innerHTML = routes.length
             ? routes.map(r => {
-                // The badge already carries the line name for rail; buses keep
-                // their description only when it adds something (not a number).
-                const label = tab.kind === "metro"
-                    ? "" : (String(r.name || "").toLowerCase() === String(r.id).toLowerCase() ? "" : r.name);
                 const selected = !!(chosen && r.id === chosen.id);
                 return `<button type="button" class="search-card" data-search-route="${esc(r.id)}"`
                     + ` aria-pressed="${selected}" title="${esc(r.name || r.id)}"`
                     + ` aria-label="${esc(r.name || r.id)}">`
                     + `<span class="card-route">${searchBadge(tab, r)}`
-                    + (label ? `<span class="card-name">${esc(label)}</span>` : "")
-                    + `<i class="icon icon-chevron-down card-open" aria-hidden="true"></i>`
+                    + `<i class="icon icon-${selected ? "check" : "chevron-down"} card-open"`
+                    + ` aria-hidden="true"></i>`
                     + `</span></button>`;
             }).join("")
             : `<div class="search-empty">No ${esc(tab.label.toLowerCase())} matches`
