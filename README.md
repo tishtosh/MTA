@@ -19,10 +19,9 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   city sections below). Selecting Likes, Home, or Work always shows that view; the
   icons are not toggles.
 - The top bar holds the **city mark** (opens the city menu: choose a city or open
-  Settings), **Nearby** (person), **Search**, **Back**, **Home**, **Work**, and
+  Settings), **Nearby** (map-pin-question), **Search**, **Back**, **Home**, **Work**, and
   **Airport**; the **Likes** heart sits snug to the left of the refresh meter. A timer
-  ring drains as the next auto-refresh approaches, a 3px hairline under the nav mirrors
-  it, and the meta line shows "Refresh in 0:27". All action icons are always enabled.
+  ring drains as the next auto-refresh approaches. All action icons are always enabled.
 - Home, Work, and Airport are multi-bookmark categories: each can hold several bus stops
   and Metro stations. Adding one also adds it to likes; removing a like removes
   it from Home, Work, and Airport too.
@@ -94,7 +93,7 @@ The **city menu** (top-left city mark) selects the transport system:
 
 - The choice is stored in the `mta_city` cookie and can be forced with `?city=dc|boston|london|nyc`.
 - Likes and Home/Work bookmarks are per city (separate storage keys), so switching
-  cities swaps the saved lists.
+  cities swaps the saved lists while keeping the current view and the last location point.
 - **Near me** uses the device location to pick the nearer city automatically, then lists
   stops/stations within the radius chosen in Settings.
 
@@ -540,6 +539,7 @@ export default {
 | `js/ui/icons.js` | Standalone SVG transit marks per city. |
 | `img/icons/` | Selected **Tabler Icons** (MIT) for UI chrome; see `LICENSE` there. |
 | `img/dc.svg`, `img/MBTA.svg`, `img/london.svg`, `img/nyc.png` | Top-bar city marks: WMATA Metro logo, MBTA T, TfL roundel (no text) from Wikimedia Commons; MTA icon from Flaticon (free licence, attribution required). |
+| `Design/dropdown-options.html` | Design review: four options for the Bus / Metro / Commuter dropdown summaries, with per-city examples. |
 | `Design/` | Sample/preview pages: older versions, icon and refresh-cue demos. |
 | `Design/mta4a.html` | Previous version (kept for reference). |
 | `Design/mta2.html` | Earlier iteration (kept for reference). |

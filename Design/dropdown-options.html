@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Search dropdown — Bus / Metro / Commuter design options</title>
+<style>
+  :root {
+    --ink: #182338;
+    --mute: #6c757d;
+    --line: #e3e7ee;
+    --page: #f4f5f7;
+    --panel: #fff;
+    --accent: #2e7d32;
+    --drop: 300px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); line-height: 1.45; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 22px 60px; }
+
+  header.top h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -.01em; }
+  header.top p { margin: 0; color: var(--mute); max-width: 78ch; }
+  .city-switch { display: flex; gap: 6px; flex-wrap: wrap; margin: 18px 0 8px; }
+  .city-switch button {
+    border: 1px solid #cfd6e0; background: #fff; color: #2b3648; cursor: pointer;
+    padding: 7px 12px; border-radius: 999px; font: 600 12px/1 system-ui, sans-serif;
+  }
+  .city-switch button[aria-pressed="true"] {
+    background: var(--ink); border-color: var(--ink); color: #fff;
+  }
+  .city-note { color: var(--mute); font-size: 12px; margin: 2px 0 24px; min-height: 18px; }
+
+  nav.jump { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 26px; }
+  nav.jump a {
+    color: #0b5ed7; text-decoration: none; font: 600 12px/1 system-ui, sans-serif;
+    border: 1px solid #d6e0f5; background: #f2f6ff; padding: 7px 10px; border-radius: 8px;
+  }
+
+  section.option {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px; margin: 0 0 22px; box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+  }
+  section.option > header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  section.option h2 { margin: 0; font-size: 17px; }
+  section.option .tag {
+    font: 700 10px/1.6 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase;
+    background: #eef2f7; color: #46546b; border-radius: 999px; padding: 1px 8px;
+  }
+  section.option .tag.rec { background: #e8f5e9; color: #1b5e20; }
+  section.option p.lede { color: var(--mute); margin: 8px 0 14px; max-width: 80ch; }
+  .pros { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; padding: 0; list-style: none; }
+  .pros li { font-size: 11px; color: #33415c; background: #f1f4f9; border-radius: 6px; padding: 3px 7px; }
+  .pros li.con { color: #7a4b00; background: #fff6e5; }
+
+  .mocks { display: grid; grid-template-columns: minmax(280px, var(--drop)) minmax(0, 1fr); gap: 18px; align-items: start; }
+  @media (max-width: 820px) { .mocks { grid-template-columns: 1fr; } }
+  .mock-label {
+    font: 700 10px/1.4 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--mute); margin: 0 0 7px;
+  }
+  .panel {
+    border: 1px solid #dee2e6; border-radius: 10px; background: #f8f9fa;
+    padding: 7px; box-shadow: 0 6px 18px rgba(16,24,40,.08);
+  }
+  .page { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px; }
+
+  /* shared route pieces */
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    min-width: 38px; min-height: 26px; padding: 3px 8px; border-radius: 5px;
+    font: 700 12px/1.15 system-ui, sans-serif; color: #fff;
+    white-space: normal; text-align: center; max-width: 132px;
+  }
+  .badge.circle { min-width: 26px; width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 50%; font-size: 12px; }
+  .badge.diamond { min-width: 24px; width: 24px; height: 24px; min-height: 0; padding: 0; border-radius: 4px; transform: rotate(45deg); font-size: 11px; }
+  .badge.diamond > span { transform: rotate(-45deg); display: block; }
+  .badge.rect { width: auto; min-width: 64px; height: auto; min-height: 22px; padding: 3px 6px; border-radius: 4px; font-size: 9.5px; line-height: 1.15; text-align: center; white-space: normal; }
+  .badge.sm { min-width: 24px; min-height: 22px; font-size: 11px; padding: 2px 5px; }
+  .badge.circle.sm { width: 22px; height: 22px; min-height: 0; padding: 0; }
+  .badge.rect.sm { width: auto; min-width: 56px; height: auto; min-height: 20px; padding: 2px 5px; font-size: 9px; }
+
+  .section-head { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 7px; background: #eef1f5; }
+  .section-head .name { font-weight: 700; font-size: 13px; }
+  .section-head .count { margin-left: auto; font-size: 11px; color: var(--mute); }
+  .section-head .chev { color: #7a8699; font-size: 10px; }
+  .panel .section { margin-top: 6px; }
+  .panel .section:first-child { margin-top: 0; }
+
+  .route-row { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 6px; }
+  .route-row:hover { background: #eef1f5; }
+  .route-row .rname { font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .route-row .meta { margin-left: auto; font-size: 11px; color: var(--mute); white-space: nowrap; }
+  .route-row .chev { color: #8a96a8; font-size: 10px; }
+
+  /* option 1 — accordion */
+  .acc-main .section { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+  .acc-main .section-head { border-radius: 0; background: #f2f4f8; padding: 10px 12px; }
+  .acc-main .route-row { padding: 9px 12px; border-top: 1px solid #f0f2f6; }
+  .acc-main .route-row:first-of-type { border-top: 0; }
+
+  /* option 2 — route grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; padding: 8px; }
+  .grid .cell { display: flex; align-items: center; gap: 7px; padding: 6px; border-radius: 7px; background: #fff; border: 1px solid #eef0f4; min-width: 0; }
+  .grid .cell .label { font-size: 11px; color: #33415c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel .grid { padding: 6px 2px 2px; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+  .panel .grid .cell { background: #fff; }
+  .grid-main .section-grid { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+  .grid-main .section-head { border-radius: 0; padding: 10px 12px; }
+  .grid-main .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 10px 12px; }
+  .grid-main .cell { padding: 8px; }
+
+  /* option 3 — tabs + detail */
+  .tabs { display: flex; gap: 4px; background: #eef1f5; padding: 3px; border-radius: 8px; }
+  .tabs button { flex: 1; border: 0; background: none; border-radius: 6px; padding: 6px 8px; font: 600 11px/1 system-ui, sans-serif; color: #4a576b; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(16,24,40,.12); }
+  .tabs-main { max-width: 520px; }
+  .tabs-main button { font-size: 13px; padding: 9px 12px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 12px; margin-top: 12px; }
+  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+  .list { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .list .route-row { border-radius: 0; border-top: 1px solid #f0f2f6; padding: 8px 10px; }
+  .list .route-row:first-child { border-top: 0; }
+  .list .route-row[aria-selected="true"] { background: #e8f0fe; }
+  .detail { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #fbfcfe; }
+  .detail h3 { margin: 0 0 2px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .detail .sub { color: var(--mute); font-size: 11px; margin: 0 0 10px; }
+  .detail .stop { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0; color: #33415c; }
+  .detail .stop .dot { width: 6px; height: 6px; border-radius: 50%; background: #9aa7bb; flex: none; }
+  .detail .stop .eta { margin-left: auto; color: var(--mute); font-variant-numeric: tabular-nums; }
+  .detail .more { margin-top: 8px; font-size: 11px; color: #0b5ed7; }
+
+  /* option 4 — summary cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #fff; }
+  .card h4 { margin: 0 0 2px; font-size: 13px; }
+  .card .count { color: var(--mute); font-size: 11px; margin: 0 0 10px; }
+  .card .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; min-height: 24px; }
+  .card .open { font: 600 11px/1 system-ui, sans-serif; color: #0b5ed7; background: none; border: 0; padding: 0; cursor: pointer; }
+  .card.empty { background: #fafbfc; border-style: dashed; }
+
+  /* recommendation + examples */
+  .callout { border-left: 4px solid var(--accent); background: #eef7ef; border-radius: 8px; padding: 12px 14px; margin: 0 0 22px; font-size: 13px; }
+  .callout strong { color: #1b5e20; }
+  table.summary { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  table.summary th, table.summary td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #f0f2f6; vertical-align: top; }
+  table.summary th { background: #f2f4f8; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #46546b; }
+  table.summary tr:last-child td { border-bottom: 0; }
+  table.summary .badges { display: flex; gap: 4px; flex-wrap: wrap; }
+  .muted { color: var(--mute); }
+  footer { color: var(--mute); font-size: 11px; margin-top: 30px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Search dropdown → Bus / Metro / Commuter summaries</h1>
+    <p>Four directions for the route sections, shown both inside the dropdown and as a
+      full main page. Data is the real line/route set per city (DC, Boston, London, NYC);
+      the city switch below updates every option at once.</p>
+    <div class="city-switch" id="citySwitch" role="group" aria-label="City"></div>
+    <div class="city-note" id="cityNote"></div>
+  </header>
+
+  <nav class="jump">
+    <a href="#opt1">1 · Accordion (current)</a>
+    <a href="#opt2">2 · Route grid</a>
+    <a href="#opt3">3 · Tabs + detail</a>
+    <a href="#opt4">4 · Summary cards</a>
+    <a href="#examples">City examples</a>
+  </nav>
+
+  <div class="callout">
+    <strong>Recommendation:</strong> use <b>2 · Route grid</b> inside the dropdown (fits
+    NYC's 10+ commuter branches without scrolling) and <b>3 · Tabs + detail</b> as the
+    main page, where the right pane can show stops and next departures.
+  </div>
+
+  <section class="option" id="opt1">
+    <header><h2>1 · Accordion rows</h2><span class="tag">baseline</span></header>
+    <p class="lede">The current shape: one section per category, each row = badge + route
+      name + a small meta line. Zero new concepts; works best when a city has few lines.</p>
+    <ul class="pros">
+      <li>Familiar, accessible</li><li>Route name has room</li>
+      <li class="con">Tall with many lines (NYC commuter)</li><li class="con">Scanning colors is slow</li>
+    </ul>
+    <div class="mocks">
+      <div><div class="mock-label">In the dropdown</div><div class="panel" data-mock="drop1"></div></div>
+      <div><div class="mock-label">As a main page</div><div class="page acc-main" data-mock="main1"></div></div>
+    </div>
+  </section>
+
+  <section class="option" id="opt2">
+    <header><h2>2 · Route grid</h2><span class="tag rec">recommended for the dropdown</span></header>
+    <p class="lede">Each section becomes a compact grid of bullets/pills; the section header
+      keeps the name and count. Dense enough for 10–15 routes and color-first, like a
+      departure board.</p>
+    <ul class="pros">
+      <li>No scrolling for long line lists</li><li>Color scanning</li>
+      <li class="con">Names need a tooltip/title</li><li class="con">Long names wrap in rectangles</li>
+    </ul>
+    <div class="mocks">
+      <div><div class="mock-label">In the dropdown</div><div class="panel" data-mock="drop2"></div></div>
+      <div><div class="mock-label">As a main page</div><div class="page grid-main" data-mock="main2"></div></div>
+    </div>
+  </section>
+
+  <section class="option" id="opt3">
+    <header><h2>3 · Tabs + detail</h2><span class="tag rec">recommended for the main page</span></header>
+    <p class="lede">A segmented control picks Bus / Metro / Commuter; the left list selects a
+      route and the right pane shows stops and next departures. In the dropdown it collapses
+      to the same list without the detail pane.</p>
+    <ul class="pros">
+      <li>One category visible at a time</li><li>Room for stops + ETAs</li>
+      <li class="con">Needs a second pane on desktop</li><li class="con">Tabs hide the other modes</li>
+    </ul>
+    <div class="mocks">
+      <div><div class="mock-label">In the dropdown</div><div class="panel" data-mock="drop3"></div></div>
+      <div><div class="mock-label">As a main page</div><div class="page" data-mock="main3"></div></div>
+    </div>
+  </section>
+
+  <section class="option" id="opt4">
+    <header><h2>4 · Summary cards</h2><span class="tag">overview</span></header>
+    <p class="lede">Three cards (Bus / Metro / Commuter) show counts and the top routes;
+      opening a card goes to the route grid or tabs. Good landing page, too coarse for the
+      dropdown itself.</p>
+    <ul class="pros">
+      <li>Instant category overview</li><li>Handles missing sections gracefully</li>
+      <li class="con">Two taps to a route</li><li class="con">Wastes space with 3 routes</li>
+    </ul>
+    <div class="mocks">
+      <div><div class="mock-label">In the dropdown</div><div class="panel" data-mock="drop4"></div></div>
+      <div><div class="mock-label">As a main page</div><div class="page" data-mock="main4"></div></div>
+    </div>
+  </section>
+
+  <section class="option" id="examples">
+    <header><h2>City examples</h2></header>
+    <p class="lede">The same data the options render, as a reference matrix.</p>
+    <table class="summary" id="summaryTable"></table>
+  </section>
+
+  <footer>Design artifact only — no app code changed. Route colours and names come from
+    <code>js/cities/*.js</code> / the generated NYC data.</footer>
+</div>
+
+<script>
+  // ── data ─────────────────────────────────────────────────────────────
+  const CITIES = {
+    dc: {
+      id: "dc", name: "Washington DC", short: "DC",
+      stops: ["Metro Center", "Gallery Pl–Chinatown", "L'Enfant Plaza", "Union Station"],
+      note: "Metrorail lines + Metrobus routes. No commuter section.",
+      sections: [
+        { key: "bus", label: "Bus", routes: [
+          { id: "D72", name: "Tenleytown", color: "#1565c0", stops: 34, next: "2 min" },
+          { id: "C87", name: "TENLEYTOWN", color: "#2e7d32", stops: 28, next: "6 min" },
+          { id: "A1X", name: "Crystal City", color: "#ef6c00", stops: 19, next: "9 min" },
+          { id: "42", name: "Mount Pleasant", color: "#6a1b9a", stops: 41, next: "4 min" }
+        ]},
+        { key: "metro", label: "Metro", routes: [
+          { id: "RD", name: "Red", color: "#c62828", stops: 27, next: "3 min" },
+          { id: "BL", name: "Blue", color: "#1565c0", stops: 26, next: "5 min" },
+          { id: "OR", name: "Orange", color: "#ef6c00", stops: 26, next: "7 min" },
+          { id: "SV", name: "Silver", color: "#6c757d", stops: 34, next: "8 min" },
+          { id: "GR", name: "Green", color: "#2e7d32", stops: 21, next: "6 min" },
+          { id: "YL", name: "Yellow", color: "#9e9d24", stops: 17, next: "4 min" }
+        ]},
+        { key: "commuter", label: "Commuter rail", routes: [] }
+      ]
+    },
+    boston: {
+      id: "boston", name: "Boston", short: "BOS",
+      stops: ["Park St", "Downtown Crossing", "South Station", "Harvard"],
+      note: "Subway/light rail under Subway; CR-* branches under Commuter rail.",
+      sections: [
+        { key: "bus", label: "Bus", routes: [
+          { id: "SL1", name: "Logan Airport", color: "#7c878e", stops: 8, next: "5 min" },
+          { id: "1", name: "Harvard", color: "#00843d", stops: 46, next: "3 min" },
+          { id: "39", name: "Forest Hills", color: "#00843d", stops: 39, next: "7 min" },
+          { id: "66", name: "Nubian", color: "#00843d", stops: 44, next: "9 min" }
+        ]},
+        { key: "metro", label: "Subway", routes: [
+          { id: "Red", name: "Red", color: "#da291c", stops: 22, next: "2 min" },
+          { id: "Orange", name: "Orange", color: "#ed8b00", stops: 20, next: "4 min" },
+          { id: "Blue", name: "Blue", color: "#003da5", stops: 12, next: "6 min" },
+          { id: "Green-B", name: "Green B", color: "#00843d", stops: 24, next: "3 min" },
+          { id: "Green-D", name: "Green D", color: "#00843d", stops: 25, next: "5 min" },
+          { id: "Mattapan", name: "Mattapan", color: "#da291c", stops: 9, next: "8 min" }
+        ]},
+        { key: "commuter", label: "Commuter rail", routes: [
+          { id: "Framingham", name: "Framingham / Worcester", color: "#80276c", stops: 17, next: "12 min" },
+          { id: "Providence", name: "Providence / Stoughton", color: "#80276c", stops: 15, next: "18 min" },
+          { id: "Fitchburg", name: "Fitchburg", color: "#80276c", stops: 19, next: "24 min" },
+          { id: "Newburyport", name: "Newburyport / Rockport", color: "#80276c", stops: 21, next: "31 min" }
+        ]}
+      ]
+    },
+    london: {
+      id: "london", name: "London", short: "LDN",
+      stops: ["Oxford Circus", "Green Park", "Victoria", "King's Cross St. Pancras"],
+      note: "Tube section includes Overground, Elizabeth, DLR; no commuter section.",
+      sections: [
+        { key: "bus", label: "Bus", routes: [
+          { id: "38", name: "Victoria", color: "#dc241f", stops: 30, next: "2 min" },
+          { id: "73", name: "Stoke Newington", color: "#dc241f", stops: 34, next: "5 min" },
+          { id: "N15", name: "Romford", color: "#dc241f", stops: 42, next: "6 min" },
+          { id: "390", name: "Archway", color: "#dc241f", stops: 26, next: "8 min" }
+        ]},
+        { key: "metro", label: "Tube", routes: [
+          { id: "Victoria", name: "Victoria", color: "#039be5", stops: 16, next: "2 min" },
+          { id: "Piccadilly", name: "Piccadilly", color: "#0019a8", stops: 53, next: "4 min" },
+          { id: "Jubilee", name: "Jubilee", color: "#838d93", stops: 27, next: "3 min" },
+          { id: "Circle", name: "Circle", color: "#ffc80a", stops: 36, next: "7 min" },
+          { id: "H&C", name: "Hammersmith & City", color: "#f589a6", stops: 29, next: "6 min" },
+          { id: "Elizabeth", name: "Elizabeth line", color: "#60399e", stops: 41, next: "5 min" },
+          { id: "Overground", name: "Overground", color: "#fa7b05", stops: 112, next: "4 min" },
+          { id: "DLR", name: "DLR", color: "#00afad", stops: 45, next: "9 min" }
+        ]},
+        { key: "commuter", label: "Commuter rail", routes: [] }
+      ]
+    },
+    nyc: {
+      id: "nyc", name: "New York City", short: "NYC",
+      stops: ["42 St–Port Authority", "34 St–Herald Sq", "14 St–Union Sq", "Atlantic Av–Barclays Ctr"],
+      note: "Buses deferred. Commuter = LIRR + Metro-North named rectangles.",
+      sections: [
+        { key: "bus", label: "Bus", routes: [
+          { id: "M60", name: "LGA / Terminal B", color: "#181a7b", stops: 22, next: "—" },
+          { id: "M15", name: "Pike / Allen", color: "#181a7b", stops: 28, next: "—" },
+          { id: "B41", name: "Kings Plaza", color: "#181a7b", stops: 45, next: "—" },
+          { id: "Q70", name: "LaGuardia", color: "#181a7b", stops: 9, next: "—" }
+        ]},
+        { key: "metro", label: "Subway", routes: [
+          { id: "1", name: "1", color: "#d82233", stops: 38, next: "2 min" },
+          { id: "2", name: "2", color: "#d82233", stops: 49, next: "5 min" },
+          { id: "A", name: "A", color: "#0062cf", stops: 62, next: "4 min" },
+          { id: "N", name: "N", color: "#f6bc26", stops: 45, next: "3 min" },
+          { id: "Q", name: "Q", color: "#f6bc26", stops: 29, next: "6 min" },
+          { id: "R", name: "R", color: "#f6bc26", stops: 45, next: "7 min" },
+          { id: "W", name: "W", color: "#f6bc26", stops: 23, next: "9 min" },
+          { id: "7", name: "7", color: "#9a38a1", stops: 22, next: "3 min" },
+          { id: "L", name: "L", color: "#7c858c", stops: 24, next: "5 min" },
+          { id: "SIR", name: "SIR", color: "#08179c", stops: 21, next: "11 min" }
+        ]},
+        { key: "commuter", label: "Commuter rail", routes: [
+          { id: "Babylon", name: "Babylon", color: "#00985f", stops: 26, next: "8 min" },
+          { id: "Hudson", name: "Hudson", color: "#009b3a", stops: 30, next: "12 min" },
+          { id: "Harlem", name: "Harlem", color: "#0039a6", stops: 38, next: "6 min" },
+          { id: "New Haven", name: "New Haven", color: "#ee0034", stops: 30, next: "9 min" },
+          { id: "Danbury", name: "Danbury", color: "#ee0034", stops: 14, next: "21 min" },
+          { id: "Port Washington", name: "Port Washington", color: "#c60c30", stops: 22, next: "14 min" },
+          { id: "Montauk", name: "Montauk", color: "#00b2a9", stops: 28, next: "34 min" }
+        ]}
+      ]
+    }
+  };
+
+  let city = "nyc";
+
+  // ── helpers ──────────────────────────────────────────────────────────
+  function textColor(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+    if (!m) return "#fff";
+    const v = parseInt(m[1], 16);
+    const lin = c => { c /= 255; return c <= .03928 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4); };
+    const L = .2126 * lin(v >> 16 & 255) + .7152 * lin(v >> 8 & 255) + .0722 * lin(v & 255);
+    return L > .19 ? "#111" : "#fff";
+  }
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const shapeFor = (sec, r, cid) => {
+    if (cid === "nyc" && sec.key === "commuter") return "rect";
+    if (cid === "nyc" && sec.key === "metro") return /X$/.test(r.id) ? "diamond" : "circle";
+    return "pill";
+  };
+
+  function badge(sec, r, size, cid) {
+    const shape = shapeFor(sec, r, cid);
+    const cls = ["badge", shape === "pill" ? "" : shape, size || ""].filter(Boolean).join(" ");
+    const label = shape === "rect" ? esc(r.name) : esc(r.id);
+    const inner = shape === "diamond" ? `<span>${label}</span>` : label;
+    return `<span class="${cls}" style="background:${r.color};color:${textColor(r.color)}" title="${esc(r.name)}">${inner}</span>`;
+  }
+
+  function sectionCount(sec) {
+    return sec.routes.length ? `${sec.routes.length} ${sec.routes.length === 1 ? "route" : "routes"}` : "none in this city";
+  }
+
+  // ── option 1: accordion ──────────────────────────────────────────────
+  function drop1(data) {
+    return data.sections.map(sec => `
+      <div class="section">
+        <div class="section-head"><span class="name">${esc(sec.label)}</span>
+          <span class="count">${sectionCount(sec)}</span><span class="chev">⌄</span></div>
+        ${sec.routes.slice(0, 4).map(r => `
+          <div class="route-row">${badge(sec, r, "sm", data.id)}
+            <span class="rname">${esc(r.name)}</span>
+            <span class="meta">${esc(r.next)}</span></div>`).join("")}
+      </div>`).join("");
+  }
+  function main1(data) {
+    return data.sections.filter(s => s.routes.length).map(sec => `
+      <div class="section">
+        <div class="section-head"><span class="name">${esc(sec.label)}</span>
+          <span class="count">${sectionCount(sec)}</span><span class="chev">⌄</span></div>
+        ${sec.routes.map(r => `
+          <div class="route-row">${badge(sec, r, "", data.id)}
+            <span class="rname">${esc(r.name)}</span>
+            <span class="meta">${r.stops} stops · ${esc(r.next)}</span>
+            <span class="chev">›</span></div>`).join("")}
+      </div>`).join("");
+  }
+
+  // ── option 2: route grid ─────────────────────────────────────────────
+  function gridCells(sec, limit, cid) {
+    return (limit ? sec.routes.slice(0, limit) : sec.routes).map(r => `
+      <div class="cell">${badge(sec, r, "sm", cid)}<span class="label">${esc(r.name)}</span></div>`).join("");
+  }
+  function drop2(data) {
+    return data.sections.map(sec => `
+      <div class="section">
+        <div class="section-head"><span class="name">${esc(sec.label)}</span>
+          <span class="count">${sectionCount(sec)}</span></div>
+        ${sec.routes.length ? `<div class="grid">${gridCells(sec, 8, data.id)}</div>`
+          : `<div class="grid"><div class="cell muted">no routes</div></div>`}
+      </div>`).join("");
+  }
+  function main2(data) {
+    return data.sections.filter(s => s.routes.length).map(sec => `
+      <div class="section-grid">
+        <div class="section-head"><span class="name">${esc(sec.label)}</span>
+          <span class="count">${sectionCount(sec)}</span></div>
+        <div class="grid">${gridCells(sec, 0, data.id)}</div>
+      </div>`).join("");
+  }
+
+  // ── option 3: tabs + detail ──────────────────────────────────────────
+  const selected = { city: "nyc", section: "metro", route: 0 };
+  function tabSections(data) { return data.sections.filter(s => s.routes.length); }
+
+  function drop3(data) {
+    const tabs = tabSections(data);
+    const sec = tabs.find(s => s.key === selected.section) || tabs[0];
+    return `
+      <div class="tabs" role="tablist">${tabs.map(s => `
+        <button type="button" role="tab" aria-selected="${s.key === sec.key}" data-tab="${s.key}">${esc(s.label)}</button>`).join("")}
+      </div>
+      ${sec.routes.length ? `<div class="list" style="margin-top:8px">${sec.routes.slice(0, 5).map((r, i) => `
+        <div class="route-row" role="button" tabindex="0" aria-selected="${i === 0}" data-route="${i}">
+          ${badge(sec, r, "sm", data.id)}<span class="rname">${esc(r.name)}</span>
+          <span class="meta">${esc(r.next)}</span><span class="chev">›</span></div>`).join("")}</div>`
+        : `<div class="muted" style="padding:8px 4px">No section in this city.</div>`}`;
+  }
+  function main3(data) {
+    const tabs = tabSections(data);
+    const sec = tabs.find(s => s.key === selected.section) || tabs[0];
+    const idx = Math.min(selected.route, Math.max(0, sec.routes.length - 1));
+    const r = sec.routes[idx];
+    return `
+      <div class="tabs tabs-main" role="tablist">${tabs.map(s => `
+        <button type="button" role="tab" aria-selected="${s.key === sec.key}" data-tab="${s.key}">${esc(s.label)}</button>`).join("")}
+      </div>
+      <div class="split">
+        <div class="list">${sec.routes.map((row, i) => `
+          <div class="route-row" role="button" tabindex="0" aria-selected="${i === idx}" data-route="${i}">
+            ${badge(sec, row, "sm", data.id)}<span class="rname">${esc(row.name)}</span>
+            <span class="meta">${row.stops}</span><span class="chev">›</span></div>`).join("")}</div>
+        ${r ? `<div class="detail">
+          <h3>${badge(sec, r, "", data.id)} ${esc(r.name)}</h3>
+          <p class="sub">${r.stops} stops · next ${esc(r.next)} · ${esc(data.name)}</p>
+          ${data.stops.slice(0, sec.key === "commuter" ? 3 : 4).map((name, i) => `
+            <div class="stop"><span class="dot"></span>${esc(name)}<span class="eta">${i * 3 + 2} min</span></div>`).join("")}
+          <div class="more">Next stops… →</div>
+        </div>` : ""}
+      </div>`;
+  }
+
+  // ── option 4: summary cards ──────────────────────────────────────────
+  function cardsHTML(data, compact) {
+    return `<div class="cards">${data.sections.map(sec => {
+      const count = sec.routes.length;
+      return `<div class="card${count ? "" : " empty"}">
+        <h4>${esc(sec.label)}</h4>
+        <p class="count">${count ? `${count} ${count === 1 ? "route" : "routes"}` : "not in this city"}</p>
+        <div class="badges">${count ? sec.routes.slice(0, compact ? 4 : 8).map(r => badge(sec, r, "sm", data.id)).join("") : `<span class="muted">—</span>`}</div>
+        ${count ? `<button class="open" type="button">View ${esc(sec.label.toLowerCase())} →</button>` : ""}
+      </div>`;
+    }).join("")}</div>`;
+  }
+
+  // ── city examples table ──────────────────────────────────────────────
+  function summaryTable() {
+    const rows = Object.values(CITIES).map(data => {
+      const cells = data.sections.map(sec => `<td>${sec.routes.length
+        ? `<div class="badges">${sec.routes.slice(0, 6).map(r => badge(sec, r, "sm", data.id)).join("")}${sec.routes.length > 6 ? `<span class="muted">+${sec.routes.length - 6}</span>` : ""}</div>`
+        : `<span class="muted">—</span>`}</td>`).join("");
+      return `<tr><td><b>${esc(data.name)}</b><div class="muted">${esc(data.note)}</div></td>${cells}</tr>`;
+    }).join("");
+    return `<thead><tr><th>City</th><th>Bus</th><th>Metro / Subway / Tube</th><th>Commuter rail</th></tr></thead><tbody>${rows}</tbody>`;
+  }
+
+  // ── render ───────────────────────────────────────────────────────────
+  const $ = sel => document.querySelector(sel);
+  function render() {
+    const data = CITIES[city];
+    document.querySelectorAll("#citySwitch button").forEach(b =>
+      b.setAttribute("aria-pressed", String(b.dataset.city === city)));
+    $("#cityNote").textContent = data.note;
+    $('[data-mock="drop1"]').innerHTML = drop1(data);
+    $('[data-mock="main1"]').innerHTML = main1(data);
+    $('[data-mock="drop2"]').innerHTML = drop2(data);
+    $('[data-mock="main2"]').innerHTML = main2(data);
+    $('[data-mock="drop3"]').innerHTML = drop3(data);
+    $('[data-mock="main3"]').innerHTML = main3(data);
+    $('[data-mock="drop4"]').innerHTML = cardsHTML(data, true);
+    $('[data-mock="main4"]').innerHTML = cardsHTML(data, false);
+    $("#summaryTable").innerHTML = summaryTable();
+  }
+
+  document.getElementById("citySwitch").innerHTML = Object.entries(CITIES).map(([id, d]) =>
+    `<button type="button" data-city="${id}" aria-pressed="${id === city}">${esc(d.short || d.name)}</button>`).join("");
+
+  document.getElementById("citySwitch").addEventListener("click", e => {
+    const b = e.target.closest("[data-city]");
+    if (!b) return;
+    city = b.dataset.city;
+    selected.city = city;
+    selected.section = "metro";
+    selected.route = 0;
+    render();
+  });
+
+  // Tab / route selection inside option 3 (both mocks).
+  document.addEventListener("click", e => {
+    const tab = e.target.closest("[data-tab]");
+    if (tab) {
+      selected.section = tab.dataset.tab;
+      selected.route = 0;
+      render();
+      return;
+    }
+    const row = e.target.closest("[data-route]");
+    if (row) {
+      selected.route = Number(row.dataset.route) || 0;
+      render();
+    }
+  });
+
+  // Keep the demo selection valid when switching cities (e.g. London has no commuter).
+  const origRender = render;
+  render = function () {
+    const tabs = tabSections(CITIES[city]);
+    if (!tabs.some(s => s.key === selected.section)) selected.section = tabs[0].key;
+    origRender();
+  };
+
+  render();
+</script>
+</body>
+</html>

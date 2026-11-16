@@ -399,6 +399,9 @@ async function settle(board) {
   check(nres, "nyc: city mark follows the switch",
     String(nyc.els.cityMark.innerHTML).includes("img/dc.svg"));
   nyc.sandbox.setCity("nyc");
+  // Switching cities keeps the current view, so open Likes explicitly to
+  // verify that the per-city saved list swapped.
+  await nyc.sandbox.renderBookmarkList("fav");
   const nycCards2 = await settle(() => nyc.els.bookmarkList.innerHTML);
   check(nres, "nyc: switching DC → NYC swaps favorites (no Dulles)",
     nycCards2.includes("Howard Beach-JFK Airport") && !nycCards2.includes("Dulles"));
