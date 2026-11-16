@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Refresh cues — countdown &amp; live status demo</title>
+<style>
+    :root {
+        --ink: #182338;
+        --cream: #f5f2ec;
+        --card: #fff;
+        --line: #d9d3c8;
+        --muted: #6c757d;
+        --green: #2e7d32;
+        --green-bg: #c8e6c9;
+        --blue: #0d47a1;
+        --blue-bg: #bbdefb;
+        --amber: #8a4b00;
+        --amber-bg: #ffe0b2;
+        --red: #b71c1c;
+        --red-bg: #ffcdd2;
+        --grey: #495057;
+        --grey-bg: #e9ecef;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+        background: var(--cream);
+        color: var(--ink);
+        font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+    }
+    button, select { font: inherit; }
+    h1, h2, h3, p { margin: 0; }
+
+    .sr-only {
+        position: absolute; width: 1px; height: 1px;
+        margin: -1px; padding: 0; overflow: hidden;
+        clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+
+    /* ── Live demo header ─────────────────────────────────────────── */
+    .site-head {
+        position: sticky; top: 0; z-index: 20;
+        background: var(--cream);
+        border-bottom: 1px solid var(--line);
+    }
+    .head-inner {
+        max-width: 900px; margin: 0 auto;
+        display: flex; align-items: center; gap: 14px;
+        padding: 10px 18px;
+    }
+    .brand {
+        display: flex; align-items: center; gap: 9px;
+        min-width: 0;
+    }
+    .brand-mark {
+        width: 38px; height: 38px; border-radius: 9px;
+        background: var(--ink); color: #fff;
+        display: grid; place-items: center;
+        font: 800 13px/1 system-ui, sans-serif;
+        letter-spacing: .02em;
+    }
+    .brand-name { font: 700 16px/1.15 system-ui, sans-serif; }
+    .brand-sub { font-size: 11px; color: var(--muted); }
+
+    .clock-block {
+        margin-left: auto;
+        display: flex; align-items: center; gap: 11px;
+        text-align: right;
+    }
+    .clock-copy { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+    .clock {
+        font: 700 30px/1.05 Helvetica, Arial, sans-serif;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -.02em;
+    }
+    .clock-meta {
+        display: flex; align-items: center; gap: 6px;
+        font: 500 11px/1.4 system-ui, sans-serif;
+        color: var(--muted);
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Status pill (the "is it live?" cue) ──────────────────────── */
+    .pill {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 2px 8px 2px 7px;
+        border-radius: 999px;
+        background: var(--green-bg); color: var(--green);
+        font: 700 10px/1.6 system-ui, sans-serif;
+        letter-spacing: .09em; text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .pill .dot {
+        width: 7px; height: 7px; border-radius: 50%;
+        background: currentColor;
+        flex: none;
+    }
+    .pill.live .dot { animation: pulse 2s ease-out infinite; }
+    .pill.fetching { background: var(--blue-bg); color: var(--blue); }
+    .pill.fetching .dot { animation: blink 1s steps(2, start) infinite; }
+    .pill.stale { background: var(--amber-bg); color: var(--amber); }
+    .pill.stale .dot { animation: pulse 1.2s ease-out infinite; }
+    .pill.paused { background: var(--grey-bg); color: var(--grey); }
+    .pill.paused .dot { animation: none; }
+
+    @keyframes pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(46, 125, 50, .45); }
+        70%  { box-shadow: 0 0 0 6px rgba(46, 125, 50, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0); }
+    }
+    @keyframes blink { 50% { opacity: .2; } }
+
+    /* ── Sync button with countdown ring ──────────────────────────── */
+    .sync-btn {
+        position: relative;
+        width: 48px; height: 48px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+        background: #ebe6dc;
+        color: var(--green);
+        cursor: pointer;
+        flex: none;
+        transition: background-color .15s, color .15s;
+    }
+    .sync-btn:hover { background: #e2dbcf; }
+    .sync-btn:focus-visible { outline: 2px solid #0056b3; outline-offset: 2px; }
+    .sync-btn .ring {
+        position: absolute; inset: 4px;
+        width: 40px; height: 40px;
+        transform: rotate(-90deg);
+        pointer-events: none;
+    }
+    .ring-track { fill: none; stroke: #d3cabb; stroke-width: 3.4; }
+    .ring-fill {
+        fill: none; stroke: var(--green); stroke-width: 3.4;
+        stroke-linecap: round;
+        stroke-dasharray: 106.8;
+        stroke-dashoffset: 0;
+        transition: stroke .2s ease;
+    }
+    .sync-glyph {
+        position: absolute; inset: 0; margin: auto;
+        width: 20px; height: 20px;
+        pointer-events: none;
+    }
+
+    /* Header states mirror the pill state (scoped so gallery samples stay put) */
+    body[data-mode="fetching"] .site-head .ring-fill {
+        stroke: #1565c0;
+        stroke-dasharray: 24 83;
+        transform-origin: 20px 20px;
+        animation: spin 1s linear infinite;
+    }
+    body[data-mode="stale"] .site-head .ring-fill { stroke: #e08a00; }
+    body[data-mode="paused"] .site-head .ring-fill { stroke: #adb5bd; }
+    body[data-mode="paused"] .sync-btn { color: #adb5bd; }
+    body[data-mode="paused"] .site-head .clock { color: #868e96; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Hairline progress bar ────────────────────────────────────── */
+    .livebar { height: 3px; background: #e4ded3; overflow: hidden; }
+    .livebar > i {
+        display: block; height: 100%; width: 100%;
+        background: var(--green);
+        will-change: width;
+    }
+
+    /* ── Page frame ───────────────────────────────────────────────── */
+    main { max-width: 900px; margin: 0 auto; padding: 26px 18px 60px; }
+    .intro { margin-bottom: 20px; }
+    .eyebrow {
+        font: 700 11px/1.4 system-ui, sans-serif;
+        letter-spacing: .12em; text-transform: uppercase;
+        color: var(--muted);
+    }
+    .intro h1 {
+        font: 800 26px/1.2 system-ui, sans-serif;
+        letter-spacing: -.02em;
+        margin: 3px 0 6px;
+    }
+    .intro p { color: #4a5568; max-width: 62ch; }
+
+    .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 1px 0 rgba(24, 35, 56, .03);
+    }
+    .card-pad { padding: 16px; }
+
+    /* ── Controls ─────────────────────────────────────────────────── */
+    .controls { margin-bottom: 18px; }
+    .controls-row {
+        display: flex; flex-wrap: wrap; align-items: center;
+        gap: 10px;
+    }
+    .controls-row + .controls-row { margin-top: 12px; }
+    .control-label {
+        font: 700 11px/1.4 system-ui, sans-serif;
+        letter-spacing: .07em; text-transform: uppercase;
+        color: var(--muted);
+        margin-right: 2px;
+    }
+    .btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 12px;
+        border: 1px solid #c9c2b5;
+        border-radius: 7px;
+        background: #fff;
+        color: var(--ink);
+        font-size: 13px; font-weight: 600;
+        cursor: pointer;
+    }
+    .btn:hover { background: #f2eee7; }
+    .btn:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .btn-primary {
+        background: var(--green); border-color: var(--green); color: #fff;
+    }
+    .btn-primary:hover { background: #256428; }
+    .select {
+        padding: 7px 30px 7px 10px;
+        border: 1px solid #c9c2b5; border-radius: 7px;
+        background: #fff; color: var(--ink); font-size: 13px;
+    }
+    .check {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 13px; color: #4a5568;
+        cursor: pointer;
+        user-select: none;
+    }
+    .check input { accent-color: var(--green); }
+
+    /* ── Demo board ───────────────────────────────────────────────── */
+    .board {
+        position: relative;
+        overflow: hidden;
+        border-radius: 12px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        margin-bottom: 18px;
+    }
+    .board::after {
+        content: "";
+        position: absolute; inset: 0;
+        pointer-events: none;
+        background: linear-gradient(100deg,
+            transparent 20%,
+            rgba(46, 125, 50, .13) 48%,
+            transparent 74%);
+        transform: translateX(-110%);
+        opacity: 0;
+    }
+    .board.sweep::after { animation: sweep .7s ease-out; }
+    @keyframes sweep {
+        0%   { transform: translateX(-110%); opacity: 1; }
+        100% { transform: translateX(110%); opacity: 0; }
+    }
+
+    .board-head {
+        display: flex; align-items: baseline; gap: 10px;
+        padding: 13px 16px 11px;
+        border-bottom: 1px solid #eee9df;
+    }
+    .board-head h2 {
+        font: 700 15px/1.3 system-ui, sans-serif;
+        letter-spacing: -.01em;
+    }
+    .board-stop { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+    .rows { list-style: none; margin: 0; padding: 0; }
+    .row {
+        display: flex; align-items: center; gap: 12px;
+        padding: 11px 16px;
+        border-bottom: 1px solid #f1ede5;
+        font-size: 15px;
+    }
+    .row:last-child { border-bottom: 0; }
+    .badge {
+        flex: none;
+        min-width: 46px;
+        padding: 3px 7px;
+        border-radius: 5px;
+        color: #fff;
+        text-align: center;
+        font: 800 12px/1.5 system-ui, sans-serif;
+        letter-spacing: .02em;
+    }
+    .badge-red { background: #c8102e; }
+    .badge-blue { background: #1b4fa0; }
+    .badge-green { background: #2e7d32; }
+    .badge-purple { background: #6a3d9a; }
+    .dest { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .eta {
+        margin-left: auto;
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 5px;
+        font: 700 16px/1.4 system-ui, sans-serif;
+        font-variant-numeric: tabular-nums;
+        color: var(--ink);
+    }
+    .eta.due { color: var(--red); }
+    .eta.bump { animation: bump .65s ease-out; }
+    @keyframes bump {
+        0%   { background: #d8efd9; }
+        100% { background: transparent; }
+    }
+    .board-foot {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 16px;
+        background: #fbf9f5;
+        border-top: 1px solid #eee9df;
+        font-size: 11.5px; color: var(--muted);
+        font-variant-numeric: tabular-nums;
+    }
+    .board-foot .foot-right { margin-left: auto; }
+
+    /* ── Options gallery ──────────────────────────────────────────── */
+    .section-title {
+        font: 800 18px/1.3 system-ui, sans-serif;
+        letter-spacing: -.01em;
+        margin: 30px 0 4px;
+    }
+    .section-sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 12px;
+    }
+    .option { padding: 15px 16px 16px; }
+    .option h3 {
+        font: 700 13px/1.4 system-ui, sans-serif;
+        margin-bottom: 2px;
+    }
+    .option .why {
+        font-size: 12px; color: var(--muted);
+        margin-bottom: 13px;
+    }
+    .option-demo {
+        display: flex; align-items: center; flex-wrap: wrap;
+        gap: 8px;
+        min-height: 44px;
+    }
+    .option-note {
+        margin-top: 11px;
+        font-size: 11.5px; color: #7b8794;
+        border-top: 1px dashed #e6e0d6;
+        padding-top: 9px;
+    }
+
+    /* Static mini ring */
+    .mini-ring { position: relative; width: 48px; height: 48px; flex: none; }
+    .mini-ring svg {
+        width: 48px; height: 48px;
+        transform: rotate(-90deg);
+    }
+    .mini-ring .ring-fill { stroke-dasharray: 106.8; }
+    .mini-ring .cap {
+        position: absolute; inset: 0;
+        display: grid; place-items: center;
+        font: 700 10px/1 system-ui, sans-serif;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+    }
+    .mini-ring.demo-fetch .ring-fill {
+        stroke-dasharray: 24 83;
+        transform-origin: 20px 20px;
+        animation: spin 1s linear infinite;
+    }
+    .mini-ring.demo-paused .ring-fill { stroke: #adb5bd; }
+    .mini-ring.demo-paused .cap { color: #adb5bd; }
+
+    /* Static hairline samples */
+    .bars { display: flex; flex-direction: column; gap: 11px; width: 100%; }
+    .bar-sample { display: flex; align-items: center; gap: 9px; }
+    .bar-sample .track {
+        flex: 1; height: 4px; border-radius: 2px;
+        background: #e4ded3; overflow: hidden;
+    }
+    .bar-sample .track i {
+        display: block; height: 100%;
+        background: var(--green);
+    }
+    .bar-sample .bar-label {
+        width: 62px; text-align: right;
+        font: 600 10.5px/1 system-ui, sans-serif;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Static updated-ago chips */
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font: 600 11px/1.6 system-ui, sans-serif;
+        font-variant-numeric: tabular-nums;
+    }
+    .chip::before {
+        content: ""; width: 6px; height: 6px; border-radius: 50%;
+        background: currentColor;
+    }
+    .chip-fresh { background: var(--green-bg); color: #1b5e20; }
+    .chip-warm { background: var(--amber-bg); color: #7a4300; }
+    .chip-cold { background: var(--red-bg); color: #8e1c1c; }
+
+    /* Sweep sample */
+    .sweep-demo { width: 100%; }
+    .sweep-demo .mini-rows { list-style: none; margin: 0; padding: 0; }
+    .sweep-demo .mini-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 6px 0;
+        border-bottom: 1px solid #f0ece4;
+        font-size: 12.5px;
+    }
+    .sweep-demo .mini-row:last-child { border-bottom: 0; }
+    .sweep-demo .mini-eta { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .sweep-demo .btn { margin-top: 10px; padding: 5px 9px; font-size: 12px; }
+    .sweep-demo { position: relative; overflow: hidden; }
+
+    /* ── Event log ────────────────────────────────────────────────── */
+    .log-card { margin-top: 18px; }
+    .log-head {
+        display: flex; align-items: baseline; gap: 8px;
+        margin-bottom: 8px;
+    }
+    .log-head h3 { font: 700 12px/1.4 system-ui, sans-serif; }
+    .log-head small { color: var(--muted); font-size: 11px; }
+    .log { list-style: none; margin: 0; padding: 0; }
+    .log li {
+        display: flex; gap: 10px;
+        padding: 5px 0;
+        border-bottom: 1px solid #f3efe7;
+        font-size: 12px; color: #4a5568;
+    }
+    .log li:last-child { border-bottom: 0; }
+    .log time {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        flex: none;
+        width: 62px;
+    }
+
+    .footnote {
+        margin-top: 28px;
+        font-size: 12px; color: var(--muted);
+        max-width: 70ch;
+    }
+
+    /* ── Motion preferences ───────────────────────────────────────── */
+    body.reduce-motion .pill .dot,
+    body.reduce-motion .board.sweep::after,
+    body.reduce-motion .eta.bump,
+    body.reduce-motion .mini-ring.demo-fetch .ring-fill,
+    body.reduce-motion[data-mode="fetching"] .site-head .ring-fill {
+        animation: none !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .pill .dot,
+        .board.sweep::after,
+        .eta.bump,
+        .mini-ring.demo-fetch .ring-fill,
+        body[data-mode="fetching"] .site-head .ring-fill {
+            animation: none !important;
+        }
+    }
+
+    @media (max-width: 560px) {
+        .brand-sub { display: none; }
+        .clock { font-size: 24px; }
+        .head-inner { gap: 9px; padding: 9px 12px; }
+        .sync-btn { width: 42px; height: 42px; }
+        .sync-btn .ring { inset: 3px; width: 36px; height: 36px; }
+        .intro h1 { font-size: 22px; }
+    }
+
+    @media (max-width: 430px) {
+        .brand-name { display: none; }
+        .clock { font-size: 21px; }
+        .clock-meta { font-size: 10px; gap: 4px; }
+        .pill { padding: 2px 6px; font-size: 9px; }
+        .sync-btn { width: 38px; height: 38px; }
+        .sync-btn .ring { inset: 2px; width: 34px; height: 34px; }
+    }
+</style>
+</head>
+<body data-mode="live">
+
+<!-- ── Live demo header: countdown + liveness cue ─────────────────── -->
+<header class="site-head">
+    <div class="head-inner">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">MTA</span>
+            <span>
+                <span class="brand-name">Refresh cues</span><br>
+                <span class="brand-sub">Countdown &amp; live status</span>
+            </span>
+        </div>
+
+        <div class="clock-block">
+            <div class="clock-copy">
+                <span class="clock" id="clock" aria-hidden="true">0:30</span>
+                <span class="clock-meta">
+                    <span class="pill live" id="pill" aria-hidden="true">
+                        <span class="dot"></span>
+                        <span id="pillText">Live</span>
+                    </span>
+                    <span id="metaText">Updated just now</span>
+                </span>
+            </div>
+
+            <button class="sync-btn" id="syncBtn" type="button"
+                    title="Refresh now" aria-label="Refresh arrivals now">
+                <svg class="ring" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+                    <circle class="ring-track" cx="20" cy="20" r="17"></circle>
+                    <circle class="ring-fill" id="ringFill" cx="20" cy="20" r="17"></circle>
+                </svg>
+                <svg class="sync-glyph" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.1"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M20.5 11a8.5 8.5 0 1 0-2.45 6.8"></path>
+                    <path d="M20.5 5.5v5.5H15"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+    <div class="livebar" aria-hidden="true"><i id="livebarFill"></i></div>
+</header>
+
+<main>
+    <div class="intro">
+        <div class="eyebrow">UX pattern demo</div>
+        <h1>Show the countdown, show that it's live</h1>
+        <p>
+            A single header combines four cues: the numeral countdown, a draining
+            ring around the refresh button, a pulsing LIVE pill, and a freshness
+            line. A hairline under the nav duplicates the countdown for distance
+            reading. The board below flashes when new data lands.
+        </p>
+    </div>
+
+    <!-- ── Controls ───────────────────────────────────────────────── -->
+    <section class="card card-pad controls" aria-label="Demo controls">
+        <div class="controls-row">
+            <span class="control-label">Interval</span>
+            <select class="select" id="intervalSelect" aria-label="Auto-refresh interval">
+                <option value="10">10 seconds</option>
+                <option value="30" selected>30 seconds</option>
+                <option value="60">60 seconds</option>
+            </select>
+            <button class="btn btn-primary" id="refreshNow" type="button">Refresh now</button>
+            <button class="btn" id="pauseBtn" type="button">Pause auto-refresh</button>
+            <button class="btn" id="slowBtn" type="button">Simulate slow network</button>
+        </div>
+        <div class="controls-row">
+            <label class="check">
+                <input type="checkbox" id="motionToggle">
+                Reduce motion (demo override)
+            </label>
+            <span class="option-note" style="margin:0;border:0;padding:0">
+                OS-level <code>prefers-reduced-motion</code> is also honored.
+            </span>
+        </div>
+    </section>
+
+    <!-- ── Demo board ─────────────────────────────────────────────── -->
+    <article class="board" id="board" aria-label="Sample arrivals board">
+        <header class="board-head">
+            <h2>Next arrivals</h2>
+            <span class="board-stop">Tenleytown · NW</span>
+        </header>
+        <ul class="rows">
+            <li class="row" data-min="3">
+                <span class="badge badge-red">D72</span>
+                <span class="dest">Tenleytown</span>
+                <span class="eta">3 min</span>
+            </li>
+            <li class="row" data-min="7">
+                <span class="badge badge-blue">N2</span>
+                <span class="dest">Friendship Heights</span>
+                <span class="eta">7 min</span>
+            </li>
+            <li class="row" data-min="11">
+                <span class="badge badge-green">96</span>
+                <span class="dest">Tenleytown</span>
+                <span class="eta">11 min</span>
+            </li>
+            <li class="row" data-min="16">
+                <span class="badge badge-purple">H4</span>
+                <span class="dest">Rockville</span>
+                <span class="eta">16 min</span>
+            </li>
+        </ul>
+        <footer class="board-foot">
+            <span id="lastUpdate">Last update —</span>
+            <span class="foot-right">WMATA feed</span>
+        </footer>
+    </article>
+
+    <!-- ── Options gallery ────────────────────────────────────────── -->
+    <h2 class="section-title">The building blocks</h2>
+    <p class="section-sub">Each cue works alone; combine two or three for redundancy.</p>
+
+    <div class="grid">
+        <section class="card option">
+            <h3>1 · LIVE pill</h3>
+            <p class="why">State, not progress. Reads at a glance.</p>
+            <div class="option-demo">
+                <span class="pill live"><span class="dot"></span>Live</span>
+                <span class="pill fetching"><span class="dot"></span>Updating</span>
+                <span class="pill stale"><span class="dot"></span>Retrying</span>
+                <span class="pill paused"><span class="dot"></span>Paused</span>
+            </div>
+            <p class="option-note">
+                Green = armed, blue = fetching, amber = slow/backoff, grey = paused.
+                Pulse only in live/stale so motion carries meaning.
+            </p>
+        </section>
+
+        <section class="card option">
+            <h3>2 · Countdown ring</h3>
+            <p class="why">Progress without reading a number.</p>
+            <div class="option-demo">
+                <div class="mini-ring">
+                    <svg viewBox="0 0 40 40" aria-hidden="true">
+                        <circle class="ring-track" cx="20" cy="20" r="17"></circle>
+                        <circle class="ring-fill" cx="20" cy="20" r="17"
+                                style="stroke-dashoffset:0"></circle>
+                    </svg>
+                    <span class="cap">30s</span>
+                </div>
+                <div class="mini-ring">
+                    <svg viewBox="0 0 40 40" aria-hidden="true">
+                        <circle class="ring-track" cx="20" cy="20" r="17"></circle>
+                        <circle class="ring-fill" cx="20" cy="20" r="17"
+                                style="stroke-dashoffset:64"></circle>
+                    </svg>
+                    <span class="cap">9s</span>
+                </div>
+                <div class="mini-ring demo-fetch">
+                    <svg viewBox="0 0 40 40" aria-hidden="true">
+                        <circle class="ring-track" cx="20" cy="20" r="17"></circle>
+                        <circle class="ring-fill" cx="20" cy="20" r="17"></circle>
+                    </svg>
+                    <span class="cap">…</span>
+                </div>
+            </div>
+            <p class="option-note">
+                Ring drains as the timer runs out; becomes a spinning arc while
+                fetching. Keep the ring decorative for screen readers.
+            </p>
+        </section>
+
+        <section class="card option">
+            <h3>3 · Hairline progress</h3>
+            <p class="why">Readable from across a room; zero layout shift.</p>
+            <div class="option-demo">
+                <div class="bars">
+                    <div class="bar-sample">
+                        <span class="track"><i style="width:100%"></i></span>
+                        <span class="bar-label">0:30</span>
+                    </div>
+                    <div class="bar-sample">
+                        <span class="track"><i style="width:33%"></i></span>
+                        <span class="bar-label">0:10</span>
+                    </div>
+                    <div class="bar-sample">
+                        <span class="track"><i style="width:8%;background:#e08a00"></i></span>
+                        <span class="bar-label">retry 0:02</span>
+                    </div>
+                </div>
+            </div>
+            <p class="option-note">
+                2–3px under the nav. Width = remaining ÷ interval; amber during
+                backoff. No animation needed, so it's motion-safe.
+            </p>
+        </section>
+
+        <section class="card option">
+            <h3>4 · Updated-ago chip</h3>
+            <p class="why">Honest freshness: shows feed health, not just a timer.</p>
+            <div class="option-demo">
+                <div class="chips">
+                    <span class="chip chip-fresh">Updated 4s ago</span>
+                    <span class="chip chip-warm">Updated 48s ago</span>
+                    <span class="chip chip-cold">Updated 2m ago</span>
+                </div>
+            </div>
+            <p class="option-note">
+                Thresholds relative to interval (green &lt; 1×, amber &lt; 2×,
+                red beyond). Announce changes, not every tick.
+            </p>
+        </section>
+
+        <section class="card option">
+            <h3>5 · Update sweep</h3>
+            <p class="why">Proves the data actually changed.</p>
+            <div class="option-demo">
+                <div class="sweep-demo board" id="sweepDemo">
+                    <ul class="mini-rows">
+                        <li class="mini-row"><span>D72 · Tenleytown</span><span class="mini-eta">3 min</span></li>
+                        <li class="mini-row"><span>N2 · Friendship Heights</span><span class="mini-eta">7 min</span></li>
+                    </ul>
+                    <button class="btn" id="replaySweep" type="button">Replay flash</button>
+                </div>
+            </div>
+            <p class="option-note">
+                One 600–700ms wash on success only. Disabled under reduced motion;
+                pair with a subtle row-value highlight.
+            </p>
+        </section>
+
+        <section class="card option">
+            <h3>6 · Sync icon states</h3>
+            <p class="why">One control carries all three states.</p>
+            <div class="option-demo">
+                <div class="mini-ring">
+                    <svg viewBox="0 0 40 40" aria-hidden="true">
+                        <circle class="ring-track" cx="20" cy="20" r="17"></circle>
+                        <circle class="ring-fill" cx="20" cy="20" r="17"
+                                style="stroke-dashoffset:0"></circle>
+                    </svg>
+                    <span class="cap" style="color:#2e7d32">●</span>
+                </div>
+                <div class="mini-ring demo-fetch">
+                    <svg viewBox="0 0 40 40" aria-hidden="true">
+                        <circle class="ring-track" cx="20" cy="20" r="17"></circle>
+                        <circle class="ring-fill" cx="20" cy="20" r="17"></circle>
+                    </svg>
+                    <span class="cap">…</span>
+                </div>
+                <div class="mini-ring demo-paused">
+                    <svg viewBox="0 0 40 40" aria-hidden="true">
+                        <circle class="ring-track" cx="20" cy="20" r="17"></circle>
+                        <circle class="ring-fill" cx="20" cy="20" r="17"
+                                style="stroke-dashoffset:0"></circle>
+                    </svg>
+                    <span class="cap">❚❚</span>
+                </div>
+            </div>
+            <p class="option-note">
+                Live: full green ring. Fetching: spinning arc. Paused: flat grey.
+                The button doubles as the manual refresh action.
+            </p>
+        </section>
+    </div>
+
+    <!-- ── Event log ──────────────────────────────────────────────── -->
+    <section class="card card-pad log-card" aria-label="Demo event log">
+        <div class="log-head">
+            <h3>Event log</h3>
+            <small>what a status region would announce</small>
+        </div>
+        <ol class="log" id="eventLog">
+            <li><time>—</time><span>Demo started — live, 30s interval</span></li>
+        </ol>
+    </section>
+
+    <p class="footnote">
+        Accessibility note: the ticking numeral and ring are
+        <code>aria-hidden</code>; only state transitions ("Updating",
+        "Paused", "Feed recovered") go to a polite live region, otherwise
+        screen readers would announce every second.
+    </p>
+</main>
+
+<p class="sr-only" id="srStatus" role="status" aria-live="polite"></p>
+
+<script>
+(() => {
+    "use strict";
+
+    const RING_C = 106.8; // 2 * pi * 17
+    const els = {
+        clock: document.getElementById("clock"),
+        pill: document.getElementById("pill"),
+        pillText: document.getElementById("pillText"),
+        metaText: document.getElementById("metaText"),
+        ringFill: document.getElementById("ringFill"),
+        livebar: document.getElementById("livebarFill"),
+        syncBtn: document.getElementById("syncBtn"),
+        board: document.getElementById("board"),
+        sweepDemo: document.getElementById("sweepDemo"),
+        lastUpdate: document.getElementById("lastUpdate"),
+        intervalSelect: document.getElementById("intervalSelect"),
+        pauseBtn: document.getElementById("pauseBtn"),
+        refreshNow: document.getElementById("refreshNow"),
+        slowBtn: document.getElementById("slowBtn"),
+        motionToggle: document.getElementById("motionToggle"),
+        srStatus: document.getElementById("srStatus"),
+        log: document.getElementById("eventLog"),
+        replaySweep: document.getElementById("replaySweep")
+    };
+
+    const state = {
+        intervalMs: 30000,
+        nextAt: performance.now() + 30000,
+        remainingOnPause: 30000,
+        lastUpdated: Date.now(),
+        paused: false,
+        fetching: false,
+        stale: false,
+        fetchTimer: null
+    };
+
+    function mode() {
+        if (state.paused) return "paused";
+        if (state.fetching) return "fetching";
+        if (state.stale) return "stale";
+        return "live";
+    }
+
+    function fmt(ms) {
+        const s = Math.max(0, Math.ceil(ms / 1000));
+        return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    }
+
+    function clockTime() {
+        const d = new Date();
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+
+    function logEvent(text) {
+        const li = document.createElement("li");
+        const t = document.createElement("time");
+        t.textContent = clockTime();
+        const span = document.createElement("span");
+        span.textContent = text;
+        li.append(t, span);
+        els.log.prepend(li);
+        while (els.log.children.length > 6) els.log.lastElementChild.remove();
+    }
+
+    function announce(text) {
+        // Replace text so repeated states still announce.
+        els.srStatus.textContent = "";
+        window.setTimeout(() => { els.srStatus.textContent = text; }, 30);
+    }
+
+    function agoLabel() {
+        const s = Math.max(0, Math.floor((Date.now() - state.lastUpdated) / 1000));
+        if (s < 2) return "Updated just now";
+        if (s < 60) return `Updated ${s}s ago`;
+        const m = Math.floor(s / 60);
+        return `Updated ${m}m ${s % 60}s ago`;
+    }
+
+    const PILL_TEXT = { live: "Live", fetching: "Updating", stale: "Retrying", paused: "Paused" };
+
+    function applyMode() {
+        const m = mode();
+        document.body.dataset.mode = m;
+        els.pill.className = `pill ${m}`;
+        els.pillText.textContent = PILL_TEXT[m];
+        els.syncBtn.title = state.paused ? "Resume auto-refresh" : "Refresh now";
+        els.syncBtn.setAttribute("aria-label",
+            state.paused ? "Resume auto-refresh" : "Refresh arrivals now");
+        els.pauseBtn.textContent = state.paused ? "Resume auto-refresh" : "Pause auto-refresh";
+        els.slowBtn.disabled = state.fetching;
+        els.refreshNow.disabled = state.fetching;
+    }
+
+    function setBarColor(m) {
+        els.livebar.style.background =
+            m === "live" ? "var(--green)" :
+            m === "fetching" ? "#1565c0" :
+            m === "stale" ? "#e08a00" : "#adb5bd";
+    }
+
+    function render(remaining) {
+        const m = mode();
+        let frac;
+
+        if (m === "fetching") {
+            frac = 0;
+        } else if (m === "paused") {
+            frac = Math.min(1, state.remainingOnPause / state.intervalMs);
+        } else {
+            frac = Math.min(1, Math.max(0, remaining / state.intervalMs));
+        }
+
+        els.ringFill.style.strokeDashoffset = String(RING_C * (1 - frac));
+        els.livebar.style.width = `${(frac * 100).toFixed(2)}%`;
+
+        els.clock.textContent =
+            m === "paused" ? fmt(state.remainingOnPause) :
+            m === "fetching" ? "0:00" :
+            fmt(remaining);
+
+        els.metaText.textContent =
+            m === "live" ? agoLabel() :
+            m === "fetching" ? "Fetching arrivals…" :
+            m === "stale" ? `Retrying in ${fmt(remaining)}` :
+            "Auto-refresh off";
+
+        setBarColor(m);
+    }
+
+    function bumpRows() {
+        const rows = els.board.querySelectorAll(".row");
+        rows.forEach((row) => {
+            const eta = row.querySelector(".eta");
+            let mins = Number(row.dataset.min) || 0;
+            mins = Math.max(0, mins - 1 - (Math.random() < 0.25 ? 1 : 0));
+            row.dataset.min = String(mins);
+            eta.textContent = mins === 0 ? "Due" : `${mins} min`;
+            eta.classList.toggle("due", mins === 0);
+            eta.classList.remove("bump");
+            void eta.offsetWidth; // restart animation
+            eta.classList.add("bump");
+        });
+        els.lastUpdate.textContent = `Last update ${clockTime()}`;
+    }
+
+    function sweepBoard() {
+        els.board.classList.remove("sweep");
+        void els.board.offsetWidth;
+        els.board.classList.add("sweep");
+        window.setTimeout(() => els.board.classList.remove("sweep"), 800);
+    }
+
+    function beginRefresh(isRetry) {
+        if (state.fetching || state.paused) return;
+        state.fetching = true;
+        applyMode();
+        announce(isRetry ? "Retrying the arrivals feed" : "Updating arrivals");
+
+        window.clearTimeout(state.fetchTimer);
+        state.fetchTimer = window.setTimeout(() => {
+            state.fetching = false;
+
+            if (state.stale) {
+                state.stale = false;
+                logEvent("Feed recovered — live again");
+                announce("Feed recovered. Live updates resumed.");
+            } else {
+                logEvent("Arrivals updated");
+                announce("Arrivals updated");
+            }
+
+            state.lastUpdated = Date.now();
+            state.nextAt = performance.now() + state.intervalMs;
+            bumpRows();
+            sweepBoard();
+            applyMode(); // also updates the footer's disabled states
+        }, isRetry ? 1200 : 900);
+    }
+
+    function setPaused(paused) {
+        if (paused === state.paused) return;
+
+        if (paused) {
+            if (state.fetching) {
+                window.clearTimeout(state.fetchTimer);
+                state.fetching = false;
+            }
+            state.remainingOnPause = Math.max(0, state.nextAt - performance.now());
+            if (state.remainingOnPause <= 0) state.remainingOnPause = state.intervalMs;
+            state.paused = true;
+            logEvent("Auto-refresh paused");
+            announce("Auto-refresh paused");
+        } else {
+            state.nextAt = performance.now() + state.remainingOnPause;
+            state.paused = false;
+            logEvent("Auto-refresh resumed");
+            announce("Auto-refresh resumed. Live.");
+        }
+        applyMode();
+    }
+
+    function refreshNow() {
+        if (state.fetching) return;
+        if (state.paused) setPaused(false);
+        state.stale = false;
+        beginRefresh(false);
+    }
+
+    function simulateSlow() {
+        if (state.fetching) return;
+        if (state.paused) setPaused(false);
+        state.stale = true;
+        state.nextAt = performance.now() + state.intervalMs;
+        applyMode();
+        logEvent("Slow network simulated — backing off");
+        announce("Connection slow. Will retry at the next interval.");
+    }
+
+    function setIntervalMs(ms) {
+        state.intervalMs = ms;
+        if (state.paused) {
+            state.remainingOnPause = ms;
+        } else {
+            state.nextAt = performance.now() + ms;
+        }
+        logEvent(`Interval set to ${ms / 1000}s`);
+        announce(`Auto-refresh interval set to ${ms / 1000} seconds`);
+    }
+
+    function tick() {
+        const now = performance.now();
+
+        if (!state.paused && !state.fetching) {
+            const remaining = Math.max(0, state.nextAt - now);
+            if (remaining <= 0) {
+                beginRefresh(state.stale);
+            }
+        }
+
+        const remaining = state.paused
+            ? state.remainingOnPause
+            : state.fetching
+                ? 0
+                : Math.max(0, state.nextAt - now);
+        render(remaining);
+
+        window.requestAnimationFrame(tick);
+    }
+
+    // ── Wire controls ─────────────────────────────────────────────
+    els.syncBtn.addEventListener("click", refreshNow);
+    els.refreshNow.addEventListener("click", refreshNow);
+    els.pauseBtn.addEventListener("click", () => setPaused(!state.paused));
+    els.slowBtn.addEventListener("click", simulateSlow);
+    els.intervalSelect.addEventListener("change", (e) => {
+        setIntervalMs(Number(e.target.value) * 1000);
+    });
+    els.motionToggle.addEventListener("change", (e) => {
+        document.body.classList.toggle("reduce-motion", e.target.checked);
+        logEvent(e.target.checked ? "Reduced motion on" : "Reduced motion off");
+    });
+    els.replaySweep.addEventListener("click", () => {
+        els.sweepDemo.classList.remove("sweep");
+        void els.sweepDemo.offsetWidth;
+        els.sweepDemo.classList.add("sweep");
+        window.setTimeout(() => els.sweepDemo.classList.remove("sweep"), 800);
+    });
+
+    // Reflect OS preference in the checkbox on load.
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    els.motionToggle.checked = mq.matches;
+    if (mq.matches) document.body.classList.add("reduce-motion");
+
+    els.lastUpdate.textContent = `Last update ${clockTime()}`;
+    applyMode();
+    window.requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
