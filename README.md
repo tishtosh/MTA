@@ -7,8 +7,8 @@ a static HTML page hosted on **GitHub Pages**, so it costs nothing to run.
 
 Open it: **https://tishtosh.github.io/MTA/mta26.html**
 
-> `mta26.html` is the current version (rewritten Nov 2026). The older `mta4a.html` and
-> `mta2.html` are kept in the repo for reference/comparison.
+> `mta26.html` is the current version (rewritten Nov 2026). The older `Design/mta4a.html` and
+> `Design/mta2.html` are kept in the repo for reference/comparison.
 
 ---
 
@@ -20,9 +20,9 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   icons are not toggles.
 - The top bar holds the **city mark** (opens the city menu: choose a city or open
   Settings), **Nearby** (person), **Search**, **Back**, **Home**, **Work**, and
-  **Airport**; the **Likes** heart sits snug to the left of the clock. The clock is the
-  auto-refresh countdown (`0:27`) with "Refresh in" underneath. All action icons are
-  always enabled.
+  **Airport**; the **Likes** heart sits snug to the left of the refresh meter. A timer
+  ring drains as the next auto-refresh approaches, a 3px hairline under the nav mirrors
+  it, and the meta line shows "Refresh in 0:27". All action icons are always enabled.
 - Home, Work, and Airport are multi-bookmark categories: each can hold several bus stops
   and Metro stations. Adding one also adds it to likes; removing a like removes
   it from Home, Work, and Airport too.
@@ -60,7 +60,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 | **Nearby stop cards** | Cards for other stops within walking distance, below the hero card. They reuse the hero header line and top strip on a lighter tint of the same mode color, with their own departure rows underneath. Class `.nearby-stop-card`. |
 | **Route/departure rows** | The repeated rows inside a stop card: line badge, destination/headsign, and ETAs. Class `.board-row`. |
 | **Route / line badge** | The colored rectangle before a destination. It is a bus route number or a rail line name. In the hero it is also the disclosure button for the route's stop list. |
-| **Commuter-rail icon** | A train icon inside a circle, using the line's color. Subway and light rail use the `train-subway` icon in the same line color. |
+| **Commuter-rail icon** | A train icon inside a circle, using the line's color. Subway and light rail use the Tabler train mark in the same line color. |
 | **Status chip** | The small pill before the ETA showing **Arriving**, **Boarding**, **Departing**, **NOW**, or **Departed**. `NOW` is the red uppercase chip at zero minutes; the row switches to `DEPARTING` when no live status exists. |
 | **Connection chips** | Small route or line badges at a stop in an expanded route list. The current route/line is excluded so the chips mean "you can transfer here". |
 | **Next stops…** | The label at the end of the **See route** line. The current stop is not repeated; only upcoming stops are listed, each with its own star and connection chips. |
@@ -272,8 +272,8 @@ The page keeps the caches, refresh tiers, and rendering. It asks for
 stays on the existing 24 h stale-while-revalidate caches.
 
 Transit icons are standalone SVGs (the WMATA **M**, the MBTA **T**, the TfL roundel,
-local bus/tram/ferry marks), not Font Awesome. Generic chrome (star, home, share) stays
-Font Awesome.
+local bus/tram/ferry marks). Generic chrome uses **Tabler Icons** (MIT): individual
+24px files in `img/icons/`, painted through a CSS mask so they inherit `currentColor`.
 
 Tests: `node test/run.js` runs all suites, including `providertest.js` (endpoint/
 normalization contract for DC, Boston and London), `nyctest.js` (GTFS-RT decoding + MTA
@@ -538,15 +538,18 @@ export default {
 | `js/cities/nyc-data.js` | Generated NYC stations/routes/platform map. |
 | `scripts/build-nyc-data.mjs` | Regenerates `nyc-data.js` from the subway, LIRR and Metro-North GTFS zips. |
 | `js/ui/icons.js` | Standalone SVG transit marks per city. |
+| `img/icons/` | Selected **Tabler Icons** (MIT) for UI chrome; see `LICENSE` there. |
 | `img/dc.svg`, `img/MBTA.svg`, `img/london.svg`, `img/nyc.png` | Top-bar city marks: WMATA Metro logo, MBTA T, TfL roundel (no text) from Wikimedia Commons; MTA icon from Flaticon (free licence, attribution required). |
-| `mta4a.html` | Previous version (kept for reference). |
-| `mta2.html` | Earlier iteration (kept for reference). |
-| `scratchpad.html` | Scratch / experiments. |
-| `css/all.css`, `webfonts/` | Self-hosted **Font Awesome Free 7.3.1** icons. |
+| `Design/` | Sample/preview pages: older versions, icon and refresh-cue demos. |
+| `Design/mta4a.html` | Previous version (kept for reference). |
+| `Design/mta2.html` | Earlier iteration (kept for reference). |
+| `Design/refresh-cues-demo.html` | Countdown ring, hairline, and liveness cue demo. |
+| `Design/scratchpad.html` | Scratch / experiments. |
+| `css/all.css`, `webfonts/` | Self-hosted **Font Awesome Free 7.3.1** (legacy `Design/` pages only). |
 | `.github/workflows/static.yml` | GitHub Pages deploy (uploads the whole repo from `main`). |
 
-Bootstrap **5.3.3** (SRI-hashed) and the Orbitron clock font load from CDN in the page;
-Font Awesome is self-hosted. There's no map and no Leaflet.
+Bootstrap **5.3.3** (SRI-hashed) loads from CDN; Tabler icons are local SVG files.
+There's no map and no Leaflet.
 
 ## Run it locally
 

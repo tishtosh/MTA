@@ -204,11 +204,14 @@ const board = () => els.linesScroll.innerHTML;
   check("no across section with live fixtures", !ACROSS ? !b.includes("Across the street") : true);
   check("ticker retired (no #tickerHost in DOM)", els.tickerHost === undefined);
 
-  // Clock block: the big text is the auto-refresh countdown; the meta names it.
-  check("clock: refresh countdown",
-    /^\d{1,2}:\d{2}$/.test(els.clock.textContent.trim()) &&
-    (/^Refresh in$/.test(els.clockMeta.textContent) ||
-     els.clockMeta.textContent === "refreshing…"));
+  // Refresh meter: the ring drains and the nav hairline narrows; the meta line
+  // carries the remaining seconds as text.
+  check("clock: timer ring + hairline",
+    (/^Refresh in \d{1,2}:\d{2}$/.test(els.clockMeta.textContent) ||
+     els.clockMeta.textContent === "updating…") &&
+    Number(els.refreshRing.style.strokeDashoffset) >= 0 &&
+    Number(els.refreshRing.style.strokeDashoffset) <= 106.8 &&
+    /^\d+(\.\d+)?%$/.test(els.refreshBarFill.style.width));
   check("nearby: distance or across-street label",
     !b.includes('data-nearby="1"') || /\d+ ft away|Across the street/.test(b));
 

@@ -5,7 +5,6 @@
     <title>like a bus</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="./css/all.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <style>
         /* One wash for "<= 2 min away", shared by board rows and the summary
@@ -14,22 +13,51 @@
             --imminent-wash: rgba(46, 125, 50, .24);
             --imminent-wash-fade: rgba(46, 125, 50, .06);
         }
-        .fa-xl-mta {
-            font-size: 3em;
-            line-height: 0.02167em;
-            margin-bottom: 5px;
-            margin-top: 5px;
-            width: 70px;
-            text-align: center;
+        /* Tabler icons (MIT): SVGs in img/icons, tinted with currentColor.
+           The mask keeps one file per glyph while honouring parent colour. */
+        .icon {
+            display: inline-block;
+            width: 1em; height: 1em;
+            flex: none;
+            background-color: currentColor;
+            -webkit-mask-image: var(--icon);
+            mask-image: var(--icon);
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+            mask-position: center;
+            -webkit-mask-size: contain;
+            mask-size: contain;
+            -webkit-mask-mode: alpha;
+            mask-mode: alpha;
             vertical-align: -0.125em;
+        }
+        .icon-xl {
+            font-size: 3em;
+            width: 70px;
+            margin: 5px 0;
+            text-align: center;
         }
 
-        .fa-mta {
-            font-size: 3em;
-            line-height: 0.02167em;
-            text-align: center;
-            vertical-align: -0.125em;
-        }
+        .icon-user { --icon: url("img/icons/user.svg"); }
+        .icon-chevron-down { --icon: url("img/icons/chevron-down.svg"); }
+        .icon-circle-arrow-left { --icon: url("img/icons/circle-arrow-left.svg"); }
+        .icon-home { --icon: url("img/icons/home.svg"); }
+        .icon-building { --icon: url("img/icons/building.svg"); }
+        .icon-plane-departure { --icon: url("img/icons/plane-departure.svg"); }
+        .icon-heart { --icon: url("img/icons/heart.svg"); }
+        .icon-heart-filled { --icon: url("img/icons/heart-filled.svg"); }
+        .icon-square-chevron-down { --icon: url("img/icons/square-chevron-down.svg"); }
+        .icon-map-pin { --icon: url("img/icons/map-pin.svg"); }
+        .icon-current-location { --icon: url("img/icons/current-location.svg"); }
+        .icon-refresh { --icon: url("img/icons/refresh.svg"); }
+        .icon-caret-down { --icon: url("img/icons/caret-down.svg"); }
+        .icon-check { --icon: url("img/icons/check.svg"); }
+        .icon-circle-check { --icon: url("img/icons/circle-check.svg"); }
+        .icon-external-link { --icon: url("img/icons/external-link.svg"); }
+        .icon-train { --icon: url("img/icons/train.svg"); }
+        .icon-bus { --icon: url("img/icons/bus.svg"); }
+        .icon-briefcase { --icon: url("img/icons/briefcase.svg"); }
 
         .vert {
             vertical-align: middle;
@@ -217,7 +245,7 @@
         .fav-setting-static:hover { background: #fff; }
         .fav-city-select { width: auto; max-width: 150px; font-size: 12px; }
         .fav-setting-danger i { color: #c92a2a; }
-        .fav-setting-danger .fa-heart { color: #2e7d32; }
+        .fav-setting-danger .icon-heart { color: #2e7d32; }
         .fav-setting-danger:hover { background: #fff5f5; }
 
         /* Main-panel bookmark list (Home / Work / Airport / Likes). The view is
@@ -289,10 +317,103 @@
             font: 500 11px/1.3 system-ui, -apple-system, sans-serif;
             color: #6c757d;
             white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
         }
-        .clock-refresh { margin-left: 0; }
-        .clock-refresh i { font-size: 1.5em; color: #2e7d32; }
-        .clock-refresh[aria-pressed="false"] i { color: #adb5bd; }
+
+        /* Auto-refresh meter: ring + pill beside the status line. */
+        .refresh-cue { display: flex; align-items: center; gap: 8px; }
+        .refresh-copy {
+            display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+        }
+        .refresh-ring {
+            position: relative;
+            width: 42px; height: 42px;
+            flex: none;
+            color: #2e7d32;
+        }
+        .refresh-ring svg {
+            display: block; width: 100%; height: 100%;
+            transform: rotate(-90deg);
+        }
+        .refresh-ring .ring-track {
+            fill: none; stroke: #dcd5c9; stroke-width: 3;
+        }
+        .refresh-ring .ring-fill {
+            fill: none; stroke: currentColor; stroke-width: 3;
+            stroke-linecap: round;
+            stroke-dasharray: 106.8;
+            stroke-dashoffset: 0;
+            transition: stroke-dashoffset .9s linear, stroke .2s ease;
+        }
+        .refresh-ring-glyph {
+            position: absolute; inset: 0; margin: auto;
+            width: 18px; height: 18px;
+        }
+        .refresh-cue.fetching .ring-fill {
+            stroke: #1565c0;
+            stroke-dasharray: 24 83;
+            transform-origin: 20px 20px;
+            animation: ring-spin 1s linear infinite;
+        }
+        .refresh-cue.stale .ring-fill { stroke: #e08a00; }
+        .refresh-cue.paused .refresh-ring,
+        .refresh-cue.idle .refresh-ring { color: #adb5bd; }
+        .refresh-cue.paused .ring-fill { stroke: #adb5bd; }
+        @keyframes ring-spin { to { transform: rotate(360deg); } }
+
+        .refresh-pill {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 1px 6px 1px 5px;
+            border-radius: 999px;
+            background: #c8e6c9; color: #1b5e20;
+            font: 700 9px/1.5 system-ui, -apple-system, sans-serif;
+            letter-spacing: .09em; text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .refresh-dot {
+            width: 5px; height: 5px; border-radius: 50%;
+            background: currentColor; flex: none;
+            animation: refresh-pulse 2s ease-out infinite;
+        }
+        .refresh-cue.fetching .refresh-pill {
+            background: #bbdefb; color: #0d47a1;
+        }
+        .refresh-cue.fetching .refresh-dot { animation: refresh-blink 1s steps(2, start) infinite; }
+        .refresh-cue.stale .refresh-pill { background: #ffe0b2; color: #8a4b00; }
+        .refresh-cue.stale .refresh-dot { animation-duration: 1.2s; }
+        .refresh-cue.paused .refresh-pill,
+        .refresh-cue.idle .refresh-pill { background: #e9ecef; color: #495057; }
+        .refresh-cue.paused .refresh-dot,
+        .refresh-cue.idle .refresh-dot { animation: none; }
+        @keyframes refresh-pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(46, 125, 50, .45); }
+            70%  { box-shadow: 0 0 0 5px rgba(46, 125, 50, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0); }
+        }
+        @keyframes refresh-blink { 50% { opacity: .2; } }
+
+        /* Countdown hairline, pinned to the bottom of the fixed nav. */
+        .refresh-bar {
+            position: absolute; left: 0; right: 0; bottom: -3px;
+            height: 3px; overflow: hidden;
+            background: rgba(24, 35, 56, .07);
+            pointer-events: none;
+        }
+        .refresh-bar > i {
+            display: block; height: 100%; width: 0;
+            background: #2e7d32;
+            transition: width .9s linear, background-color .2s ease;
+        }
+        .refresh-bar.fetching > i { background: #1565c0; }
+        .refresh-bar.stale > i { background: #e08a00; }
+        .refresh-bar.paused > i,
+        .refresh-bar.idle > i { background: #adb5bd; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .refresh-dot { animation: none; }
+            .refresh-cue.fetching .ring-fill { animation: none; }
+        }
 
         /* stop-name entry with autocomplete (drives the one view) */
         .ac-wrap {
@@ -944,12 +1065,13 @@
             .city-mark { width: 32px; height: 34px; }
             .city-mark .mode-svg { width: 26px; height: 26px; }
             .city-mark-img { width: 24px; height: 24px; }
-            .fa-xl-mta { font-size: 2em; width: 42px; }
+            .icon-xl { font-size: 2em; width: 42px; }
             .nav-shortcut i { font-size: 1.4em; width: 30px; }
             .nav-refresh i { font-size: 1.2em; }
             .add-fav-btn i { font-size: 1.3em; width: 30px; }
             .nav-back i { font-size: 1.25em; width: 30px; }
-            #clock { font-size: 22px !important; }
+            .refresh-ring { width: 34px; height: 34px; }
+            .refresh-ring-glyph { width: 15px; height: 15px; }
             .clock-meta { font-size: 9px; }
             .navbar .container > div:last-child { gap: 4px !important; }
         }
@@ -969,21 +1091,29 @@
             .board-row:has(.badge-row-chevron) { position: relative; padding-right: 40px; }
         }
         @media (max-width: 380px) {
-            .fa-xl-mta { font-size: 1.7em; width: 36px; }
+            .icon-xl { font-size: 1.7em; width: 36px; }
             .nav-shortcut i { font-size: 1.2em; width: 26px; }
             .nav-refresh i { font-size: 1.05em; }
             .add-fav-btn i { font-size: 1.1em; width: 26px; }
             .nav-back i { font-size: 1.1em; width: 26px; }
-            #clock { font-size: 18px !important; }
+            .refresh-cue { gap: 5px; }
+            .refresh-ring { width: 30px; height: 30px; }
+            .refresh-ring-glyph { width: 13px; height: 13px; }
+            .refresh-pill { display: none; }
         }
         @media (max-width: 360px) {
-            .fa-xl-mta { font-size: 1.5em; width: 32px; }
+            .icon-xl { font-size: 1.5em; width: 32px; }
             .nav-shortcut i { font-size: 1.1em; width: 24px; }
             .nav-refresh i { font-size: 1em; }
             .add-fav-btn i { font-size: 1em; width: 24px; }
             .nav-back i { font-size: 1em; width: 24px; }
-            #clock { font-size: 16px !important; }
+            .refresh-ring { width: 26px; height: 26px; }
+            .refresh-ring-glyph { width: 12px; height: 12px; }
+            .clock-meta { font-size: 8px; }
             .navbar .container > div:last-child { gap: 2px !important; }
+        }
+        @media (max-width: 340px) {
+            .refresh-copy { display: none; }
         }
 
     </style>
@@ -1008,34 +1138,47 @@
                         aria-haspopup="menu" aria-expanded="false" aria-controls="cityMenu"
                         aria-label="City and settings"></button>
                 <button id="btnNearby" class="navicon nav-shortcut" title="Nearby stops" aria-label="Nearby stops">
-                    <i class="fa-solid fa-user fa-xl-mta" aria-hidden="true"></i>
+                    <i class="icon icon-user icon-xl" aria-hidden="true"></i>
                 </button>
                 <button id="btnAddFav" class="navicon add-fav-btn" title="Find stops and likes" aria-label="Find stops and likes" aria-expanded="false" aria-controls="favPanel">
-                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                    <i class="icon icon-chevron-down" aria-hidden="true"></i>
                 </button>
                 <button id="btnBack" class="navicon nav-back" title="Back" aria-label="Back" disabled>
-                    <i class="fa-regular fa-circle-left" aria-hidden="true"></i>
+                    <i class="icon icon-circle-arrow-left" aria-hidden="true"></i>
                 </button>
                 <button id="btnHome" class="navicon nav-shortcut" title="Home stop" aria-label="Go to home stop">
-                    <i class="fa-regular fa-house fa-xl-mta"></i>
+                    <i class="icon icon-home icon-xl" aria-hidden="true"></i>
                 </button>
                 <button id="btnWork" class="navicon nav-shortcut" title="Work stop" aria-label="Go to work stop">
-                    <i class="fa-regular fa-building fa-xl-mta"></i>
+                    <i class="icon icon-building icon-xl" aria-hidden="true"></i>
                 </button>
                 <button id="btnAirport" class="navicon nav-shortcut" title="Airport stops" aria-label="Show airport stops">
-                    <i class="fa-solid fa-plane-up fa-xl-mta"></i>
+                    <i class="icon icon-plane-departure icon-xl" aria-hidden="true"></i>
                 </button>
             </div>
             <div class="d-flex align-items-center" style="gap: 4px">
                 <button id="btnFav" class="navicon nav-shortcut" title="All likes" aria-label="Show all likes">
-                    <i class="fa-regular fa-heart fa-xl-mta"></i>
+                    <i class="icon icon-heart icon-xl" aria-hidden="true"></i>
                 </button>
-                <div class="d-flex flex-column" style="line-height:1.15; text-align:right">
-                    <span class="navbar-text" id="clock" style="font-size: 30px; font-family: Helvetica, Arial, sans-serif; font-weight: 700"></span>
-                    <span id="clockMeta" class="clock-meta"></span>
+                <div class="refresh-cue live" id="refreshCue">
+                    <div class="refresh-ring" aria-hidden="true">
+                        <svg viewBox="0 0 40 40" focusable="false">
+                            <circle class="ring-track" cx="20" cy="20" r="17"></circle>
+                            <circle class="ring-fill" id="refreshRing" cx="20" cy="20" r="17"></circle>
+                        </svg>
+                        <i class="icon icon-refresh refresh-ring-glyph"></i>
+                    </div>
+                    <div class="refresh-copy">
+                        <span class="refresh-pill" id="refreshPill" aria-hidden="true">
+                            <span class="refresh-dot"></span>
+                            <span id="refreshPillText">Live</span>
+                        </span>
+                        <span id="clockMeta" class="clock-meta"></span>
+                    </div>
                 </div>
             </div>
         </div>
+        <div class="refresh-bar live" id="refreshBar" aria-hidden="true"><i id="refreshBarFill"></i></div>
     </nav>
     <div id="cityMenu" class="city-menu" role="menu" hidden>
         <div class="city-menu-label">City</div>
@@ -1043,12 +1186,12 @@
         <div class="city-menu-sep"></div>
         <button type="button" id="cityMenuSettings" class="city-menu-item" role="menuitem"
                 aria-expanded="false" aria-controls="citySettings">
-            <i class="fa-solid fa-square-caret-down" aria-hidden="true"></i> Settings
-            <i class="fa-solid fa-chevron-down city-menu-caret" aria-hidden="true"></i>
+            <i class="icon icon-square-chevron-down" aria-hidden="true"></i> Settings
+            <i class="icon icon-chevron-down city-menu-caret" aria-hidden="true"></i>
         </button>
         <div id="citySettings" class="city-settings" hidden>
             <div class="fav-setting fav-setting-static">
-                <i class="fa-solid fa-map-marked-alt" aria-hidden="true"></i>
+                <i class="icon icon-map-pin" aria-hidden="true"></i>
                 <label class="fav-setting-name" for="mapsSelect">Maps app</label>
                 <select id="mapsSelect" class="form-select form-select-sm fav-city-select" aria-label="Maps app">
                     <option value="apple">Apple Maps</option>
@@ -1056,7 +1199,7 @@
                 </select>
             </div>
             <div class="fav-setting fav-setting-static">
-                <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+                <i class="icon icon-current-location" aria-hidden="true"></i>
                 <label class="fav-setting-name" for="nearRadiusSelect">Near me radius</label>
                 <select id="nearRadiusSelect" class="form-select form-select-sm fav-city-select" aria-label="Near me radius">
                     <option value="1000">1,000 feet</option>
@@ -1067,14 +1210,14 @@
             </div>
             <button id="btnRefreshToggle" class="fav-setting" type="button"
                     title="Pause timed refresh" aria-label="Pause timed refresh" aria-pressed="true">
-                <i class="fa-solid fa-sync" aria-hidden="true"></i>
+                <i class="icon icon-refresh" aria-hidden="true"></i>
                 <span class="fav-setting-name">Auto-refresh</span>
                 <span id="refreshState" class="fav-setting-state">on</span>
             </button>
             <button id="btnClearLikes" class="fav-setting fav-setting-danger" type="button"
                     title="Delete all likes, Home, Work, and Airport bookmarks"
                     aria-label="Delete all likes and bookmarks">
-                <i class="fa-solid fa-heart" aria-hidden="true"></i>
+                <i class="icon icon-heart" aria-hidden="true"></i>
                 <span class="fav-setting-name">Delete all likes</span>
             </button>
         </div>
@@ -1084,7 +1227,7 @@
 <div id="favPanel" class="fav-panel" hidden>
     <button type="button" class="fav-header" data-fav-panel="bus" aria-expanded="false">
         <span>Bus</span>
-        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+        <i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i>
     </button>
     <div id="favBusBody" class="fav-body" hidden>
         <input id="favBusFilter" class="form-control form-control-sm" type="text"
@@ -1093,14 +1236,14 @@
     </div>
     <button type="button" class="fav-header" id="favMetroHeader" data-fav-panel="metro" aria-expanded="false">
         <span id="railSectionLabel">Rail</span>
-        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+        <i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i>
     </button>
     <div id="favMetroBody" class="fav-body" hidden>
         <div id="favMetroLines" class="fav-list"></div>
     </div>
     <button type="button" class="fav-header" id="favCommuterHeader" data-fav-panel="commuter" aria-expanded="false" hidden>
         <span id="commuterSectionLabel">Commuter rail</span>
-        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+        <i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i>
     </button>
     <div id="favCommuterBody" class="fav-body" hidden>
         <div id="favCommuterLines" class="fav-list"></div>
@@ -1113,7 +1256,7 @@
     <div id="acWrap" class="ac-wrap" hidden>
         <button id="busRoutesToggle" class="bus-routes-toggle" type="button" aria-expanded="false">
             <span>Bus routes</span>
-            <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
+            <i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i>
         </button>
         <div id="busRoutePanel" class="route-panel" role="listbox" aria-label="Bus routes" hidden></div>
         <select id="busStopSelect" class="form-select form-select-lg" aria-label="Bus stop" hidden>
@@ -1346,8 +1489,9 @@ let pickedStop = null;        // the stop chosen in the entry field (null = near
 let pickedStopObj = null;     // the stop object actually shown (may be a directory stop outside the list)
 let forceNearby = false;      // the user dismissed a ?busstop= prefill (✕) → search nearby even with the param
 let refreshTimer = null;
-let refreshEnabled = true;    // auto-refresh toggle (the clock's refresh button)
-let nextRefreshAt = 0;        // when the armed timer fires (for the countdown)
+let refreshEnabled = true;    // auto-refresh toggle (settings + nav meter)
+let nextRefreshAt = 0;        // when the armed timer fires (ring/hairline)
+let refreshCycleMs = REFRESH_MS; // armed wait; the meter's full-scale value
 let rateLimited = false;      // WMATA returned 429 → slow the refresh down
 let busy = false;             // re-entrancy guard for runFlow()
 let lastRefreshAt = 0;
@@ -1718,8 +1862,13 @@ function toggleLike(kind, id, name, route) {
 }
 
 const gStatus = document.getElementById("statusmessage");
-const gClock = document.getElementById("clock");
 const gClockMeta = document.getElementById("clockMeta");
+const gRefreshCue = document.getElementById("refreshCue");
+const gRefreshRing = document.getElementById("refreshRing");
+const gRefreshPill = document.getElementById("refreshPill");
+const gRefreshPillText = document.getElementById("refreshPillText");
+const gRefreshBar = document.getElementById("refreshBar");
+const gRefreshBarFill = document.getElementById("refreshBarFill");
 const gRefreshToggle = document.getElementById("btnRefreshToggle");
 const gBusRoutesToggle = document.getElementById("busRoutesToggle");
 const gBusRoutePanel = document.getElementById("busRoutePanel");
@@ -2501,7 +2650,7 @@ function modeIconHtml(metro, commuter, route) {
     if (typeof MTA !== "undefined" && MTA.icons && typeof cityCfg === "function")
         return MTA.icons.html(cityCfg().id, mode);
     // Test/standalone fallback when the icon module is not loaded.
-    return `<i class="fa-solid ${metro ? (commuter ? "fa-train" : "fa-train-subway") : "fa-bus"}" aria-hidden="true"></i>`;
+    return iconHtml(metro ? "train" : "bus");
 }
 
 function nearbyModeIcon(metro, commuter, color, drag, route) {
@@ -2987,16 +3136,16 @@ function boardRowHead(row, color, g, k, scheduled) {
             badge = `<button type="button" class="badge-disclosure bt-allstops"`
                 + ` aria-expanded="${expandedStops.has(k)}">`
                 + bullet
-                + `<i class="fa-solid fa-chevron-down badge-chevron bt-chevron" aria-hidden="true"></i></button>`;
+                + iconHtml("chevron-down", "badge-chevron bt-chevron") + `</button>`;
             rowChevron = `<button type="button" class="badge-row-chevron bt-allstops"`
                 + ` tabindex="-1" aria-hidden="true">`
-                + `<i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>`;
+                + `<i class="icon icon-chevron-down" aria-hidden="true"></i></button>`;
         } else {
             badge = `<span class="badge-disclosure">${bullet}</span>`;
         }
     } else {
         const chevron = hasList
-            ? ` <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>`
+            ? ` <i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i>`
             : "";
         const badgeClass = `row-badge${row.metro ? " metro-line" : busBadgeClass()}${departed ? " hollow" : ""}${hasList ? " bt-allstops" : ""}`;
         const badgeTag = hasList ? "button" : "span";
@@ -3393,7 +3542,7 @@ function renderCityMark() {
         ? `<img class="city-mark-img" src="${img}" alt="">`
         : MTA.icons.html(icons, "subway");
     gCityMark.innerHTML = icon
-        + `<i class="fa-solid fa-caret-down city-mark-caret" aria-hidden="true"></i>`;
+        + iconHtml("caret-down", "city-mark-caret");
     gCityMark.setAttribute("aria-label", `${cfg.name || "City"} — choose city or open settings`);
     gCityMark.title = `${cfg.name || "City"} — city and settings`;
 }
@@ -3406,7 +3555,7 @@ function renderCityMenu() {
         return `<button type="button" class="city-menu-item${active ? " active" : ""}"`
             + ` role="menuitemradio" aria-checked="${active}" data-city="${esc(cfg.id)}">`
             + `<span>${esc(cfg.name)}</span>`
-            + (active ? `<i class="fa-solid fa-check city-menu-check" aria-hidden="true"></i>` : "")
+            + (active ? iconHtml("check", "city-menu-check") : "")
             + `</button>`;
     }).join("");
 }
@@ -4203,20 +4352,28 @@ async function refreshPredictions() {
 function scheduleRefresh() {
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = null;
-    if (!refreshEnabled) { nextRefreshAt = 0; return; }
+    if (!refreshEnabled) {
+        nextRefreshAt = 0;
+        refreshCycleMs = REFRESH_MS;
+        tickClock();
+        return;
+    }
     // Hidden tabs do not poll. Returning to the tab triggers an immediate
     // refresh from the visibilitychange handler below.
     if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         nextRefreshAt = 0;
+        tickClock();
         return;
     }
     const base = rateLimited ? 5 * REFRESH_MS : REFRESH_MS;
     const wait = Math.max(1000, Math.round(base * (0.94 + Math.random() * 0.12)));
+    refreshCycleMs = wait;
     nextRefreshAt = Date.now() + wait;
     refreshTimer = setTimeout(() => {
         refreshTimer = null;
         refreshActive();
     }, wait);
+    tickClock();
 }
 
 // Background tabs get throttled timers; refresh promptly when we come back.
@@ -4225,6 +4382,7 @@ document.addEventListener("visibilitychange", () => {
         if (refreshTimer) clearTimeout(refreshTimer);
         refreshTimer = null;
         nextRefreshAt = 0;
+        tickClock();
         return;
     }
     const haveData = mode === "metro" ? !!metroAnchor : stops.length > 0;
@@ -4240,6 +4398,12 @@ document.addEventListener("visibilitychange", () => {
 // ════════════════════════════════════════════════════════════════════
 // Rendering
 // ════════════════════════════════════════════════════════════════════
+
+// Tabler icon markup. Files live in img/icons; CSS masks them so the glyph
+// inherits the button's colour and active/disabled states need no extra assets.
+function iconHtml(name, extraClass) {
+    return `<i class="icon icon-${name}${extraClass ? " " + extraClass : ""}" aria-hidden="true"></i>`;
+}
 
 function esc(s) {
     return String(s).replace(/[&<>"']/g, c => (
@@ -4456,7 +4620,7 @@ function routeActionsHtml(kind, line, originId, originName, destId, destName, la
         + ` data-route-dest-name="${esc(destName || "")}"`;
     return `<div class="route-actions">`
         + `<button type="button" class="route-action" ${attrs} data-route-action="see">`
-        + `<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>See route</button>`
+        + iconHtml("external-link") + `See route</button>`
         + label
         + `</div>`;
 }
@@ -4558,7 +4722,7 @@ function favStarHtml(kind, id, name, route) {
         + ` data-fav-name="${esc(name || "")}" data-fav-route="${esc(route || "")}"`
         + ` aria-pressed="${on ? "true" : "false"}"`
         + ` title="${on ? "Remove like" : "Add like"}">`
-        + `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i></button>`;
+        + iconHtml(on ? "heart-filled" : "heart") + `</button>`;
 }
 
 // Bus stop-name filter: at 3+ characters, routes are expanded to just the
@@ -4596,7 +4760,7 @@ function favSelectedMark(kind, id) {
         : String(metroAnchorCode) === String(id);
     return selected
         ? `<span class="fav-selected" role="img" aria-label="Selected stop" title="Selected stop">`
-          + `<i class="fa-solid fa-check-circle" aria-hidden="true"></i></span>`
+          + iconHtml("circle-check") + `</span>`
         : "";
 }
 
@@ -4948,7 +5112,7 @@ async function renderFavBusRoutesByStop(raw) {
         return `<button type="button" class="fav-route" data-fav-route="${esc(r.id)}" aria-expanded="${expanded ? "true" : "false"}">`
             + `<span class="fav-badge${busBadgeClass()}" style="background:${routeColor(r.id)};color:${busTextColor(r.id)}">${esc(r.id)}</span>`
             + `<span class="fav-desc">${esc(r.desc || "Bus route")}</span>`
-            + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
+            + `<i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i></button>`
             + `<div class="fav-stops" data-fav-stops="bus" data-route="${esc(r.id)}"`
             + `${expanded ? ` data-loaded="1"` : " hidden"}>`
             + (expanded ? matches.map(s => favBusStopRow(s, r.id)).join("") : "")
@@ -4989,7 +5153,7 @@ async function renderFavBusRoutes(query) {
         return `<button type="button" class="fav-route" data-fav-route="${esc(r.id)}" aria-expanded="${expanded ? "true" : "false"}">`
             + `<span class="fav-badge${busBadgeClass()}" style="background:${routeColor(r.id)};color:${busTextColor(r.id)}">${esc(r.id)}</span>`
             + `<span class="fav-desc">${esc(r.desc || "Bus route")}</span>`
-            + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
+            + `<i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i></button>`
             + `<div class="fav-stops" data-fav-stops="bus" data-route="${esc(r.id)}"`
             + `${expanded ? ` data-loaded="1"` : " hidden"}>`
             + (expanded ? matches.map(s => favBusStopRow(s, r.id)).join("") : "")
@@ -5023,7 +5187,7 @@ async function renderFavMetroLines() {
         return `<button type="button" class="fav-route" data-fav-line="${line}" aria-expanded="false" aria-label="${esc(label)}">`
             + lineBadgeHtml(line)
             + (badge ? "" : `<span class="fav-desc">${esc(label)}</span>`)
-            + `<i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i></button>`
+            + `<i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i></button>`
             + `<div class="fav-stops" data-fav-stops="metro" data-line="${line}" hidden></div>`;
     };
     // Two top-level settings sections: rapid transit (metro/subway/tube) and
@@ -5164,13 +5328,13 @@ function bmSlotHtml(row, slot) {
     const on = slotHas(row.kind, slot, row.id);
     const label = shortcutLabel(slot);
     const text = on ? `Clear ${label} bookmark` : `Save as ${label}`;
-    const icon = slot === "home" ? "house" : slot === "work" ? "briefcase" : "plane-up";
+    const icon = slot === "home" ? "home" : slot === "work" ? "briefcase" : "plane-departure";
     return `<button type="button" class="board-shortcut bm-slot${on ? " active" : ""}"`
         + ` data-bookmark-slot="${slot}" data-fav-kind="${esc(row.kind)}"`
         + ` data-fav-id="${esc(row.id)}" data-fav-name="${esc(row.name || "")}"`
         + ` data-fav-route="${esc(row.route || "")}"`
         + ` aria-pressed="${on ? "true" : "false"}" title="${text}" aria-label="${text}">`
-        + `<i class="fa-solid fa-${icon}" aria-hidden="true"></i>`
+        + iconHtml(icon)
         + `</button>`;
 }
 
@@ -5474,7 +5638,7 @@ function syncFavStars() {
         star.classList.toggle("active", on);
         star.setAttribute("aria-pressed", on ? "true" : "false");
         star.title = on ? "Remove like" : "Add like";
-        star.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i>`;
+        star.innerHTML = iconHtml(on ? "heart-filled" : "heart");
     });
     syncHeaderShortcuts();
 }
@@ -5753,7 +5917,7 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         star.classList.toggle("active", on);
         star.setAttribute("aria-pressed", on ? "true" : "false");
         star.title = on ? "Remove like" : "Add like";
-        star.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i>`;
+        star.innerHTML = iconHtml(on ? "heart-filled" : "heart");
         updateShortcutNav();
         if (gFavFavBody && !gFavFavBody.hidden) renderLikes();
         syncBookmarkView();
@@ -5948,7 +6112,7 @@ function syncHeaderShortcuts() {
             b.setAttribute("aria-pressed", on ? "true" : "false");
             b.title = text;
             b.setAttribute("aria-label", text);
-            b.innerHTML = `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i>`;
+            b.innerHTML = iconHtml(on ? "heart-filled" : "heart");
             return;
         }
         const on = slotHas(kind, s, id);
@@ -6534,7 +6698,7 @@ function shortcutButtonsHtml(id) {
     const kind = mode === "metro" ? "metro" : "bus";
     return `<div class="board-shortcuts">`
         + `<button type="button" class="board-share board-share-inline" title="Open in Maps" aria-label="Open in Maps">`
-        + `<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button>`
+        + iconHtml("external-link") + `</button>`
         + SHORTCUT_SLOTS.map(slot => {
         if (slot === "fav") {
             const on = isLike(kind, id);
@@ -6542,7 +6706,7 @@ function shortcutButtonsHtml(id) {
             return `<button type="button" class="board-shortcut${on ? " active" : ""}"`
                 + ` data-shortcut="fav" aria-pressed="${on ? "true" : "false"}"`
                 + ` title="${text}" aria-label="${text}">`
-                + `<i class="${on ? "fa-solid" : "fa-regular"} fa-heart" aria-hidden="true"></i>`
+                + iconHtml(on ? "heart-filled" : "heart")
                 + `</button>`;
         }
         const on = slotHas(kind, slot, id);
@@ -6551,7 +6715,7 @@ function shortcutButtonsHtml(id) {
         return `<button type="button" class="board-shortcut${on ? " active" : ""}"`
             + ` data-shortcut="${slot}" aria-pressed="${on ? "true" : "false"}"`
             + ` title="${text}" aria-label="${text}">`
-            + `<i class="fa-solid fa-${slot === "home" ? "house" : slot === "work" ? "briefcase" : "plane-up"}" aria-hidden="true"></i>`
+            + iconHtml(slot === "home" ? "home" : slot === "work" ? "briefcase" : "plane-departure")
             + `</button>`;
     }).join("") + `</div>`;
 }
@@ -6966,17 +7130,44 @@ function fmtCountdown(ms) {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+const RING_CIRCUMFERENCE = 106.8;   // 2π × 17, matches the r=17 circle
+
 function tickClock() {
-    // The clock is now the auto-refresh countdown; the meta line names it.
-    let big = "--:--", meta = "";
-    if (refreshInFlight) { big = "0:00"; meta = "refreshing…"; }
-    else if (!refreshEnabled) meta = "auto-refresh off";
-    else if (nextRefreshAt) {
-        big = fmtCountdown(nextRefreshAt - Date.now());
-        meta = "Refresh in";
-    } else if (!lastRefreshAt) meta = "waiting for a stop";
-    gClock.textContent = big;
-    gClockMeta.textContent = meta;
+    // The countdown is graphic now: the ring drains and the hairline narrows.
+    // The meta line names the state; the pill is decorative (aria-hidden).
+    let meta = "", state = "live", pill = "Live", frac = 0;
+
+    if (refreshInFlight) {
+        state = "fetching"; pill = "Updating";
+        meta = "updating…";
+    } else if (!refreshEnabled) {
+        state = "paused"; pill = "Paused";
+        meta = "auto-refresh off";
+    } else if (nextRefreshAt) {
+        const remaining = Math.max(0, nextRefreshAt - Date.now());
+        frac = Math.max(0, Math.min(1, remaining / refreshCycleMs));
+        if (rateLimited) {
+            state = "stale"; pill = "Retrying";
+            meta = `Retry in ${fmtCountdown(remaining)}`;
+        } else {
+            meta = `Refresh in ${fmtCountdown(remaining)}`;
+        }
+    } else {
+        state = "idle";
+        pill = lastRefreshAt ? "Waiting" : "Idle";
+        meta = lastRefreshAt ? "paused while hidden" : "waiting for a stop";
+    }
+
+    if (gRefreshRing) {
+        gRefreshRing.style.strokeDashoffset =
+            String(RING_CIRCUMFERENCE * (1 - frac));
+    }
+    if (gRefreshCue) gRefreshCue.className = `refresh-cue ${state}`;
+    if (gRefreshPill) gRefreshPill.className = "refresh-pill";
+    if (gRefreshPillText) gRefreshPillText.textContent = pill;
+    if (gRefreshBar) gRefreshBar.className = `refresh-bar ${state}`;
+    if (gRefreshBarFill) gRefreshBarFill.style.width = `${(frac * 100).toFixed(2)}%`;
+    if (gClockMeta) gClockMeta.textContent = meta;
 }
 
 function setRefreshEnabled(on) {
