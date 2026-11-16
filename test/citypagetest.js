@@ -433,6 +433,12 @@ async function settle(board) {
     /class="stops"/.test(nSearchDetail) && /class="stop"/.test(nSearchDetail) &&
     /class="fav-conns"/.test(nSearchDetail) &&
     /data-goto-id="/.test(nSearchDetail) && !/class="dot"/.test(nSearchDetail));
+  const nStopNames = [...nSearchDetail.matchAll(/data-goto-name="([^"]*)"/g)]
+    .map(m => m[1]);
+  check(nres, "nyc: Search route stops run end to end",
+    nStopNames.length > 1 &&
+    /Van Cortlandt|South Ferry/.test(nStopNames[0]) &&
+    /Van Cortlandt|South Ferry/.test(nStopNames[nStopNames.length - 1]));
   nyc.els.searchInput.value = "times";
   (nyc.els.searchInput._l.input || []).forEach(fn => fn());
   check(nres, "nyc: typing a stop hides the route list and detail",

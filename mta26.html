@@ -505,6 +505,9 @@
             background: currentColor; flex: none;
             animation: refresh-pulse 2s ease-out infinite;
         }
+        /* A healthy live feed needs no badge: keep the pill for paused,
+           retrying, updating, and idle states only. */
+        .refresh-cue.live .refresh-pill { display: none; }
         .refresh-cue.fetching .refresh-pill {
             background: #bbdefb; color: #0d47a1;
         }
@@ -6155,26 +6158,106 @@ function searchBadge(tab, route) {
         : lineBadgeHtml(route.id);
 }
 
+function farthestStopPair(list) {
+    let best = null;
+    let max = -1;
+    for (let i = 0; i < (list || []).length; i++) {
+        const a = list[i];
+        if (!Number.isFinite(a.lat) || !Number.isFinite(a.lon)) continue;
+        for (let j = i + 1; j < list.length; j++) {
+            const b = list[j];
+            if (!Number.isFinite(b.lat) || !Number.isFinite(b.lon)) continue;
+            const d = distance(a.lat, a.lon, b.lat, b.lon, "f");
+            if (d > max) { max = d; best = [a, b]; }
+        }
+    }
+    return best;
+}
+
+// Route selection must read beginning-to-end. Prefer the provider's ordered
+// route profile; for rail lines without one, walk between the two farthest
+// stations on the line (the provider's path finder returns that order).
+async function orderSearchStops(tab, routeId, candidates) {
+    const ids = [];
+    try {
+        const details = await fetchRouteDetails(routeId);
+        const dirs = (details && details.directions) || [];
+        if (dirs.length) {
+            const dir = dirs.slice().sort((a, b) =>
+                (b.stops || []).length - (a.stops || []).length)[0];
+            for (const s of (dir.stops || []))
+                ids.push(String(s.id || s.StopID || ""));
+        }
+    } catch (e) { /* fall through to the path order */ }
+    if (!ids.length && tab.kind === "metro" && candidates.length > 1) {
+        const pair = farthestStopPair(candidates);
+        if (pair) {
+            try {
+                const path = await fetchMetroPath(
+                    String(pair[0].id), String(pair[1].id), routeId);
+                for (const p of (path || []))
+                    ids.push(String(p.StationCode || p.StopID || ""));
+            } catch (e) { /* keep the provider order */ }
+        }
+    }
+    if (!ids.length) return candidates;
+    const byId = new Map(candidates.map(s => [String(s.id), s]));
+    const seen = new Set();
+    const ordered = [];
+    for (const id of ids) {
+        const st = byId.get(id);
+        if (!st || seen.has(id)) continue;
+        seen.add(id);
+        ordered.push(st);
+    }
+    // Branch/partial patterns can omit stations; append those rather than
+    // hiding them, but keep the ordered part first.
+    for (const st of candidates) {
+        if (!seen.has(String(st.id))) ordered.push(st);
+    }
+    return ordered;
+}
+
 async function searchRouteStops(tab, routeId) {
     if (tab.kind === "bus") {
+        // Boston exposes one ordered stop group per direction.
+        if (typeof cityProvider().routeStops === "function") {
+            const groups = await cityProvider().routeStops(routeId).catch(() => []);
+            if (groups && groups.length) {
+                const group = groups.slice().sort((a, b) =>
+                    (b.stops || []).length - (a.stops || []).length)[0];
+                return (group.stops || []).map(s => ({
+                    id: String(s.StopID || s.id || ""),
+                    name: s.Name || s.name || "",
+                    routes: s.Routes || [],
+                    lat: Number(s.Lat), lon: Number(s.Lon),
+                })).filter(s => s.id);
+            }
+        }
         if (cityCfg().capabilities.routeStopsOnDemand &&
             typeof cityProvider().stopsForRoute === "function") {
             const list = await cityProvider().stopsForRoute(routeId);
-            return (list || []).map(s => ({
+            const candidates = (list || []).map(s => ({
                 id: String(s.StopID || s.id || s.Code || ""),
                 name: s.Name || s.name || "",
                 routes: s.Routes || [],
+                lat: Number(s.Lat), lon: Number(s.Lon),
             })).filter(s => s.id);
+            return orderSearchStops(tab, routeId, candidates);
         }
         const all = await loadStopDirectory();
-        return (all || [])
+        const candidates = (all || [])
             .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === String(routeId).toUpperCase()))
-            .map(s => ({ id: String(s.StopID), name: s.Name || "", routes: s.Routes || [] }));
+            .map(s => ({ id: String(s.StopID), name: s.Name || "", routes: s.Routes || [],
+                lat: Number(s.Lat), lon: Number(s.Lon) }));
+        return orderSearchStops(tab, routeId, candidates);
     }
     const all = await loadMetroStations();
-    return (all || [])
+    const candidates = (all || [])
         .filter(s => (s.Lines || []).includes(routeId))
-        .map(s => ({ id: String(s.Code), name: s.Name || "", lines: s.Lines || [] }));
+        .map(s => ({ id: String(s.Code), name: s.Name || "", lines: s.Lines || [],
+            lat: Number(s.Lat), lon: Number(s.Lon) }));
+    return orderSearchStops(tab, routeId, candidates);
 }
 
 // Non-bullet cities: size every route rectangle in the card grid to the
