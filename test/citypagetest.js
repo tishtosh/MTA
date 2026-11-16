@@ -415,6 +415,18 @@ async function settle(board) {
     String(nyc.els.searchTabs.innerHTML).includes("Commuter rail"));
   check(nres, "nyc: Search view lists lines",
     /data-search-route="/.test(String(nyc.els.searchList.innerHTML)));
+  const nSearchTab = nyc.sandbox.searchTabsList()[0];
+  const nSearchRoute = nyc.sandbox.searchRoutesFor(nSearchTab)[0];
+  nyc.sandbox.searchTab = nSearchTab.key;
+  nyc.sandbox.searchRouteId = nSearchRoute.id;
+  nyc.sandbox.renderSearchChrome();
+  const nSearchDetail = String(await settle(() => nyc.els.searchDetail.innerHTML));
+  check(nres, "nyc: Search routes are summary cards",
+    /class="search-card"/.test(String(nyc.els.searchList.innerHTML)) &&
+    !/class="search-row"/.test(String(nyc.els.searchList.innerHTML)) &&
+    /aria-pressed="true"/.test(String(nyc.els.searchList.innerHTML)));
+  check(nres, "nyc: Search stops render below the cards",
+    /class="stops"/.test(nSearchDetail) && /class="stop"/.test(nSearchDetail));
   nyc.sandbox.setCity("dc");
   await wait(150);
   check(nres, "nyc: city mark follows the switch",

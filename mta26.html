@@ -294,25 +294,37 @@
         .search-stop .name { font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .search-stop .badges { display: flex; gap: 3px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
         .search-stop .meta { color: #8a96a8; font-size: 10px; }
-        .search-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; }
-        @media (max-width: 700px) { .search-split { grid-template-columns: 1fr; } }
-        .search-list {
-            border: 1px solid #dee2e6; border-radius: 10px; background: #fff;
-            max-height: 60vh; overflow-y: auto;
+        /* First level: route summary cards; stops render underneath. */
+        .search-cards {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 8px; margin: 4px 0 12px; padding-right: 4px;
+            align-content: start; max-height: 46vh; overflow-y: auto;
         }
-        .search-row {
-            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-            border-top: 1px solid #f0f2f6; cursor: pointer;
+        .search-card {
+            display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+            min-width: 0; padding: 10px; border: 1px solid #dee2e6; border-radius: 10px;
+            background: #fff; color: inherit; cursor: pointer; text-align: left;
+            font: inherit;
         }
-        .search-row:first-child { border-top: 0; }
-        .search-row:hover { background: #f1f3f5; }
-        .search-row[aria-selected="true"] { background: #e8f0fe; }
-        .search-row .name { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .search-row .meta { margin-left: auto; color: #6c757d; font-size: 11px; white-space: nowrap; }
-        .search-row .chev { margin-left: auto; color: #8a96a8; font-size: 10px; }
+        .search-card:hover { background: #f1f3f5; }
+        .search-card:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .search-card[aria-pressed="true"] {
+            border-color: #0056b3; background: #f7fbff;
+            box-shadow: 0 0 0 2px rgba(0, 86, 179, .14);
+        }
+        .search-card .card-name {
+            max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-size: 12px; font-weight: 600; color: #33415c;
+        }
+        .search-card .card-more { margin-top: auto; font-size: 10px; color: #6c757d; }
+        @media (max-height: 700px) { .search-cards { max-height: 34vh; } }
         .search-detail {
             border: 1px solid #dee2e6; border-radius: 10px; background: #fbfcfe;
             padding: 12px; min-height: 140px;
+        }
+        .search-detail .stops {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 2px 14px; margin-top: 6px;
         }
         .search-detail h5 { margin: 0 0 2px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
         .search-detail .sub { color: #6c757d; font-size: 11px; margin: 0 0 8px; }
@@ -1373,10 +1385,8 @@
         <div id="searchTabs" class="search-tabs" role="tablist"></div>
         <div id="searchMeta" class="search-meta"></div>
         <div id="searchStopResults" class="search-stops"></div>
-        <div class="search-split">
-            <div id="searchList" class="search-list"></div>
-            <div id="searchDetail" class="search-detail"></div>
-        </div>
+        <div id="searchList" class="search-cards"></div>
+        <div id="searchDetail" class="search-detail"></div>
     </div>
 
     <!-- v5: route picture first — the stop (name + ID) and its next bus
@@ -6117,14 +6127,12 @@ async function renderSearchDetail(tab, route) {
         return;
     }
     if (token !== searchToken) return;
-    const shown = stops.slice(0, 12);
     gSearchDetail.innerHTML = `<h5>${title}</h5>`
-        + `<p class="sub">${stops.length} ${stops.length === 1 ? "stop" : "stops"}`
-        + (stops.length > shown.length ? ` · showing ${shown.length}` : "") + `</p>`
-        + (shown.length ? shown.map(s => `<div class="stop">`
+        + `<p class="sub">${stops.length} ${stops.length === 1 ? "stop" : "stops"}</p>`
+        + (stops.length ? `<div class="stops">` + stops.map(s => `<div class="stop">`
             + `${favStarHtml(tab.kind, s.id, s.name, route.id)}`
             + `<span class="dot" aria-hidden="true"></span>`
-            + `${favGotoHtml(tab.kind, s.id, s.name, stopName(s.name) || s.id)}</div>`).join("")
+            + `${favGotoHtml(tab.kind, s.id, s.name, stopName(s.name) || s.id)}</div>`).join("") + `</div>`
             : `<div class="search-empty">No stops returned.</div>`);
 }
 
@@ -6176,21 +6184,26 @@ function renderSearchChrome() {
 
     const chosen = routes.find(r => r.id === searchRouteId) || routes[0] || null;
     if (gSearchList) {
+        // Keep the card grid where the user left it when a card is selected;
+        // query/tab changes reset it to the top separately.
+        const cardScroll = gSearchList.scrollTop;
         gSearchList.innerHTML = routes.length
             ? routes.map(r => {
                 // The badge already carries the line name for rail; buses keep
                 // their description only when it adds something (not a number).
                 const label = tab.kind === "metro"
                     ? "" : (String(r.name || "").toLowerCase() === String(r.id).toLowerCase() ? "" : r.name);
-                return `<div class="search-row" role="button" tabindex="0"`
-                    + ` aria-label="${esc(r.name || r.id)}" title="${esc(r.name || r.id)}"`
-                    + ` aria-selected="${!!(chosen && r.id === chosen.id)}" data-search-route="${esc(r.id)}">`
+                const selected = !!(chosen && r.id === chosen.id);
+                return `<button type="button" class="search-card" data-search-route="${esc(r.id)}"`
+                    + ` aria-pressed="${selected}" title="${esc(r.name || r.id)}"`
+                    + ` aria-label="${esc(r.name || r.id)}">`
                     + `${searchBadge(tab, r)}`
-                    + (label ? `<span class="name">${esc(label)}</span>` : "")
-                    + `<span class="chev" aria-hidden="true">›</span></div>`;
+                    + (label ? `<span class="card-name">${esc(label)}</span>` : "")
+                    + `<span class="card-more">Stops ›</span></button>`;
             }).join("")
             : `<div class="search-empty">No ${esc(tab.label.toLowerCase())} matches`
                 + `${q ? ` “${esc(searchQuery.trim())}”` : ""}.</div>`;
+        gSearchList.scrollTop = cardScroll;
     }
     renderSearchDetail(tab, chosen);
 }
@@ -6338,6 +6351,7 @@ if (gBtnSearch) gBtnSearch.addEventListener("click", () => {
 });
 if (gSearchInput) gSearchInput.addEventListener("input", () => {
     searchQuery = gSearchInput.value;
+    if (gSearchList) gSearchList.scrollTop = 0;
     renderSearchChrome();
     scheduleBusStopSearch(searchQuery);
 });
@@ -6347,6 +6361,7 @@ if (gSearchClear) gSearchClear.addEventListener("click", () => {
     searchBusMatchQuery = "";
     clearTimeout(searchBusTimer);
     if (gSearchInput) { gSearchInput.value = ""; gSearchInput.focus(); }
+    if (gSearchList) gSearchList.scrollTop = 0;
     renderSearchChrome();
 });
 if (gSearchView) gSearchView.addEventListener("click", async e => {
@@ -6359,6 +6374,7 @@ if (gSearchView) gSearchView.addEventListener("click", async e => {
         searchBusMatchQuery = "";
         clearTimeout(searchBusTimer);
         if (gSearchInput) gSearchInput.value = "";
+        if (gSearchList) gSearchList.scrollTop = 0;
         await ensureSearchData();
         renderSearchChrome();
         return;
