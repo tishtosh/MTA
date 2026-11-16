@@ -260,6 +260,21 @@ async function settle(board) {
       (await prompt) === false &&
       london.els.cityConfirm.hidden === true &&
       london.sandbox.city === "london");
+    london.sandbox.navigator = {
+      geolocation: {
+        getCurrentPosition(ok) {
+          ok({ coords: { latitude: 40.75, longitude: -73.98 } });
+        },
+      },
+    };
+    const stayNear = london.sandbox.loadNearbyRows();
+    await wait(10);
+    (london.els.cityConfirmNo._l.click || []).forEach(f => f());
+    const stayed = await stayNear;
+    check(lres, "london: Nearby Stay still measures from the device point",
+      stayed.pos &&
+      Math.abs(stayed.pos.lat - 40.75) < 1e-6 &&
+      Math.abs(stayed.pos.lon + 73.98) < 1e-6);
   }
 
   // ── New York City (phase 0: subway only, no buses) ────────────────

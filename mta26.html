@@ -5947,18 +5947,13 @@ async function loadNearbyRows(anchor) {
     // Remember the device point: a manual city switch re-renders Nearby
     // around it (not the new city centre), so distances stay "from me".
     if (!anchor) lastNearbyPos = { lat: pos.lat, lon: pos.lon };
-    // Device-driven Nearby may belong to another city. Confirm first; staying
-    // put searches around the selected city's centre instead of mixing the
-    // device coordinates with the wrong provider.
+    // Device-driven Nearby may belong to another city. Confirm before
+    // swapping the page; declining keeps the selected city but still measures
+    // from the device point, so the results stay "near me".
     if (!anchor) {
         const targetCity = nearestCity(pos.lat, pos.lon);
-        if (targetCity !== city) {
-            if (await askNearbyCityChange(targetCity)) {
-                setCity(targetCity, { keepPanel: true, keepView: true });
-            } else {
-                pos = cityHome();
-            }
-        }
+        if (targetCity !== city && await askNearbyCityChange(targetCity))
+            setCity(targetCity, { keepPanel: true, keepView: true });
     }
     try {
         const [busStops, stations] = await Promise.all([
