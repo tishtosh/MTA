@@ -312,7 +312,8 @@
         .search-route .fav-badge { align-self: center; }
         /* First level: route summary cards; stops render underneath. */
         .search-cards {
-            display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 10px;
+            display: flex; flex-wrap: wrap; row-gap: 2px; column-gap: 0;
+            margin: 2px 0 10px;
             align-content: flex-start; max-height: 46vh; overflow-y: auto;
         }
         .search-card {
@@ -327,10 +328,10 @@
         }
         .search-card:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .search-card .card-route {
-            display: flex; align-items: center; gap: 3px; min-width: 0;
+            display: flex; align-items: center; gap: 0; min-width: 0;
         }
         .search-card .card-open {
-            flex: none; margin-left: auto; color: #8a96a8; font-size: 10px;
+            flex: none; margin-left: 1px; color: #8a96a8; font-size: 8px;
             transform: rotate(-90deg);
         }
         /* Non-bullet cities: every route rectangle in the card grid gets the
@@ -1128,12 +1129,9 @@
         .city-menu-item:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .city-menu-item.active { font-weight: 700; color: #2e7d32; }
         .city-menu-item .city-menu-check { margin-left: auto; font-size: 11px; }
-        .city-menu-caret { margin-left: auto; font-size: 10px; transition: transform .15s ease; }
-        .city-menu-item[aria-expanded="true"] .city-menu-caret { transform: rotate(180deg); }
         .city-settings {
-            display: flex; flex-direction: column; gap: 6px; padding: 4px 2px 2px;
+            display: flex; flex-direction: column; gap: 6px; padding: 2px 0 0;
         }
-        .city-settings[hidden] { display: none; }
         .city-settings .fav-setting { padding: 6px; background: #f8f9fa; font-size: 12px; }
         .city-settings .fav-city-select { max-width: 128px; }
         .city-menu-sep { height: 1px; margin: 6px 4px; background: #e9ecef; }
@@ -1325,12 +1323,8 @@
         <div class="city-menu-label">City</div>
         <div id="cityMenuList" class="city-menu-list"></div>
         <div class="city-menu-sep"></div>
-        <button type="button" id="cityMenuSettings" class="city-menu-item" role="menuitem"
-                aria-expanded="false" aria-controls="citySettings">
-            <i class="icon icon-settings" aria-hidden="true"></i> Settings
-            <i class="icon icon-chevron-down city-menu-caret" aria-hidden="true"></i>
-        </button>
-        <div id="citySettings" class="city-settings" hidden>
+        <div class="city-menu-label">Settings</div>
+        <div id="citySettings" class="city-settings">
             <div class="fav-setting fav-setting-static">
                 <i class="icon icon-map-pin" aria-hidden="true"></i>
                 <label class="fav-setting-name" for="mapsSelect">Maps app</label>
@@ -2066,8 +2060,6 @@ const gClearLikes = document.getElementById("btnClearLikes");
 const gCityMark = document.getElementById("cityMark");
 const gCityMenu = document.getElementById("cityMenu");
 const gCityMenuList = document.getElementById("cityMenuList");
-const gCityMenuSettings = document.getElementById("cityMenuSettings");
-const gCitySettings = document.getElementById("citySettings");
 const gCityConfirm = document.getElementById("cityConfirm");
 const gCityConfirmText = document.getElementById("cityConfirmText");
 const gCityConfirmYes = document.getElementById("cityConfirmYes");
@@ -6556,11 +6548,6 @@ if (gCityMenu) gCityMenu.addEventListener("click", e => {
     setCityMenuOpen(false);
     if (item.dataset.city !== city) setCity(item.dataset.city);
 });
-if (gCityMenuSettings) gCityMenuSettings.addEventListener("click", () => {
-    const open = gCitySettings ? gCitySettings.hidden : false;
-    if (gCitySettings) gCitySettings.hidden = !open;
-    gCityMenuSettings.setAttribute("aria-expanded", open ? "true" : "false");
-});
 if (gBtnNearby) gBtnNearby.addEventListener("click", () => {
     setCityMenuOpen(false);
     renderNearbyView();
@@ -7890,7 +7877,6 @@ function tickClock() {
 
     if (refreshInFlight) {
         state = "fetching"; pill = "Updating";
-        meta = "updating…";
     } else if (!refreshEnabled) {
         state = "paused"; pill = "Paused";
         meta = "auto-refresh off";
