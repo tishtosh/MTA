@@ -469,6 +469,9 @@ async function settle(board) {
   check(nres, "nyc: leaving Search clears the text field",
     nyc.els.searchInput.value === "");
   await nyc.sandbox.showSearchView();
+  check(nres, "nyc: leaving Search clears the selected route",
+    !/aria-pressed="true"/.test(String(nyc.els.searchList.innerHTML)) &&
+    /Select a line/.test(String(nyc.els.searchDetail.innerHTML)));
   nyc.sandbox.setCity("dc");
   await wait(150);
   check(nres, "nyc: city mark follows the switch",

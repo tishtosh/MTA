@@ -6380,6 +6380,7 @@ function renderSearchChrome() {
             }).join("");
             return `<div class="search-stop" role="button" tabindex="0"`
                 + ` data-search-stop-kind="${esc(st.kind)}" data-search-stop-id="${esc(st.id)}"`
+                + ` data-search-stop-name="${esc(st.name || "")}"`
                 + ` data-search-stop-line="${esc((st.lines || [])[0] || "")}">`
                 + `${favStarHtml(st.kind, st.id, st.name, (st.lines || [])[0] || "")}`
                 + `<span class="name">${esc(stopName(st.name) || st.id)}</span>`
@@ -6425,6 +6426,7 @@ async function selectSearchRoute(kind, line) {
 
 function clearSearchField() {
     searchQuery = "";
+    searchRouteId = "";
     searchBusMatches = [];
     searchBusMatchQuery = "";
     searchBusToken++;
@@ -6637,8 +6639,9 @@ if (gSearchView) gSearchView.addEventListener("click", async e => {
     }
     const stopRow = e.target.closest ? e.target.closest("[data-search-stop-id]") : null;
     if (stopRow) {
-        await selectSearchRoute(stopRow.dataset.searchStopKind,
-            stopRow.dataset.searchStopLine || "");
+        e.preventDefault();
+        await gotoLike(stopRow.dataset.searchStopKind,
+            stopRow.dataset.searchStopId, stopRow.dataset.searchStopName || "");
     }
 });
 if (document.addEventListener) {
