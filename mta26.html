@@ -452,11 +452,12 @@
 
         /* Auto-refresh meter: ring + pill beside the status line. */
         .choose-stop-row {
-            flex: 0 0 100%; width: 100%; padding: 0 0 4px;
-            text-align: center; color: #6c757d;
+            flex: 0 0 100%; width: 100%; padding: 0 12px 4px;
+            text-align: left; color: #6c757d;
             font: 600 11px/1.4 system-ui, -apple-system, sans-serif;
         }
         .choose-stop-row[hidden] { display: none; }
+        .refresh-pill[hidden] { display: none; }
         .refresh-cue {
             display: flex; flex-direction: column; align-items: center; gap: 2px;
         }
@@ -515,7 +516,8 @@
         }
         /* A healthy live feed needs no badge: keep the pill for paused,
            retrying, updating, and idle states only. */
-        .refresh-cue.live .refresh-pill { display: none; }
+        .refresh-cue.live .refresh-pill,
+        .refresh-cue.idle .refresh-pill { display: none; }
         .refresh-cue.fetching .refresh-pill {
             background: #bbdefb; color: #0d47a1;
         }
@@ -1317,7 +1319,7 @@
                 </div>
             </div>
         </div>
-        <div id="chooseStopRow" class="choose-stop-row" hidden>Choose a stop</div>
+        <div id="chooseStopRow" class="container choose-stop-row" hidden>Choose a stop for updates</div>
     </nav>
     <div id="cityMenu" class="city-menu" role="menu" hidden>
         <div class="city-menu-label">City</div>
@@ -3792,9 +3794,9 @@ function setCity(next, opts) {
         favNearToken++;
         closeFavPanel();
     }
-    // A manual city change always lands on Likes. The Nearby flow opts out
+    // A manual city change always lands on Home. The Nearby flow opts out
     // with keepView so its caller can repaint around the same device point.
-    if (!keepView) renderBookmarkList("fav");
+    if (!keepView) renderBookmarkList("home");
 }
 
 async function runMetro() {
@@ -7922,7 +7924,10 @@ function tickClock() {
             String(RING_CIRCUMFERENCE * (1 - frac));
     }
     if (gRefreshCue) gRefreshCue.className = `refresh-cue ${state}`;
-    if (gRefreshPill) gRefreshPill.className = "refresh-pill";
+    if (gRefreshPill) {
+        gRefreshPill.className = "refresh-pill";
+        gRefreshPill.hidden = chooseStop;
+    }
     if (gRefreshPillText) gRefreshPillText.textContent = pill;
     if (gClockMeta) gClockMeta.textContent = meta;
     if (gChooseStopRow) gChooseStopRow.hidden = !chooseStop;
