@@ -46,7 +46,7 @@ vm.createContext(sandbox);
 vm.runInContext(
   ['const ROUTE_COLORS = ["#c62828","#1565c0","#2e7d32","#ef6c00","#6a1b9a","#00838f","#ad1457","#5d4037","#455a64","#827717","#37474f","#9e9d24"];', "const stopScheduleCache = {};", "let shortcuts = {};",
    'const SHORTCUT_SLOTS = ["home", "work", "airport", "fav"];',
-   extractFn("iconHtml"), extractFn("shortcutLabel"), extractFn("isLike"),
+   extractFn("iconHtml"), extractFn("shortcutLabel"), extractFn("shortcutIcon"), extractFn("isLike"),
    "function slotHas(kind, slot, id){ const v = shortcuts[slot]; const list = !v ? [] : (Array.isArray(v) ? v : (v.id ? [v] : [])); return list.some(e => String(e.id) === String(id)); }",
    extractFn("shortcutButtonsHtml"),
    "function cityCfg(){ return { defaultStopId: '1002135' }; }",

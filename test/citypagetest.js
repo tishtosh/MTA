@@ -431,7 +431,8 @@ async function settle(board) {
     !/card-more/.test(String(nyc.els.searchList.innerHTML)));
   check(nres, "nyc: Search stops render below the cards",
     /class="stops"/.test(nSearchDetail) && /class="stop"/.test(nSearchDetail) &&
-    !/class="dot"/.test(nSearchDetail));
+    /class="fav-conns"/.test(nSearchDetail) &&
+    /data-goto-id="/.test(nSearchDetail) && !/class="dot"/.test(nSearchDetail));
   nyc.els.searchInput.value = "times";
   (nyc.els.searchInput._l.input || []).forEach(fn => fn());
   check(nres, "nyc: typing a stop hides the route list and detail",
@@ -443,8 +444,10 @@ async function settle(board) {
   check(nres, "nyc: text search lists matching routes as result lines",
     /class="search-stop search-route"/.test(nRouteLines) &&
     /data-search-line="A"/.test(nRouteLines));
-  nyc.els.searchInput.value = "";
-  (nyc.els.searchInput._l.input || []).forEach(fn => fn());
+  nyc.sandbox.showBoardView();
+  check(nres, "nyc: leaving Search clears the text field",
+    nyc.els.searchInput.value === "");
+  await nyc.sandbox.showSearchView();
   nyc.sandbox.setCity("dc");
   await wait(150);
   check(nres, "nyc: city mark follows the switch",

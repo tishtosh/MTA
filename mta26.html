@@ -43,7 +43,6 @@
         .icon-chevron-down { --icon: url("img/icons/chevron-down.svg"); }
         .icon-circle-arrow-left { --icon: url("img/icons/circle-arrow-left.svg"); }
         .icon-home { --icon: url("img/icons/home.svg"); }
-        .icon-building-factory-2 { --icon: url("img/icons/building-factory-2.svg"); }
         .icon-plane-departure { --icon: url("img/icons/plane-departure.svg"); }
         .icon-heart { --icon: url("img/icons/heart.svg"); }
         .icon-heart-filled { --icon: url("img/icons/heart-filled.svg"); }
@@ -349,11 +348,16 @@
             padding: 12px; min-height: 140px;
         }
         .search-detail .stops {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 2px 14px; margin-top: 6px;
+            display: flex; flex-direction: column; gap: 2px; margin-top: 6px;
         }
+        .search-detail .stop .fav-conns { flex: none; max-width: 55%; }
         .search-detail .sub { color: #6c757d; font-size: 11px; margin: 0 0 8px; }
-        .search-detail .stop { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0; color: #33415c; }
+        .search-detail .stop {
+            display: flex; align-items: center; gap: 8px; font-size: 12px;
+            padding: 4px 0; border-radius: 6px; color: #33415c; cursor: pointer;
+        }
+        .search-detail .stop:hover { background: #eef4ff; }
+        .search-detail .stop:hover .fav-goto { text-decoration: underline; }
         .search-empty { padding: 10px; color: #6c757d; font-size: 12px; }
         .bookmark-list { gap: 8px; margin-top: 0; }
         .hero-card.bookmark-card {
@@ -1274,7 +1278,7 @@
                     <i class="icon icon-home icon-xl" aria-hidden="true"></i>
                 </button>
                 <button id="btnWork" class="navicon nav-shortcut" title="Work stop" aria-label="Go to work stop">
-                    <i class="icon icon-building-factory-2 icon-xl" aria-hidden="true"></i>
+                    <i class="icon icon-briefcase icon-xl" aria-hidden="true"></i>
                 </button>
                 <button id="btnAirport" class="navicon nav-shortcut" title="Airport stops" aria-label="Show airport stops">
                     <i class="icon icon-plane-departure icon-xl" aria-hidden="true"></i>
@@ -1817,6 +1821,12 @@ function toggleBookmarkCardSlot(kind, id, name, route, slot) {
 function shortcutLabel(slot) {
     return slot === "home" ? "Home" : slot === "work" ? "Work"
         : slot === "airport" ? "Airport" : "Like";
+}
+
+// One Tabler icon per shortcut slot, shared by the top bar and every
+// bookmark/shortcut button.
+function shortcutIcon(slot) {
+    return slot === "home" ? "home" : slot === "work" ? "briefcase" : "plane-departure";
 }
 
 // ── Multi-likes from the Add Like panel ───────────────────────
@@ -5508,7 +5518,7 @@ function bmSlotHtml(row, slot) {
     const on = slotHas(row.kind, slot, row.id);
     const label = shortcutLabel(slot);
     const text = on ? `Clear ${label} bookmark` : `Save as ${label}`;
-    const icon = slot === "home" ? "home" : slot === "work" ? "briefcase" : "plane-departure";
+    const icon = shortcutIcon(slot);
     return `<button type="button" class="board-shortcut bm-slot${on ? " active" : ""}"`
         + ` data-bookmark-slot="${slot}" data-fav-kind="${esc(row.kind)}"`
         + ` data-fav-id="${esc(row.id)}" data-fav-name="${esc(row.name || "")}"`
@@ -5796,7 +5806,7 @@ async function renderBookmarkList(slot) {
             : `<div class="fav-empty">no ${slot === "fav" ? "likes" : label.toLowerCase() + " bookmark"} saved yet</div>`;
     }
     if (gBookmarkView) gBookmarkView.hidden = false;
-    if (gSearchView) gSearchView.hidden = true;
+    if (gSearchView) { gSearchView.hidden = true; clearSearchField(); }
     if (gViewArrivals) gViewArrivals.hidden = true;
     scrollPageTop();
     if (rows.length) fillBookmarkArrivals(rows, token);
@@ -5806,7 +5816,7 @@ function showBoardView() {
     bookmarkSlot = null;
     bookmarkToken++;
     if (gBookmarkView) gBookmarkView.hidden = true;
-    if (gSearchView) gSearchView.hidden = true;
+    if (gSearchView) { gSearchView.hidden = true; clearSearchField(); }
     if (gViewArrivals) gViewArrivals.hidden = false;
 }
 
@@ -5987,7 +5997,7 @@ async function renderNearbyView(anchor) {
     enterScreen({ type: "nearby" });
     if (gBookmarkTitle) gBookmarkTitle.textContent = "Nearby";
     if (gBookmarkView) gBookmarkView.hidden = false;
-    if (gSearchView) gSearchView.hidden = true;
+    if (gSearchView) { gSearchView.hidden = true; clearSearchField(); }
     if (gViewArrivals) gViewArrivals.hidden = true;
     scrollPageTop();
     if (!gBookmarkList) return;
@@ -6087,7 +6097,8 @@ function searchRoutesFor(tab) {
     if (!tab) return [];
     if (tab.kind === "bus") {
         return (busRouteDirectory || []).map(r => ({
-            id: r.id, name: r.desc || r.name || r.id, kind: "bus",
+            id: r.id, name: r.desc || r.name || r.id,
+            desc: r.desc || "", kind: "bus",
         }));
     }
     return cityTheme().metroLineIds()
@@ -6097,18 +6108,19 @@ function searchRoutesFor(tab) {
 
 // Text search spans all sections: bus, rail and commuter matches are shown
 // together as result lines even when another tab is selected.
-function searchRoutesForQuery(q, busRouteHits) {
+function searchRouteText(r) {
+    return `${r.id || ""} ${r.name || ""} ${r.desc || ""}`.toLowerCase();
+}
+
+function searchRoutesForQuery(q) {
     const hits = [];
     const seen = new Set();
     for (const t of searchTabsList()) {
         for (const r of searchRoutesFor(t)) {
             const key = `${t.key}:${r.id}`;
-            if (seen.has(key)) continue;
-            if (`${r.id} ${r.name}`.toLowerCase().includes(q) ||
-                (t.kind === "bus" && busRouteHits.has(r.id))) {
-                seen.add(key);
-                hits.push({ id: r.id, name: r.name, kind: r.kind, tab: t });
-            }
+            if (seen.has(key) || !searchRouteText(r).includes(q)) continue;
+            seen.add(key);
+            hits.push({ id: r.id, name: r.name, desc: r.desc || "", tab: t });
         }
     }
     return hits;
@@ -6151,17 +6163,18 @@ async function searchRouteStops(tab, routeId) {
             return (list || []).map(s => ({
                 id: String(s.StopID || s.id || s.Code || ""),
                 name: s.Name || s.name || "",
+                routes: s.Routes || [],
             })).filter(s => s.id);
         }
         const all = await loadStopDirectory();
         return (all || [])
             .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === String(routeId).toUpperCase()))
-            .map(s => ({ id: String(s.StopID), name: s.Name || "" }));
+            .map(s => ({ id: String(s.StopID), name: s.Name || "", routes: s.Routes || [] }));
     }
     const all = await loadMetroStations();
     return (all || [])
         .filter(s => (s.Lines || []).includes(routeId))
-        .map(s => ({ id: String(s.Code), name: s.Name || "" }));
+        .map(s => ({ id: String(s.Code), name: s.Name || "", lines: s.Lines || [] }));
 }
 
 // Non-bullet cities: size every route rectangle in the card grid to the
@@ -6213,10 +6226,22 @@ async function renderSearchDetail(tab, route) {
         return;
     }
     if (token !== searchToken) return;
+    const connHtml = st => {
+        const all = (tab.kind === "bus" ? st.routes : st.lines) || [];
+        const skip = String(route.id).toUpperCase();
+        const others = all.filter(r => String(r).toUpperCase() !== skip).slice(0, 4);
+        return others.length
+            ? `<span class="fav-conns">`
+                + others.map(r => favBadgeHtml(tab.kind, r)).join("") + `</span>`
+            : "";
+    };
     gSearchDetail.innerHTML = stops.length
-        ? `<div class="stops">` + stops.map(s => `<div class="stop">`
+        ? `<div class="stops">` + stops.map(s => `<div class="stop" role="button" tabindex="0"`
+            + ` data-goto-kind="${esc(tab.kind)}" data-goto-id="${esc(s.id)}"`
+            + ` data-goto-name="${esc(s.name || "")}">`
             + `${favStarHtml(tab.kind, s.id, s.name, route.id)}`
-            + `${favGotoHtml(tab.kind, s.id, s.name, stopName(s.name) || s.id)}</div>`).join("") + `</div>`
+            + `${favGotoHtml(tab.kind, s.id, s.name, stopName(s.name) || s.id)}`
+            + `${connHtml(s)}</div>`).join("") + `</div>`
         : `<div class="search-empty">No stops returned.</div>`;
 }
 
@@ -6237,12 +6262,8 @@ function renderSearchChrome() {
     if (gSearchList) gSearchList.hidden = !!q;
     if (gSearchDetail) gSearchDetail.hidden = !!q;
     const all = searchRoutesFor(tab);
-    const busRouteHits = new Set((searchBusMatchQuery === q ? searchBusMatches : [])
-        .flatMap(st => st.lines || []));
-    const routes = q
-        ? all.filter(r => `${r.id} ${r.name}`.toLowerCase().includes(q) || busRouteHits.has(r.id))
-        : all;
-    const routeMatches = q ? searchRoutesForQuery(q, busRouteHits) : [];
+    const routes = q ? all.filter(r => searchRouteText(r).includes(q)) : all;
+    const routeMatches = q ? searchRoutesForQuery(q) : [];
 
     // While typing, matching routes use the same compact row format as the
     // stop matches instead of the summary cards.
@@ -6322,6 +6343,15 @@ async function selectSearchRoute(kind, line) {
     if (gSearchList) gSearchList.scrollTop = 0;
     await ensureSearchData();
     renderSearchChrome();
+}
+
+function clearSearchField() {
+    searchQuery = "";
+    searchBusMatches = [];
+    searchBusMatchQuery = "";
+    searchBusToken++;
+    clearTimeout(searchBusTimer);
+    if (gSearchInput) gSearchInput.value = "";
 }
 
 async function showSearchView() {
@@ -6511,6 +6541,13 @@ if (gSearchView) gSearchView.addEventListener("click", async e => {
     if (go && go.dataset.favId) {
         e.preventDefault();
         await gotoLike(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
+        return;
+    }
+    const routeStop = e.target.closest ? e.target.closest(".search-detail .stop") : null;
+    if (routeStop && routeStop.dataset.gotoId) {
+        e.preventDefault();
+        await gotoLike(routeStop.dataset.gotoKind, routeStop.dataset.gotoId,
+            routeStop.dataset.gotoName);
         return;
     }
     const lineBtn = e.target.closest ? e.target.closest("[data-search-line]") : null;
@@ -7357,7 +7394,7 @@ function shortcutButtonsHtml(id) {
         return `<button type="button" class="board-shortcut${on ? " active" : ""}"`
             + ` data-shortcut="${slot}" aria-pressed="${on ? "true" : "false"}"`
             + ` title="${text}" aria-label="${text}">`
-            + iconHtml(slot === "home" ? "home" : slot === "work" ? "briefcase" : "plane-departure")
+            + iconHtml(shortcutIcon(slot))
             + `</button>`;
     }).join("") + `</div>`;
 }
