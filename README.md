@@ -29,10 +29,10 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 - Bookmark cards can be dragged by their bus/train/commuter icon to reorder them. Likes, Home,
   Work, and Airport each keep their own order per city.
 - Airports are seeded per city with a bus stop and a rail station.
-- **Search** (magnifier) opens a main page with **Bus**, the city's rail section
-  (**Metro** / **Subway** / **Tube**) and **Commuter rail** tabs, a stop-or-line
-  filter, the matching routes as summary cards, and the selected route's stops in a
-  grid below the cards.
+- **Search** (magnifier) opens a main page with the title and search field on one
+  row, icon tabs for **Bus**, the city's rail section (**Metro** / **Subway** /
+  **Tube**) and **Commuter rail**, then the matching routes as summary cards with
+  the selected route's stops in a grid below the cards.
 - **Find** (chevron) opens the quick dropdown with the same Bus / rail / commuter
   sections. Settings is only reachable from the city menu: the **Maps app** choice
   (**Apple Maps** or **Google Maps**, default Google), the **Nearby radius**

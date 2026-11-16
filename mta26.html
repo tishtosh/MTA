@@ -261,6 +261,11 @@
         /* Search view: tabs + line list + stop detail. */
         .search-view { margin: 8px 2px 18px; }
         .search-view[hidden] { display: none; }
+        .search-head {
+            display: flex; align-items: center; gap: 12px; margin: 0 0 8px;
+        }
+        .search-head .bookmark-title { flex: none; margin: 0; }
+        .search-head .search-bar { flex: 1; min-width: 0; }
         .search-bar {
             display: flex; align-items: center; gap: 8px;
             padding: 8px 12px; background: #fff;
@@ -278,12 +283,15 @@
             background: #eef1f5; border-radius: 8px;
         }
         .search-tabs button {
-            flex: 1; border: 0; background: none; border-radius: 6px; padding: 8px 10px;
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            min-height: 34px; border: 0; background: none; border-radius: 6px; padding: 6px 10px;
             font: 600 12px/1.2 system-ui, -apple-system, sans-serif; color: #4a576b; cursor: pointer;
         }
         .search-tabs button[aria-selected="true"] {
             background: #fff; color: #182338; box-shadow: 0 1px 2px rgba(16, 24, 40, .12);
         }
+        .search-tabs .mode-svg { width: 18px; height: 18px; display: block; }
+        .search-tabs .icon { font-size: 17px; }
         .search-meta { font-size: 12px; color: #6c757d; margin: 0 0 6px; }
         .search-stops { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
         .search-stop {
@@ -296,12 +304,12 @@
         .search-stop .meta { color: #8a96a8; font-size: 10px; }
         /* First level: route summary cards; stops render underneath. */
         .search-cards {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
             gap: 8px; margin: 4px 0 12px; padding-right: 4px;
             align-content: start; max-height: 46vh; overflow-y: auto;
         }
         .search-card {
-            display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+            display: flex; align-items: center;
             min-width: 0; padding: 10px; border: 1px solid #dee2e6; border-radius: 10px;
             background: #fff; color: inherit; cursor: pointer; text-align: left;
             font: inherit;
@@ -312,11 +320,25 @@
             border-color: #0056b3; background: #f7fbff;
             box-shadow: 0 0 0 2px rgba(0, 86, 179, .14);
         }
-        .search-card .card-name {
-            max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-            font-size: 12px; font-weight: 600; color: #33415c;
+        .search-card .card-route {
+            display: flex; align-items: center; gap: 6px; min-width: 0; width: 100%;
         }
-        .search-card .card-more { margin-top: auto; font-size: 10px; color: #6c757d; }
+        .search-card .card-name {
+            min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; font-size: 12px; font-weight: 600; color: #33415c;
+        }
+        .search-card .card-open {
+            flex: none; margin-left: auto; color: #8a96a8; font-size: 10px;
+            transform: rotate(-90deg);
+        }
+        /* Non-bullet cities: every route rectangle in the card grid gets the
+           width of the longest line name, so the badges line up. NYC keeps its
+           circles/diamonds, and commuter rectangles keep their snap widths. */
+        .search-cards .fav-badge.line {
+            width: var(--search-badge-w, auto);
+            min-width: var(--search-badge-w, 62px);
+            max-width: var(--search-badge-w, 118px);
+        }
         @media (max-height: 700px) { .search-cards { max-height: 34vh; } }
         .search-detail {
             border: 1px solid #dee2e6; border-radius: 10px; background: #fbfcfe;
@@ -329,7 +351,6 @@
         .search-detail h5 { margin: 0 0 2px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
         .search-detail .sub { color: #6c757d; font-size: 11px; margin: 0 0 8px; }
         .search-detail .stop { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0; color: #33415c; }
-        .search-detail .stop .dot { width: 6px; height: 6px; border-radius: 50%; background: #9aa7bb; flex: none; }
         .search-empty { padding: 10px; color: #6c757d; font-size: 12px; }
         .bookmark-list { gap: 8px; margin-top: 0; }
         .hero-card.bookmark-card {
@@ -1372,15 +1393,17 @@
         <div id="bookmarkList" class="fav-list bookmark-list"></div>
     </div>
 
-    <!-- Search: Bus / rail / commuter tabs, search by stop or line, and a
-         detail pane with the selected route's stops. -->
+    <!-- Search: icon tabs, search by stop or line, route cards and the
+         selected route's stop grid below the cards. -->
     <div id="searchView" class="search-view" hidden>
-        <h4 class="bookmark-title">Search</h4>
-        <div class="search-bar">
-            <i class="icon icon-search" aria-hidden="true"></i>
-            <input id="searchInput" type="search" placeholder="Search a stop or line…"
-                   aria-label="Search a stop or line" autocomplete="off">
-            <button type="button" id="searchClear" class="search-clear" aria-label="Clear search">✕</button>
+        <div class="search-head">
+            <h4 class="bookmark-title">Search</h4>
+            <div class="search-bar">
+                <i class="icon icon-search" aria-hidden="true"></i>
+                <input id="searchInput" type="search" placeholder="Search a stop or line…"
+                       aria-label="Search a stop or line" autocomplete="off">
+                <button type="button" id="searchClear" class="search-clear" aria-label="Clear search">✕</button>
+            </div>
         </div>
         <div id="searchTabs" class="search-tabs" role="tablist"></div>
         <div id="searchMeta" class="search-meta"></div>
@@ -5794,7 +5817,8 @@ function showBookmarkList(slot) {
 }
 
 function syncFavStars() {
-    const scope = [gFavPanel, gBookmarkList, gLinesScroll, gBoardHeader].filter(Boolean);
+    const scope = [gFavPanel, gBookmarkList, gLinesScroll, gBoardHeader, gSearchView]
+        .filter(Boolean);
     for (const root of scope) root.querySelectorAll(".fav-star").forEach(star => {
         const on = isLike(star.dataset.favKind, star.dataset.favId);
         star.classList.toggle("active", on);
@@ -6106,6 +6130,38 @@ async function searchRouteStops(tab, routeId) {
         .map(s => ({ id: String(s.Code), name: s.Name || "" }));
 }
 
+// Non-bullet cities: size every route rectangle in the card grid to the
+// longest line name so the cards align. NYC's circles/diamonds and the
+// commuter snap widths are design guidelines and stay untouched (the CSS
+// only targets .fav-badge.line).
+function applySearchBadgeWidth(root) {
+    if (!root || !root.querySelectorAll) return;
+    const badges = [...root.querySelectorAll(".fav-badge.line")];
+    if (!badges.length) return;
+    let max = 0;
+    let ctx = null;
+    if (typeof getComputedStyle === "function") {
+        try {
+            const canvas = document.createElement("canvas");
+            ctx = canvas.getContext && canvas.getContext("2d");
+        } catch (e) { ctx = null; }
+    }
+    for (const el of badges) {
+        const text = String(el.textContent || "").trim();
+        if (ctx) {
+            const st = getComputedStyle(el);
+            ctx.font = `${st.fontWeight} ${st.fontSize} ${st.fontFamily}`;
+            max = Math.max(max, ctx.measureText(text).width);
+        } else {
+            max = Math.max(max, text.length * 7.2);
+        }
+    }
+    const width = Math.max(62, Math.min(118, Math.ceil(max) + 12)) + "px";
+    if (root.style && typeof root.style.setProperty === "function")
+        root.style.setProperty("--search-badge-w", width);
+    else if (root.style) root.style["--search-badge-w"] = width;
+}
+
 async function renderSearchDetail(tab, route) {
     const token = ++searchToken;
     if (!gSearchDetail) return;
@@ -6131,7 +6187,6 @@ async function renderSearchDetail(tab, route) {
         + `<p class="sub">${stops.length} ${stops.length === 1 ? "stop" : "stops"}</p>`
         + (stops.length ? `<div class="stops">` + stops.map(s => `<div class="stop">`
             + `${favStarHtml(tab.kind, s.id, s.name, route.id)}`
-            + `<span class="dot" aria-hidden="true"></span>`
             + `${favGotoHtml(tab.kind, s.id, s.name, stopName(s.name) || s.id)}</div>`).join("") + `</div>`
             : `<div class="search-empty">No stops returned.</div>`);
 }
@@ -6141,7 +6196,11 @@ function renderSearchChrome() {
     if (!tabs.some(t => t.key === searchTab)) searchTab = tabs[0] && tabs[0].key;
     const tab = tabs.find(t => t.key === searchTab) || tabs[0];
     if (gSearchTabs) gSearchTabs.innerHTML = tabs.map(t =>
-        `<button type="button" role="tab" data-search-tab="${t.key}" aria-selected="${t.key === searchTab}">${esc(t.label)}</button>`
+        `<button type="button" role="tab" data-search-tab="${t.key}"`
+        + ` aria-selected="${t.key === searchTab}"`
+        + ` aria-label="${esc(t.label)}" title="${esc(t.label)}">`
+        + modeIconHtml(t.kind === "metro", t.key === "commuter")
+        + `</button>`
     ).join("");
     if (!tab) return;
 
@@ -6172,6 +6231,7 @@ function renderSearchChrome() {
             return `<div class="search-stop" role="button" tabindex="0"`
                 + ` data-search-stop-kind="${esc(st.kind)}" data-search-stop-id="${esc(st.id)}"`
                 + ` data-search-stop-line="${esc((st.lines || [])[0] || "")}">`
+                + `${favStarHtml(st.kind, st.id, st.name, (st.lines || [])[0] || "")}`
                 + `<span class="name">${esc(stopName(st.name) || st.id)}</span>`
                 + `<span class="badges">${badges}</span><span class="meta">›</span></div>`;
         }).join("");
@@ -6197,12 +6257,14 @@ function renderSearchChrome() {
                 return `<button type="button" class="search-card" data-search-route="${esc(r.id)}"`
                     + ` aria-pressed="${selected}" title="${esc(r.name || r.id)}"`
                     + ` aria-label="${esc(r.name || r.id)}">`
-                    + `${searchBadge(tab, r)}`
+                    + `<span class="card-route">${searchBadge(tab, r)}`
                     + (label ? `<span class="card-name">${esc(label)}</span>` : "")
-                    + `<span class="card-more">Stops ›</span></button>`;
+                    + `<i class="icon icon-chevron-down card-open" aria-hidden="true"></i>`
+                    + `</span></button>`;
             }).join("")
             : `<div class="search-empty">No ${esc(tab.label.toLowerCase())} matches`
                 + `${q ? ` “${esc(searchQuery.trim())}”` : ""}.</div>`;
+        applySearchBadgeWidth(gSearchList);
         gSearchList.scrollTop = cardScroll;
     }
     renderSearchDetail(tab, chosen);
@@ -6385,23 +6447,8 @@ if (gSearchView) gSearchView.addEventListener("click", async e => {
         renderSearchChrome();
         return;
     }
-    const stopRow = e.target.closest ? e.target.closest("[data-search-stop-id]") : null;
-    if (stopRow) {
-        const kind = stopRow.dataset.searchStopKind;
-        const line = stopRow.dataset.searchStopLine || "";
-        if (kind === "bus") {
-            searchTab = "bus";
-            searchRouteId = line;
-        } else {
-            searchTab = isCommuterRoute(line) ? "commuter" : "metro";
-            searchRouteId = line;
-        }
-        searchQuery = "";
-        if (gSearchInput) gSearchInput.value = "";
-        await ensureSearchData();
-        renderSearchChrome();
-        return;
-    }
+    // The heart and the stop-name link sit inside the clickable stop row,
+    // so handle them before the row navigation.
     const star = e.target.closest ? e.target.closest(".fav-star") : null;
     if (star) {
         e.preventDefault();
@@ -6415,6 +6462,24 @@ if (gSearchView) gSearchView.addEventListener("click", async e => {
     if (go && go.dataset.favId) {
         e.preventDefault();
         await gotoLike(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
+        return;
+    }
+    const stopRow = e.target.closest ? e.target.closest("[data-search-stop-id]") : null;
+    if (stopRow) {
+        const kind = stopRow.dataset.searchStopKind;
+        const line = stopRow.dataset.searchStopLine || "";
+        if (kind === "bus") {
+            searchTab = "bus";
+            searchRouteId = line;
+        } else {
+            searchTab = isCommuterRoute(line) ? "commuter" : "metro";
+            searchRouteId = line;
+        }
+        searchQuery = "";
+        if (gSearchInput) gSearchInput.value = "";
+        if (gSearchList) gSearchList.scrollTop = 0;
+        await ensureSearchData();
+        renderSearchChrome();
     }
 });
 if (document.addEventListener) {

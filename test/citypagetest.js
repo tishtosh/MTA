@@ -411,8 +411,9 @@ async function settle(board) {
   await nyc.sandbox.showSearchView();
   await wait(120);
   check(nres, "nyc: Search view opens with Subway and Commuter tabs",
-    String(nyc.els.searchTabs.innerHTML).includes("Subway") &&
-    String(nyc.els.searchTabs.innerHTML).includes("Commuter rail"));
+    /aria-label="Subway"/.test(String(nyc.els.searchTabs.innerHTML)) &&
+    /aria-label="Commuter rail"/.test(String(nyc.els.searchTabs.innerHTML)) &&
+    /class="mode-svg"/.test(String(nyc.els.searchTabs.innerHTML)));
   check(nres, "nyc: Search view lists lines",
     /data-search-route="/.test(String(nyc.els.searchList.innerHTML)));
   const nSearchTab = nyc.sandbox.searchTabsList()[0];
@@ -424,9 +425,12 @@ async function settle(board) {
   check(nres, "nyc: Search routes are summary cards",
     /class="search-card"/.test(String(nyc.els.searchList.innerHTML)) &&
     !/class="search-row"/.test(String(nyc.els.searchList.innerHTML)) &&
-    /aria-pressed="true"/.test(String(nyc.els.searchList.innerHTML)));
+    /aria-pressed="true"/.test(String(nyc.els.searchList.innerHTML)) &&
+    /card-open/.test(String(nyc.els.searchList.innerHTML)) &&
+    !/card-more/.test(String(nyc.els.searchList.innerHTML)));
   check(nres, "nyc: Search stops render below the cards",
-    /class="stops"/.test(nSearchDetail) && /class="stop"/.test(nSearchDetail));
+    /class="stops"/.test(nSearchDetail) && /class="stop"/.test(nSearchDetail) &&
+    !/class="dot"/.test(nSearchDetail));
   nyc.sandbox.setCity("dc");
   await wait(150);
   check(nres, "nyc: city mark follows the switch",
