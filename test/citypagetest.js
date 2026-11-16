@@ -248,6 +248,20 @@ async function settle(board) {
   check(lres, "london: hero stop list resolves",
     heroStops.length === 2 && heroStops[0].StopID === "940GZZLUOXC");
 
+  // Nearby is device-located; a different city needs explicit consent.
+  {
+    const prompt = london.sandbox.askNearbyCityChange("nyc");
+    check(lres, "london: Nearby city change asks before switching",
+      london.els.cityConfirm.hidden === false &&
+      /London/.test(london.els.cityConfirmText.textContent) &&
+      /New York City/.test(london.els.cityConfirmText.textContent));
+    (london.els.cityConfirmNo._l.click || []).forEach(f => f());
+    check(lres, "london: declining the switch keeps London",
+      (await prompt) === false &&
+      london.els.cityConfirm.hidden === true &&
+      london.sandbox.city === "london");
+  }
+
   // ── New York City (phase 0: subway only, no buses) ────────────────
   const nycCalls = [];
   const nyc = harness("nyc", "", async (url) => {

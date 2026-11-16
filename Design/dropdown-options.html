@@ -114,6 +114,29 @@
   .tabs { display: flex; gap: 4px; background: #eef1f5; padding: 3px; border-radius: 8px; }
   .tabs button { flex: 1; border: 0; background: none; border-radius: 6px; padding: 6px 8px; font: 600 11px/1 system-ui, sans-serif; color: #4a576b; cursor: pointer; }
   .tabs button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(16,24,40,.12); }
+  .searchbar { display: flex; gap: 6px; margin-bottom: 10px; }
+  .searchbar input {
+    flex: 1; min-width: 0; border: 1px solid #cfd6e0; border-radius: 8px;
+    padding: 8px 10px; font: 500 13px/1.2 system-ui, sans-serif; color: var(--ink);
+    background: #fff;
+  }
+  .searchbar input:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+  .search-clear {
+    flex: none; width: 34px; border: 1px solid #cfd6e0; border-radius: 8px;
+    background: #fff; color: #5b6779; cursor: pointer; font-size: 12px;
+  }
+  .search-clear:hover { background: #f1f3f5; }
+  .result-info { font-size: 11px; color: var(--mute); margin: 8px 0 0; }
+  .stop-results { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 8px; }
+  .stop-result {
+    display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+    border: 1px solid #e3e7ee; border-radius: 8px; background: #fff; cursor: pointer;
+  }
+  .stop-result:hover { background: #eef1f5; }
+  .stop-result .stop-name { font-size: 12.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stop-result .badges { display: flex; gap: 3px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+  .stop-result .chev { color: #8a96a8; font-size: 10px; }
+  .empty-row { padding: 10px; }
   .tabs-main { max-width: 520px; }
   .tabs-main button { font-size: 13px; padding: 9px 12px; }
   .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 12px; margin-top: 12px; }
@@ -211,12 +234,21 @@
       route and the right pane shows stops and next departures. In the dropdown it collapses
       to the same list without the detail pane.</p>
     <ul class="pros">
-      <li>One category visible at a time</li><li>Room for stops + ETAs</li>
+      <li>One category visible at a time</li><li>Room for stops + ETAs</li><li>Search by stop or line</li>
       <li class="con">Needs a second pane on desktop</li><li class="con">Tabs hide the other modes</li>
     </ul>
     <div class="mocks">
       <div><div class="mock-label">In the dropdown</div><div class="panel" data-mock="drop3"></div></div>
-      <div><div class="mock-label">As a main page</div><div class="page" data-mock="main3"></div></div>
+      <div><div class="mock-label">As a main page</div>
+        <div class="page">
+          <div class="searchbar">
+            <input id="main3Search" type="search" placeholder="Search a stop or line…"
+                   aria-label="Search a stop or line" autocomplete="off">
+            <button type="button" id="main3Clear" class="search-clear" aria-label="Clear search">✕</button>
+          </div>
+          <div data-mock="main3"></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -251,6 +283,14 @@
     dc: {
       id: "dc", name: "Washington DC", short: "DC",
       stops: ["Metro Center", "Gallery Pl–Chinatown", "L'Enfant Plaza", "Union Station"],
+      stopIndex: [
+        { name: "Metro Center", lines: ["RD", "BL", "OR", "SV"] },
+        { name: "Gallery Pl–Chinatown", lines: ["RD", "GR", "YL"] },
+        { name: "L'Enfant Plaza", lines: ["BL", "OR", "SV", "GR", "YL"] },
+        { name: "Union Station", lines: ["RD"] },
+        { name: "Crystal City", lines: ["BL", "YL"] },
+        { name: "Tenleytown", lines: ["D72"] }
+      ],
       note: "Metrorail lines + Metrobus routes. No commuter section.",
       sections: [
         { key: "bus", label: "Bus", routes: [
@@ -273,6 +313,15 @@
     boston: {
       id: "boston", name: "Boston", short: "BOS",
       stops: ["Park St", "Downtown Crossing", "South Station", "Harvard"],
+      stopIndex: [
+        { name: "Park St", lines: ["Red", "Green-B"] },
+        { name: "Downtown Crossing", lines: ["Red", "Orange"] },
+        { name: "South Station", lines: ["Red", "Framingham"] },
+        { name: "Harvard", lines: ["Red"] },
+        { name: "North Station", lines: ["Orange", "Fitchburg"] },
+        { name: "Back Bay", lines: ["Orange", "Framingham"] },
+        { name: "Logan Airport", lines: ["SL1"] }
+      ],
       note: "Subway/light rail under Subway; CR-* branches under Commuter rail.",
       sections: [
         { key: "bus", label: "Bus", routes: [
@@ -300,6 +349,14 @@
     london: {
       id: "london", name: "London", short: "LDN",
       stops: ["Oxford Circus", "Green Park", "Victoria", "King's Cross St. Pancras"],
+      stopIndex: [
+        { name: "Oxford Circus", lines: ["Victoria"] },
+        { name: "Green Park", lines: ["Victoria", "Piccadilly", "Jubilee"] },
+        { name: "King's Cross St. Pancras", lines: ["Victoria", "Piccadilly", "Circle", "H&C"] },
+        { name: "Bank", lines: ["DLR"] },
+        { name: "Liverpool Street", lines: ["Elizabeth", "Overground", "Circle", "H&C"] },
+        { name: "Victoria", lines: ["Victoria", "Circle"] }
+      ],
       note: "Tube section includes Overground, Elizabeth, DLR; no commuter section.",
       sections: [
         { key: "bus", label: "Bus", routes: [
@@ -324,6 +381,16 @@
     nyc: {
       id: "nyc", name: "New York City", short: "NYC",
       stops: ["42 St–Port Authority", "34 St–Herald Sq", "14 St–Union Sq", "Atlantic Av–Barclays Ctr"],
+      stopIndex: [
+        { name: "Times Sq–42 St", lines: ["1", "A", "N", "Q", "R", "W", "7"] },
+        { name: "34 St–Herald Sq", lines: ["N", "Q", "R", "W"] },
+        { name: "Atlantic Av–Barclays Ctr", lines: ["2", "A", "N", "R"] },
+        { name: "Grand Central", lines: ["7"] },
+        { name: "Jamaica", lines: ["Babylon", "Hudson"] },
+        { name: "White Plains", lines: ["Harlem"] },
+        { name: "Poughkeepsie", lines: ["Hudson"] },
+        { name: "Danbury", lines: ["Danbury"] }
+      ],
       note: "Buses deferred. Commuter = LIRR + Metro-North named rectangles.",
       sections: [
         { key: "bus", label: "Bus", routes: [
@@ -436,43 +503,86 @@
   }
 
   // ── option 3: tabs + detail ──────────────────────────────────────────
-  const selected = { city: "nyc", section: "metro", route: 0 };
+  const selected = { city: "nyc", section: "metro", routeId: "", stop: "", query: "" };
   function tabSections(data) { return data.sections.filter(s => s.routes.length); }
+
+  function sectionOfRoute(data, id) {
+    for (const sec of data.sections) {
+      const r = sec.routes.find(x => x.id === id);
+      if (r) return { sec, r };
+    }
+    return null;
+  }
+
+  function searchData(data) {
+    const tabs = tabSections(data);
+    const sec = tabs.find(s => s.key === selected.section) || tabs[0];
+    const q = (selected.query || "").trim().toLowerCase();
+    // Selecting a stop shows all lines in its section so the chosen one is
+    // visible; typing a query filters the active tab's lines.
+    const filtering = q && !selected.stop;
+    const routes = filtering
+      ? sec.routes.filter(r => `${r.id} ${r.name}`.toLowerCase().includes(q))
+      : sec.routes;
+    const stops = q
+      ? (data.stopIndex || []).filter(s => s.name.toLowerCase().includes(q))
+      : [];
+    return { tabs, sec, routes, stops, q };
+  }
 
   function drop3(data) {
     const tabs = tabSections(data);
     const sec = tabs.find(s => s.key === selected.section) || tabs[0];
+    const chosen = sec.routes.find(r => r.id === selected.routeId) || sec.routes[0];
     return `
       <div class="tabs" role="tablist">${tabs.map(s => `
         <button type="button" role="tab" aria-selected="${s.key === sec.key}" data-tab="${s.key}">${esc(s.label)}</button>`).join("")}
       </div>
-      ${sec.routes.length ? `<div class="list" style="margin-top:8px">${sec.routes.slice(0, 5).map((r, i) => `
-        <div class="route-row" role="button" tabindex="0" aria-selected="${i === 0}" data-route="${i}">
+      ${sec.routes.length ? `<div class="list" style="margin-top:8px">${sec.routes.slice(0, 5).map(r => `
+        <div class="route-row" role="button" tabindex="0" aria-selected="${!!(chosen && r.id === chosen.id)}" data-route="${esc(r.id)}">
           ${badge(sec, r, "sm", data.id)}<span class="rname">${esc(r.name)}</span>
           <span class="meta">${esc(r.next)}</span><span class="chev">›</span></div>`).join("")}</div>`
         : `<div class="muted" style="padding:8px 4px">No section in this city.</div>`}`;
   }
+
   function main3(data) {
-    const tabs = tabSections(data);
-    const sec = tabs.find(s => s.key === selected.section) || tabs[0];
-    const idx = Math.min(selected.route, Math.max(0, sec.routes.length - 1));
-    const r = sec.routes[idx];
+    const { tabs, sec, routes, stops, q } = searchData(data);
+    const chosen = routes.find(r => r.id === selected.routeId) || routes[0] || null;
+    const count = `${routes.length} ${routes.length === 1 ? "line" : "lines"}`
+      + (stops.length ? ` · ${stops.length} ${stops.length === 1 ? "stop" : "stops"}` : "");
+    const info = selected.stop
+      ? `Showing stop “${esc(selected.stop)}”`
+      : (q ? `${count} matching “${esc(q)}”` : "");
     return `
       <div class="tabs tabs-main" role="tablist">${tabs.map(s => `
         <button type="button" role="tab" aria-selected="${s.key === sec.key}" data-tab="${s.key}">${esc(s.label)}</button>`).join("")}
       </div>
+      ${info ? `<div class="result-info">${info}</div>` : ""}
+      ${stops.length ? `<div class="stop-results">${stops.map(stop => {
+        const badges = stop.lines.slice(0, 5).map(id => {
+          const hit = sectionOfRoute(data, id);
+          return hit ? badge(hit.sec, hit.r, "sm", data.id) : "";
+        }).join("");
+        return `<div class="stop-result" role="button" tabindex="0" data-stop="${esc(stop.name)}">
+          <span class="stop-name">${esc(stop.name)}</span>
+          <span class="badges">${badges}</span>
+          <span class="chev">›</span></div>`;
+      }).join("")}</div>` : ""}
       <div class="split">
-        <div class="list">${sec.routes.map((row, i) => `
-          <div class="route-row" role="button" tabindex="0" aria-selected="${i === idx}" data-route="${i}">
-            ${badge(sec, row, "sm", data.id)}<span class="rname">${esc(row.name)}</span>
-            <span class="meta">${row.stops}</span><span class="chev">›</span></div>`).join("")}</div>
-        ${r ? `<div class="detail">
-          <h3>${badge(sec, r, "", data.id)} ${esc(r.name)}</h3>
-          <p class="sub">${r.stops} stops · next ${esc(r.next)} · ${esc(data.name)}</p>
+        <div class="list">${routes.length ? routes.map(row => {
+          const hit = sectionOfRoute(data, row.id) || { sec };
+          return `<div class="route-row" role="button" tabindex="0" aria-selected="${!!(chosen && row.id === chosen.id)}" data-route="${esc(row.id)}">
+            ${badge(hit.sec, row, "sm", data.id)}<span class="rname">${esc(row.name)}</span>
+            <span class="meta">${row.stops}</span><span class="chev">›</span></div>`;
+        }).join("") : `<div class="muted empty-row">No lines match “${esc(q)}”.</div>`}</div>
+        ${chosen ? `<div class="detail">
+          <h3>${badge(sec, chosen, "", data.id)} ${esc(chosen.name)}</h3>
+          <p class="sub">${chosen.stops} stops · next ${esc(chosen.next)} · ${esc(data.name)}</p>
+          ${selected.stop ? `<p class="sub">Showing stop: <b>${esc(selected.stop)}</b></p>` : ""}
           ${data.stops.slice(0, sec.key === "commuter" ? 3 : 4).map((name, i) => `
             <div class="stop"><span class="dot"></span>${esc(name)}<span class="eta">${i * 3 + 2} min</span></div>`).join("")}
           <div class="more">Next stops… →</div>
-        </div>` : ""}
+        </div>` : `<div class="detail muted">No line selected.</div>`}
       </div>`;
   }
 
@@ -516,6 +626,7 @@
     $('[data-mock="drop4"]').innerHTML = cardsHTML(data, true);
     $('[data-mock="main4"]').innerHTML = cardsHTML(data, false);
     $("#summaryTable").innerHTML = summaryTable();
+    if (searchInput) searchInput.value = selected.query;
   }
 
   document.getElementById("citySwitch").innerHTML = Object.entries(CITIES).map(([id, d]) =>
@@ -527,24 +638,64 @@
     city = b.dataset.city;
     selected.city = city;
     selected.section = "metro";
-    selected.route = 0;
+    selected.routeId = "";
+    selected.stop = "";
+    selected.query = "";
+    const input = document.getElementById("main3Search");
+    if (input) input.value = "";
     render();
   });
 
-  // Tab / route selection inside option 3 (both mocks).
+  // Tab / route / stop selection inside option 3 (both mocks).
   document.addEventListener("click", e => {
     const tab = e.target.closest("[data-tab]");
     if (tab) {
       selected.section = tab.dataset.tab;
-      selected.route = 0;
+      selected.routeId = "";
+      selected.stop = "";
+      render();
+      return;
+    }
+    const stop = e.target.closest("[data-stop]");
+    if (stop) {
+      const data = CITIES[city];
+      const name = stop.dataset.stop;
+      const entry = (data.stopIndex || []).find(s => s.name === name);
+      const first = entry && entry.lines[0];
+      const hit = first && sectionOfRoute(data, first);
+      if (hit) {
+        selected.section = hit.sec.key;
+        selected.routeId = first;
+      }
+      selected.stop = name;
       render();
       return;
     }
     const row = e.target.closest("[data-route]");
     if (row) {
-      selected.route = Number(row.dataset.route) || 0;
+      selected.routeId = row.dataset.route;
+      selected.stop = "";
       render();
     }
+  });
+
+  // Search by stop or line: filters lines in the active tab and surfaces
+  // matching stops across every section.
+  const searchInput = document.getElementById("main3Search");
+  const searchClear = document.getElementById("main3Clear");
+  function renderMain3() {
+    const body = document.querySelector('[data-mock="main3"]');
+    if (body) body.innerHTML = main3(CITIES[city]);
+  }
+  if (searchInput) searchInput.addEventListener("input", () => {
+    selected.query = searchInput.value;
+    selected.stop = "";
+    renderMain3();
+  });
+  if (searchClear) searchClear.addEventListener("click", () => {
+    selected.query = "";
+    if (searchInput) { searchInput.value = ""; searchInput.focus(); }
+    renderMain3();
   });
 
   // Keep the demo selection valid when switching cities (e.g. London has no commuter).

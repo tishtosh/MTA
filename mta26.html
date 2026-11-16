@@ -43,7 +43,7 @@
         .icon-chevron-down { --icon: url("img/icons/chevron-down.svg"); }
         .icon-circle-arrow-left { --icon: url("img/icons/circle-arrow-left.svg"); }
         .icon-home { --icon: url("img/icons/home.svg"); }
-        .icon-building { --icon: url("img/icons/building.svg"); }
+        .icon-building-factory-2 { --icon: url("img/icons/building-factory-2.svg"); }
         .icon-plane-departure { --icon: url("img/icons/plane-departure.svg"); }
         .icon-heart { --icon: url("img/icons/heart.svg"); }
         .icon-heart-filled { --icon: url("img/icons/heart-filled.svg"); }
@@ -303,6 +303,31 @@
         .gate-title { font: 700 18px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
         .gate-error { min-height: 18px; color: #c92a2a; font-size: 13px; }
 
+        /* Nearby city-change confirmation */
+        .city-confirm {
+            position: fixed; inset: 0; z-index: 4900;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+            background: rgba(24, 35, 56, .45);
+        }
+        .city-confirm[hidden] { display: none; }
+        .city-confirm-card {
+            width: min(92vw, 340px);
+            padding: 18px;
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 12px 34px rgba(0, 0, 0, .28);
+        }
+        .city-confirm-title {
+            font: 700 16px/1.3 system-ui, -apple-system, sans-serif;
+            color: #182338;
+        }
+        .city-confirm-text {
+            margin: 6px 0 16px;
+            font-size: 13px; line-height: 1.45; color: #495057;
+        }
+        .city-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
         /* shortcut buttons keep the header compact on phones */
         .nav-shortcut i { font-size: 2em; width: 46px; color: #3f2b1e; }
         .nav-shortcut { position: relative; }
@@ -322,9 +347,11 @@
         }
 
         /* Auto-refresh meter: ring + pill beside the status line. */
-        .refresh-cue { display: flex; align-items: center; gap: 8px; }
+        .refresh-cue {
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+        }
         .refresh-copy {
-            display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+            display: flex; flex-direction: column; align-items: center; gap: 1px;
         }
         .refresh-ring {
             position: relative;
@@ -1080,7 +1107,7 @@
             .nav-refresh i { font-size: 1.05em; }
             .add-fav-btn i { font-size: 1.1em; width: 26px; }
             .nav-back i { font-size: 1.1em; width: 26px; }
-            .refresh-cue { gap: 5px; }
+            .refresh-cue { gap: 2px; }
             .refresh-ring { width: 30px; height: 30px; }
             .refresh-ring-glyph { width: 13px; height: 13px; }
             .refresh-pill { display: none; }
@@ -1114,6 +1141,18 @@
     </form>
 </div>
 
+<div id="cityConfirm" class="city-confirm" hidden>
+    <div class="city-confirm-card" role="dialog" aria-modal="true"
+         aria-labelledby="cityConfirmTitle" aria-describedby="cityConfirmText">
+        <div class="city-confirm-title" id="cityConfirmTitle">Switch city for Nearby?</div>
+        <p class="city-confirm-text" id="cityConfirmText"></p>
+        <div class="city-confirm-actions">
+            <button type="button" class="btn btn-dark" id="cityConfirmYes">Switch</button>
+            <button type="button" class="btn btn-light" id="cityConfirmNo">Stay</button>
+        </div>
+    </div>
+</div>
+
 <div class="container">
     <nav class="navbar fixed-top navbar-light bg-light">
         <div class="container d-flex align-items-center">
@@ -1134,7 +1173,7 @@
                     <i class="icon icon-home icon-xl" aria-hidden="true"></i>
                 </button>
                 <button id="btnWork" class="navicon nav-shortcut" title="Work stop" aria-label="Go to work stop">
-                    <i class="icon icon-building icon-xl" aria-hidden="true"></i>
+                    <i class="icon icon-building-factory-2 icon-xl" aria-hidden="true"></i>
                 </button>
                 <button id="btnAirport" class="navicon nav-shortcut" title="Airport stops" aria-label="Show airport stops">
                     <i class="icon icon-plane-departure icon-xl" aria-hidden="true"></i>
@@ -1877,6 +1916,10 @@ const gCityMenu = document.getElementById("cityMenu");
 const gCityMenuList = document.getElementById("cityMenuList");
 const gCityMenuSettings = document.getElementById("cityMenuSettings");
 const gCitySettings = document.getElementById("citySettings");
+const gCityConfirm = document.getElementById("cityConfirm");
+const gCityConfirmText = document.getElementById("cityConfirmText");
+const gCityConfirmYes = document.getElementById("cityConfirmYes");
+const gCityConfirmNo = document.getElementById("cityConfirmNo");
 const gBtnNearby = document.getElementById("btnNearby");
 const gMapsSelect = document.getElementById("mapsSelect");
 const gNearRadiusSelect = document.getElementById("nearRadiusSelect");
@@ -5696,16 +5739,67 @@ function getUserPosition() {
     });
 }
 
+// Nearby is device-located, so it can point at a different city than the one
+// selected. Ask before swapping the whole page; declining keeps the current
+// city and searches around its centre instead.
+let cityConfirmResolve = null;
+
+function askNearbyCityChange(targetCity) {
+    const fromName = (CITIES[city] && CITIES[city].name) || city;
+    const toName = (CITIES[targetCity] && CITIES[targetCity].name) || targetCity;
+    const text = `Nearby uses your device location in ${toName}. `
+        + `Switch from ${fromName} to ${toName}?`;
+    if (!gCityConfirm || !gCityConfirmText) {
+        const ask = typeof window !== "undefined" && typeof window.confirm === "function"
+            ? window.confirm.bind(window) : null;
+        return Promise.resolve(ask ? ask(text) : false);
+    }
+    if (cityConfirmResolve) return Promise.resolve(false);
+    gCityConfirmText.textContent = text;
+    gCityConfirm.hidden = false;
+    if (gCityConfirmYes) gCityConfirmYes.focus();
+    return new Promise(resolve => { cityConfirmResolve = resolve; });
+}
+
+function closeNearbyCityChange(answer) {
+    if (!cityConfirmResolve) return;
+    const resolve = cityConfirmResolve;
+    cityConfirmResolve = null;
+    gCityConfirm.hidden = true;
+    if (gBtnNearby) gBtnNearby.focus();
+    resolve(answer);
+}
+
+if (gCityConfirmYes) gCityConfirmYes.addEventListener("click",
+    () => closeNearbyCityChange(true));
+if (gCityConfirmNo) gCityConfirmNo.addEventListener("click",
+    () => closeNearbyCityChange(false));
+if (gCityConfirm) gCityConfirm.addEventListener("click", e => {
+    if (e.target === gCityConfirm) closeNearbyCityChange(false);
+});
+if (document.addEventListener) {
+    document.addEventListener("keydown", e => {
+        if (e.key === "Escape" && cityConfirmResolve) closeNearbyCityChange(false);
+    });
+}
+
 // Collect stops/stations within the chosen radius, nearest first.
 async function loadNearbyRows(anchor) {
     const radius = nearRadius();
-    const pos = anchor || await getUserPosition();
+    let pos = anchor || await getUserPosition();
     if (!pos) return { pos: null, radius, rows: [] };
-    // Device-driven Nearby selects the nearer city automatically. A manual
-    // city switch passes an anchor instead, so it stays in the chosen city.
+    // Device-driven Nearby may belong to another city. Confirm first; staying
+    // put searches around the selected city's centre instead of mixing the
+    // device coordinates with the wrong provider.
     if (!anchor) {
         const targetCity = nearestCity(pos.lat, pos.lon);
-        if (targetCity !== city) setCity(targetCity, { keepPanel: true, keepView: true });
+        if (targetCity !== city) {
+            if (await askNearbyCityChange(targetCity)) {
+                setCity(targetCity, { keepPanel: true, keepView: true });
+            } else {
+                pos = cityHome();
+            }
+        }
     }
     try {
         const [busStops, stations] = await Promise.all([

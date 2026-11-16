@@ -94,8 +94,8 @@ The **city menu** (top-left city mark) selects the transport system:
 - The choice is stored in the `mta_city` cookie and can be forced with `?city=dc|boston|london|nyc`.
 - Likes and Home/Work bookmarks are per city (separate storage keys), so switching
   cities swaps the saved lists while keeping the current view and the last location point.
-- **Near me** uses the device location to pick the nearer city automatically, then lists
-  stops/stations within the radius chosen in Settings.
+- **Near me** uses the device location, asks before switching to a different city's
+  provider, then lists stops/stations within the radius chosen in Settings.
 
 ### Washington DC
 
