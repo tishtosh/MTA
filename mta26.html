@@ -312,7 +312,7 @@
         .search-route .fav-badge { align-self: center; }
         /* First level: route summary cards; stops render underneath. */
         .search-cards {
-            display: flex; flex-wrap: wrap; gap: 2px 6px; margin: 2px 0 10px;
+            display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 10px;
             align-content: flex-start; max-height: 46vh; overflow-y: auto;
         }
         .search-card {
@@ -327,7 +327,7 @@
         }
         .search-card:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
         .search-card .card-route {
-            display: flex; align-items: center; gap: 6px; min-width: 0;
+            display: flex; align-items: center; gap: 3px; min-width: 0;
         }
         .search-card .card-open {
             flex: none; margin-left: auto; color: #8a96a8; font-size: 10px;
@@ -340,6 +340,8 @@
             width: var(--search-badge-w, auto);
             min-width: var(--search-badge-w, 62px);
             max-width: var(--search-badge-w, 118px);
+            display: flex; align-items: center; justify-content: center;
+            min-height: 34px; box-sizing: border-box;
         }
         @media (max-height: 700px) { .search-cards { max-height: 34vh; } }
         .search-cards[hidden], .search-detail[hidden] { display: none; }
@@ -7911,9 +7913,21 @@ function tickClock() {
             meta = "rate limited";
         }
     } else {
+        const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+        const haveData = mode === "metro" ? !!metroAnchor : stops.length > 0;
         state = "idle";
-        pill = lastRefreshAt ? "Waiting" : "Idle";
-        meta = lastRefreshAt ? "paused while hidden" : "waiting for a stop";
+        if (hidden && lastRefreshAt) {
+            pill = "Waiting";
+            meta = "paused while hidden";
+        } else if (!haveData) {
+            pill = "Idle";
+            meta = "waiting for a stop";
+        } else {
+            // Visible with data but the timer has not been armed yet (a view
+            // transition or a just-finished refresh). Do not blame a hidden tab.
+            pill = lastRefreshAt ? "Waiting" : "Idle";
+            meta = "";
+        }
     }
 
     if (gRefreshRing) {

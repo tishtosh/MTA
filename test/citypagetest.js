@@ -481,6 +481,8 @@ async function settle(board) {
   // verify that the per-city saved list swapped.
   await nyc.sandbox.renderBookmarkList("fav");
   const nycCards2 = await settle(() => nyc.els.bookmarkList.innerHTML);
+  check(nres, "nyc: bookmark view does not claim a hidden-tab pause",
+    nyc.els.clockMeta.textContent !== "paused while hidden");
   check(nres, "nyc: switching DC → NYC swaps favorites (no Dulles)",
     nycCards2.includes("Howard Beach-JFK Airport") && !nycCards2.includes("Dulles"));
   await nyc.sandbox.gotoLike("bus", "904417", "LGA/Terminal B");
