@@ -19,20 +19,23 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   city sections below). Selecting Likes, Home, or Work always shows that view; the
   icons are not toggles.
 - The top bar holds the **city mark** (opens the city menu: choose a city or open
-  Settings), **Nearby** (map-pin-question), **Search**, **Back**, **Home**, **Work**, and
-  **Airport**; the **Likes** heart sits snug to the left of the refresh meter. A timer
-  ring drains as the next auto-refresh approaches. All action icons are always enabled.
+  Settings), **Nearby** (map-pin-question), **Search** (magnifier), **Find** (chevron),
+  **Back**, **Home**, **Work**, and **Airport**; the **Likes** heart sits snug to the
+  left of the refresh meter. A timer ring drains as the next auto-refresh approaches.
+  All action icons are always enabled.
 - Home, Work, and Airport are multi-bookmark categories: each can hold several bus stops
   and Metro stations. Adding one also adds it to likes; removing a like removes
   it from Home, Work, and Airport too.
 - Bookmark cards can be dragged by their bus/train/commuter icon to reorder them. Likes, Home,
   Work, and Airport each keep their own order per city.
 - Airports are seeded per city with a bus stop and a rail station.
-- **Search** opens a dropdown with **Bus**, the city's rail section (**Metro**,
-  **Subway** or **Tube**) and an optional **Commuter rail** section (Boston, NYC).
-  Settings is only reachable from the city menu: the **Maps app** choice (**Apple
-  Maps** or **Google Maps**, default Google), the **Nearby radius** (1,000 feet,
-  1 mile, 10 miles, or 100 miles), auto-refresh, and Delete all likes.
+- **Search** (magnifier) opens a main page with **Bus**, the city's rail section
+  (**Metro** / **Subway** / **Tube**) and **Commuter rail** tabs, a stop-or-line
+  filter, the matching line list and a detail pane with the selected line's stops.
+- **Find** (chevron) opens the quick dropdown with the same Bus / rail / commuter
+  sections. Settings is only reachable from the city menu: the **Maps app** choice
+  (**Apple Maps** or **Google Maps**, default Google), the **Nearby radius**
+  (1,000 feet, 1 mile, 10 miles, or 100 miles), auto-refresh, and Delete all likes.
 - **Nearby** (person icon) lists bus stops and Metro/subway/commuter-rail stations
   within the chosen radius of the current location, ordered by distance (first 25;
   miles from 0.5 mi). Rows use the same bookmark cards as Likes/Home/Work/Airport,

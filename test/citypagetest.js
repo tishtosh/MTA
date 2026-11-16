@@ -408,6 +408,13 @@ async function settle(board) {
   });
   check(nres, "nyc: Nearby uses the bookmark-card format with distance",
     nearCard.includes("bookmark-card") && nearCard.includes("0.6 mi"));
+  await nyc.sandbox.showSearchView();
+  await wait(120);
+  check(nres, "nyc: Search view opens with Subway and Commuter tabs",
+    String(nyc.els.searchTabs.innerHTML).includes("Subway") &&
+    String(nyc.els.searchTabs.innerHTML).includes("Commuter rail"));
+  check(nres, "nyc: Search view lists lines",
+    /data-search-route="/.test(String(nyc.els.searchList.innerHTML)));
   nyc.sandbox.setCity("dc");
   await wait(150);
   check(nres, "nyc: city mark follows the switch",

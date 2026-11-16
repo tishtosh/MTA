@@ -58,6 +58,7 @@
         .icon-train { --icon: url("img/icons/train.svg"); }
         .icon-bus { --icon: url("img/icons/bus.svg"); }
         .icon-briefcase { --icon: url("img/icons/briefcase.svg"); }
+        .icon-search { --icon: url("img/icons/search.svg"); }
 
         .vert {
             vertical-align: middle;
@@ -257,6 +258,66 @@
         }
         .bookmark-view[hidden] { display: none; }
         .bookmark-title { margin: 0 0 8px; font: 700 18px/1.3 system-ui, -apple-system, sans-serif; color: #182338; }
+        /* Search view: tabs + line list + stop detail. */
+        .search-view { margin: 8px 2px 18px; }
+        .search-view[hidden] { display: none; }
+        .search-bar {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; background: #fff;
+            border: 1px solid #dee2e6; border-radius: 10px;
+        }
+        .search-bar > .icon { color: #6c757d; font-size: 14px; }
+        .search-bar input {
+            flex: 1; min-width: 0; border: 0; outline: none; background: none;
+            font: 500 14px/1.4 system-ui, -apple-system, sans-serif; color: #212529;
+        }
+        .search-clear { border: 0; background: none; color: #6c757d; cursor: pointer; padding: 2px 4px; }
+        .search-clear:hover { color: #212529; }
+        .search-tabs {
+            display: flex; gap: 4px; margin: 10px 0 8px; padding: 3px;
+            background: #eef1f5; border-radius: 8px;
+        }
+        .search-tabs button {
+            flex: 1; border: 0; background: none; border-radius: 6px; padding: 8px 10px;
+            font: 600 12px/1.2 system-ui, -apple-system, sans-serif; color: #4a576b; cursor: pointer;
+        }
+        .search-tabs button[aria-selected="true"] {
+            background: #fff; color: #182338; box-shadow: 0 1px 2px rgba(16, 24, 40, .12);
+        }
+        .search-meta { font-size: 12px; color: #6c757d; margin: 0 0 6px; }
+        .search-stops { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
+        .search-stop {
+            display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+            border: 1px solid #e3e7ee; border-radius: 8px; background: #fff; cursor: pointer;
+        }
+        .search-stop:hover { background: #f1f3f5; }
+        .search-stop .name { font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .search-stop .badges { display: flex; gap: 3px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+        .search-stop .meta { color: #8a96a8; font-size: 10px; }
+        .search-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; }
+        @media (max-width: 700px) { .search-split { grid-template-columns: 1fr; } }
+        .search-list {
+            border: 1px solid #dee2e6; border-radius: 10px; background: #fff;
+            max-height: 60vh; overflow-y: auto;
+        }
+        .search-row {
+            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+            border-top: 1px solid #f0f2f6; cursor: pointer;
+        }
+        .search-row:first-child { border-top: 0; }
+        .search-row:hover { background: #f1f3f5; }
+        .search-row[aria-selected="true"] { background: #e8f0fe; }
+        .search-row .name { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .search-row .meta { margin-left: auto; color: #6c757d; font-size: 11px; white-space: nowrap; }
+        .search-detail {
+            border: 1px solid #dee2e6; border-radius: 10px; background: #fbfcfe;
+            padding: 12px; min-height: 140px;
+        }
+        .search-detail h5 { margin: 0 0 2px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+        .search-detail .sub { color: #6c757d; font-size: 11px; margin: 0 0 8px; }
+        .search-detail .stop { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0; color: #33415c; }
+        .search-detail .stop .dot { width: 6px; height: 6px; border-radius: 50%; background: #9aa7bb; flex: none; }
+        .search-empty { padding: 10px; color: #6c757d; font-size: 12px; }
         .bookmark-list { gap: 8px; margin-top: 0; }
         .hero-card.bookmark-card {
             --hero-pad-right: 108px;
@@ -1163,6 +1224,9 @@
                 <button id="btnNearby" class="navicon nav-shortcut" title="Nearby stops" aria-label="Nearby stops">
                     <i class="icon icon-map-pin-question icon-xl" aria-hidden="true"></i>
                 </button>
+                <button id="btnSearch" class="navicon nav-shortcut" title="Search stops and lines" aria-label="Search stops and lines">
+                    <i class="icon icon-search icon-xl" aria-hidden="true"></i>
+                </button>
                 <button id="btnBack" class="navicon nav-back" title="Back" aria-label="Back" disabled>
                     <i class="icon icon-circle-arrow-left" aria-hidden="true"></i>
                 </button>
@@ -1293,6 +1357,25 @@
     <div id="bookmarkView" class="bookmark-view" hidden>
         <h4 id="bookmarkTitle" class="bookmark-title"></h4>
         <div id="bookmarkList" class="fav-list bookmark-list"></div>
+    </div>
+
+    <!-- Search: Bus / rail / commuter tabs, search by stop or line, and a
+         detail pane with the selected route's stops. -->
+    <div id="searchView" class="search-view" hidden>
+        <h4 class="bookmark-title">Search</h4>
+        <div class="search-bar">
+            <i class="icon icon-search" aria-hidden="true"></i>
+            <input id="searchInput" type="search" placeholder="Search a stop or line…"
+                   aria-label="Search a stop or line" autocomplete="off">
+            <button type="button" id="searchClear" class="search-clear" aria-label="Clear search">✕</button>
+        </div>
+        <div id="searchTabs" class="search-tabs" role="tablist"></div>
+        <div id="searchMeta" class="search-meta"></div>
+        <div id="searchStopResults" class="search-stops"></div>
+        <div class="search-split">
+            <div id="searchList" class="search-list"></div>
+            <div id="searchDetail" class="search-detail"></div>
+        </div>
     </div>
 
     <!-- v5: route picture first — the stop (name + ID) and its next bus
@@ -1897,6 +1980,15 @@ const gLinesNote = document.getElementById("linesNote");
 const gBoardHeader = document.getElementById("boardHeader");
 const gLinesScroll = document.getElementById("linesScroll");
 const gViewArrivals = document.getElementById("viewArrivals");
+const gSearchView = document.getElementById("searchView");
+const gSearchInput = document.getElementById("searchInput");
+const gSearchClear = document.getElementById("searchClear");
+const gSearchTabs = document.getElementById("searchTabs");
+const gSearchMeta = document.getElementById("searchMeta");
+const gSearchStopResults = document.getElementById("searchStopResults");
+const gSearchList = document.getElementById("searchList");
+const gSearchDetail = document.getElementById("searchDetail");
+const gBtnSearch = document.getElementById("btnSearch");
 const gBookmarkView = document.getElementById("bookmarkView");
 const gBookmarkTitle = document.getElementById("bookmarkTitle");
 const gBookmarkList = document.getElementById("bookmarkList");
@@ -3644,10 +3736,13 @@ function setCity(next, opts) {
     }
     if (!opts || !opts.keepView) {
         // Stay on the same kind of view across the switch: Nearby, a saved
-        // category, or Likes. Nearby is anchored to the new city centre here
-        // so the GPS city auto-pick cannot immediately undo a manual choice.
-        if (prevView && prevView.type === "nearby") {
-            renderNearbyView(cityHome());
+        // category, or Likes. Nearby keeps the device anchor (or the city
+        // centre when there is none) and does not re-run the GPS city pick,
+        // so a manual choice sticks but distances stay measured from the user.
+        if (prevView && prevView.type === "search") {
+            showSearchView();
+        } else if (prevView && prevView.type === "nearby") {
+            renderNearbyView(lastNearbyPos || cityHome());
         } else if (prevView && prevView.type === "bookmarks") {
             renderBookmarkList(prevView.slot || "fav");
         } else {
@@ -3658,6 +3753,7 @@ function setCity(next, opts) {
 
 function currentViewSnapshot() {
     if (currentScreen && currentScreen.type === "nearby") return { type: "nearby" };
+    if (currentScreen && currentScreen.type === "search") return { type: "search" };
     if (bookmarkSlot) return { type: "bookmarks", slot: bookmarkSlot };
     if (currentScreen && currentScreen.type === "bookmarks")
         return { type: "bookmarks", slot: currentScreen.slot || "fav" };
@@ -5591,6 +5687,7 @@ function screenLabel(s) {
     if (s.type === "bookmarks")
         return s.slot === "fav" ? "Likes" : shortcutLabel(s.slot);
     if (s.type === "nearby") return "Nearby";
+    if (s.type === "search") return "Search";
     return s.name || (s.id ? `#${s.id}` : "previous stop");
 }
 
@@ -5626,6 +5723,8 @@ async function goBack() {
         if (prev.type === "bookmarks") {
             closeFavPanel();
             await renderBookmarkList(prev.slot);
+        } else if (prev.type === "search") {
+            showSearchView();
         } else if (prev.type === "nearby") {
             await renderNearbyView();
         } else if (prev.type === "board") {
@@ -5658,6 +5757,7 @@ async function renderBookmarkList(slot) {
             : `<div class="fav-empty">no ${slot === "fav" ? "likes" : label.toLowerCase() + " bookmark"} saved yet</div>`;
     }
     if (gBookmarkView) gBookmarkView.hidden = false;
+    if (gSearchView) gSearchView.hidden = true;
     if (gViewArrivals) gViewArrivals.hidden = true;
     scrollPageTop();
     if (rows.length) fillBookmarkArrivals(rows, token);
@@ -5667,6 +5767,7 @@ function showBoardView() {
     bookmarkSlot = null;
     bookmarkToken++;
     if (gBookmarkView) gBookmarkView.hidden = true;
+    if (gSearchView) gSearchView.hidden = true;
     if (gViewArrivals) gViewArrivals.hidden = false;
 }
 
@@ -5784,10 +5885,15 @@ if (document.addEventListener) {
 }
 
 // Collect stops/stations within the chosen radius, nearest first.
+let lastNearbyPos = null;
+
 async function loadNearbyRows(anchor) {
     const radius = nearRadius();
     let pos = anchor || await getUserPosition();
     if (!pos) return { pos: null, radius, rows: [] };
+    // Remember the device point: a manual city switch re-renders Nearby
+    // around it (not the new city centre), so distances stay "from me".
+    if (!anchor) lastNearbyPos = { lat: pos.lat, lon: pos.lon };
     // Device-driven Nearby may belong to another city. Confirm first; staying
     // put searches around the selected city's centre instead of mixing the
     // device coordinates with the wrong provider.
@@ -5841,6 +5947,7 @@ async function renderNearbyView(anchor) {
     enterScreen({ type: "nearby" });
     if (gBookmarkTitle) gBookmarkTitle.textContent = "Nearby";
     if (gBookmarkView) gBookmarkView.hidden = false;
+    if (gSearchView) gSearchView.hidden = true;
     if (gViewArrivals) gViewArrivals.hidden = true;
     scrollPageTop();
     if (!gBookmarkList) return;
@@ -5865,6 +5972,174 @@ async function renderNearbyView(anchor) {
         ? `<div class="fav-empty">showing the ${MAX_NEAR_ROWS} nearest of ${rows.length}</div>`
         : "") : `<div class="fav-empty">nothing within ${radius.label}</div>`;
     if (shown.length) fillBookmarkArrivals(shown, token2);
+}
+
+// ── Search view: tabs + route list + stop detail ─────────────────────
+let searchTab = "metro";
+let searchRouteId = "";
+let searchQuery = "";
+let searchToken = 0;
+
+function searchTabsList() {
+    const caps = cityCfg().capabilities;
+    const tabs = [];
+    if (caps.bus !== false) tabs.push({ key: "bus", label: "Bus", kind: "bus" });
+    tabs.push({ key: "metro", label: railSectionName(), kind: "metro" });
+    if (caps.commuter) tabs.push({ key: "commuter", label: commuterSectionName(), kind: "metro" });
+    return tabs;
+}
+
+function searchRoutesFor(tab) {
+    if (!tab) return [];
+    if (tab.kind === "bus") {
+        return (busRouteDirectory || []).map(r => ({
+            id: r.id, name: r.desc || r.name || r.id, kind: "bus",
+        }));
+    }
+    return cityTheme().metroLineIds()
+        .filter(id => tab.key === "commuter" ? isCommuterRoute(id) : !isCommuterRoute(id))
+        .map(id => ({ id, name: metroLineName(id), kind: "metro" }));
+}
+
+async function ensureSearchData() {
+    const tab = searchTabsList().find(t => t.key === searchTab);
+    if (tab && tab.kind === "bus" && !busRouteDirectory)
+        await loadBusRouteDirectory().catch(() => null);
+    if (tab && tab.kind === "metro" && cityCfg().capabilities.metroRoutes)
+        await loadMetroRoutes().catch(() => null);
+    await loadMetroStations().catch(() => null);
+}
+
+function searchBadge(tab, route) {
+    return tab.kind === "bus"
+        ? favBadgeHtml("bus", route.id)
+        : lineBadgeHtml(route.id);
+}
+
+async function searchRouteStops(tab, routeId) {
+    if (tab.kind === "bus") {
+        if (cityCfg().capabilities.routeStopsOnDemand &&
+            typeof cityProvider().stopsForRoute === "function") {
+            const list = await cityProvider().stopsForRoute(routeId);
+            return (list || []).map(s => ({
+                id: String(s.StopID || s.id || s.Code || ""),
+                name: s.Name || s.name || "",
+            })).filter(s => s.id);
+        }
+        const all = await loadStopDirectory();
+        return (all || [])
+            .filter(s => (s.Routes || []).some(r => String(r).toUpperCase() === String(routeId).toUpperCase()))
+            .map(s => ({ id: String(s.StopID), name: s.Name || "" }));
+    }
+    const all = await loadMetroStations();
+    return (all || [])
+        .filter(s => (s.Lines || []).includes(routeId))
+        .map(s => ({ id: String(s.Code), name: s.Name || "" }));
+}
+
+async function renderSearchDetail(tab, route) {
+    const token = ++searchToken;
+    if (!gSearchDetail) return;
+    if (!route) {
+        gSearchDetail.innerHTML = `<div class="search-empty">Select a line to see its stops.</div>`;
+        return;
+    }
+    gSearchDetail.innerHTML = `<h5>${searchBadge(tab, route)} ${esc(route.name)}</h5>`
+        + `<p class="sub">loading stops…</p>`;
+    let stops = [];
+    try {
+        stops = await searchRouteStops(tab, route.id);
+    } catch (e) {
+        if (token === searchToken)
+            gSearchDetail.innerHTML = `<div class="search-empty">could not load stops</div>`;
+        return;
+    }
+    if (token !== searchToken) return;
+    const shown = stops.slice(0, 12);
+    gSearchDetail.innerHTML = `<h5>${searchBadge(tab, route)} ${esc(route.name)}</h5>`
+        + `<p class="sub">${stops.length} ${stops.length === 1 ? "stop" : "stops"}`
+        + (stops.length > shown.length ? ` · showing ${shown.length}` : "") + `</p>`
+        + (shown.length ? shown.map(s => `<div class="stop">`
+            + `${favStarHtml(tab.kind, s.id, s.name, route.id)}`
+            + `<span class="dot" aria-hidden="true"></span>`
+            + `${favGotoHtml(tab.kind, s.id, s.name, stopName(s.name) || s.id)}</div>`).join("")
+            : `<div class="search-empty">No stops returned.</div>`);
+}
+
+function renderSearchChrome() {
+    const tabs = searchTabsList();
+    if (!tabs.some(t => t.key === searchTab)) searchTab = tabs[0] && tabs[0].key;
+    const tab = tabs.find(t => t.key === searchTab) || tabs[0];
+    if (gSearchTabs) gSearchTabs.innerHTML = tabs.map(t =>
+        `<button type="button" role="tab" data-search-tab="${t.key}" aria-selected="${t.key === searchTab}">${esc(t.label)}</button>`
+    ).join("");
+    if (!tab) return;
+
+    const q = searchQuery.trim().toLowerCase();
+    const all = searchRoutesFor(tab);
+    const routes = q ? all.filter(r => `${r.id} ${r.name}`.toLowerCase().includes(q)) : all;
+
+    // Stop matches: rail stations always; bus stops once the directory is warm.
+    const stops = [];
+    if (q) {
+        for (const st of metroStationsCache || []) {
+            if (!String(st.Name || "").toLowerCase().includes(q)) continue;
+            stops.push({ kind: "metro", id: st.Code, name: st.Name, lines: st.Lines || [] });
+            if (stops.length >= 8) break;
+        }
+        if (tab.kind === "bus") {
+            for (const st of allStopsCache || []) {
+                if (!String(st.Name || "").toLowerCase().includes(q)) continue;
+                stops.push({ kind: "bus", id: st.StopID, name: st.Name, lines: st.Routes || [] });
+                if (stops.length >= 12) break;
+            }
+        }
+    }
+    if (gSearchStopResults) {
+        gSearchStopResults.innerHTML = stops.map(st => {
+            const badges = (st.lines || []).slice(0, 4).map(line =>
+                st.kind === "bus" ? favBadgeHtml("bus", line) : lineBadgeHtml(line)).join("");
+            return `<div class="search-stop" role="button" tabindex="0"`
+                + ` data-search-stop-kind="${esc(st.kind)}" data-search-stop-id="${esc(st.id)}"`
+                + ` data-search-stop-line="${esc((st.lines || [])[0] || "")}">`
+                + `<span class="name">${esc(stopName(st.name) || st.id)}</span>`
+                + `<span class="badges">${badges}</span><span class="meta">›</span></div>`;
+        }).join("");
+    }
+    if (gSearchMeta) {
+        gSearchMeta.textContent = q
+            ? `${routes.length} ${routes.length === 1 ? "line" : "lines"} · ${stops.length} ${stops.length === 1 ? "stop" : "stops"}`
+            : `${all.length} ${all.length === 1 ? "route" : "routes"} in ${tab.label}`;
+    }
+
+    const chosen = routes.find(r => r.id === searchRouteId) || routes[0] || null;
+    if (gSearchList) {
+        gSearchList.innerHTML = routes.length
+            ? routes.map(r => `<div class="search-row" role="button" tabindex="0"`
+                + ` aria-selected="${!!(chosen && r.id === chosen.id)}" data-search-route="${esc(r.id)}">`
+                + `${searchBadge(tab, r)}<span class="name">${esc(r.name)}</span>`
+                + `<span class="meta">${esc(r.id)}</span></div>`).join("")
+            : `<div class="search-empty">No ${esc(tab.label.toLowerCase())} matches`
+                + `${q ? ` “${esc(searchQuery.trim())}”` : ""}.</div>`;
+    }
+    renderSearchDetail(tab, chosen);
+}
+
+async function showSearchView() {
+    closeFavPanel();
+    bookmarkSlot = null;
+    bookmarkToken++;
+    enterScreen({ type: "search" });
+    if (gBookmarkView) gBookmarkView.hidden = true;
+    if (gViewArrivals) gViewArrivals.hidden = true;
+    if (gSearchView) gSearchView.hidden = false;
+    scrollPageTop();
+    const tabs = searchTabsList();
+    if (!tabs.some(t => t.key === searchTab)) searchTab = tabs[0] && tabs[0].key;
+    if (gSearchInput) gSearchInput.value = searchQuery;
+    await ensureSearchData();
+    if (!gSearchView || gSearchView.hidden) return;
+    renderSearchChrome();
 }
 
 async function populateFavStops(container, kind, key) {
@@ -5983,6 +6258,68 @@ if (gCityMenuSettings) gCityMenuSettings.addEventListener("click", () => {
 if (gBtnNearby) gBtnNearby.addEventListener("click", () => {
     setCityMenuOpen(false);
     renderNearbyView();
+});
+if (gBtnSearch) gBtnSearch.addEventListener("click", () => {
+    setCityMenuOpen(false);
+    showSearchView();
+});
+if (gSearchInput) gSearchInput.addEventListener("input", () => {
+    searchQuery = gSearchInput.value;
+    renderSearchChrome();
+});
+if (gSearchClear) gSearchClear.addEventListener("click", () => {
+    searchQuery = "";
+    if (gSearchInput) { gSearchInput.value = ""; gSearchInput.focus(); }
+    renderSearchChrome();
+});
+if (gSearchView) gSearchView.addEventListener("click", async e => {
+    const tabBtn = e.target.closest ? e.target.closest("[data-search-tab]") : null;
+    if (tabBtn) {
+        searchTab = tabBtn.dataset.searchTab;
+        searchRouteId = "";
+        searchQuery = "";
+        if (gSearchInput) gSearchInput.value = "";
+        await ensureSearchData();
+        renderSearchChrome();
+        return;
+    }
+    const routeRow = e.target.closest ? e.target.closest("[data-search-route]") : null;
+    if (routeRow) {
+        searchRouteId = routeRow.dataset.searchRoute;
+        renderSearchChrome();
+        return;
+    }
+    const stopRow = e.target.closest ? e.target.closest("[data-search-stop-id]") : null;
+    if (stopRow) {
+        const kind = stopRow.dataset.searchStopKind;
+        const line = stopRow.dataset.searchStopLine || "";
+        if (kind === "bus") {
+            searchTab = "bus";
+            searchRouteId = line;
+        } else {
+            searchTab = isCommuterRoute(line) ? "commuter" : "metro";
+            searchRouteId = line;
+        }
+        searchQuery = "";
+        if (gSearchInput) gSearchInput.value = "";
+        await ensureSearchData();
+        renderSearchChrome();
+        return;
+    }
+    const star = e.target.closest ? e.target.closest(".fav-star") : null;
+    if (star) {
+        e.preventDefault();
+        toggleLike(star.dataset.favKind, star.dataset.favId,
+            star.dataset.favName, star.dataset.favRoute);
+        updateShortcutNav();
+        syncFavStars();
+        return;
+    }
+    const go = e.target.closest ? e.target.closest(".fav-goto") : null;
+    if (go && go.dataset.favId) {
+        e.preventDefault();
+        await gotoLike(go.dataset.favKind, go.dataset.favId, go.dataset.favName);
+    }
 });
 if (document.addEventListener) {
     document.addEventListener("click", e => {
