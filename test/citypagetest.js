@@ -388,7 +388,12 @@ async function settle(board) {
   await wait(60);
   check(nres, "nyc: Nearby view opens with a title and distance handling",
     nyc.els.bookmarkTitle.textContent === "Nearby" &&
-    /location unavailable|nothing within|fav-stop/.test(nyc.els.bookmarkList.innerHTML));
+    /location unavailable|nothing within|bookmark-card/.test(nyc.els.bookmarkList.innerHTML));
+  const nearCard = nyc.sandbox.bookmarkCardHtml({
+    kind: "metro", id: "127", name: "Times Sq-42 St", route: "1", distFt: 3000,
+  });
+  check(nres, "nyc: Nearby uses the bookmark-card format with distance",
+    nearCard.includes("bookmark-card") && nearCard.includes("0.6 mi"));
   nyc.sandbox.setCity("dc");
   await wait(150);
   check(nres, "nyc: city mark follows the switch",

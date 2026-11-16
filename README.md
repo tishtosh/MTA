@@ -30,15 +30,15 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   Work, and Airport each keep their own order per city.
 - Airports are seeded per city with a bus stop and a rail station.
 - **Search** opens a dropdown with **Bus**, the city's rail section (**Metro**,
-  **Subway** or **Tube**), an optional **Commuter rail** section (Boston, NYC), and
-  **Settings**. Settings includes the **Maps app** choice (**Apple Maps** or
-  **Google Maps**, default Google, used by the hero map button and route actions), the
-  **Nearby radius** (1,000 feet, 1 mile, 10 miles, or 100 miles), auto-refresh, and
-  Delete all likes. City selection moved to the city-mark menu.
+  **Subway** or **Tube**) and an optional **Commuter rail** section (Boston, NYC).
+  Settings is only reachable from the city menu: the **Maps app** choice (**Apple
+  Maps** or **Google Maps**, default Google), the **Nearby radius** (1,000 feet,
+  1 mile, 10 miles, or 100 miles), auto-refresh, and Delete all likes.
 - **Nearby** (person icon) lists bus stops and Metro/subway/commuter-rail stations
   within the chosen radius of the current location, ordered by distance (first 25;
-  miles from 0.5 mi), and auto-selects the nearest city. Likes and Home/Work bookmarks
-  are stored separately per city.
+  miles from 0.5 mi). Rows use the same bookmark cards as Likes/Home/Work/Airport,
+  with the distance in the title line. It auto-selects the nearest city; Likes and
+  Home/Work bookmarks are stored separately per city.
 - The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
   each matching route to only the matching stops.
 - A selected stop opens a compact **hero card** plus **route/departure rows**; the first departure is the first row, so every departure uses the same format. Other stops
@@ -120,8 +120,8 @@ The **city menu** (top-left city mark) selects the transport system:
   Predictions are batched into one request per stop cluster.
 - **IDs:** `place-…` stations, `Red`/`Orange`/`Blue`/`Green-B`… lines, commuter `CR-…`
   routes, bus stops such as `17091`.
-- **Modes:** bus + subway/light rail + commuter rail. Settings shows **Subway** and
-  **Commuter rail**.
+- **Modes:** bus + subway/light rail + commuter rail. The rail sections are **Subway**
+  and **Commuter rail**.
 - **Theme:** accent `#8a1c1c`, 4 px badges; hero bus `#e7ddd2` / `#3f3027`, hero rail
   `#d9e3ef` / `#1d3550`.
 - **Defaults:** `17091` (Logan Terminal A, `SL1`); the Airport Blue Line station.
@@ -154,8 +154,8 @@ The **city menu** (top-left city mark) selects the transport system:
 - **IDs:** subway/SIR parent stations (`127`, `S09`) with `N`/`S` platform ids; rail is
   namespaced (`LIRR:102`, `MNR:46`) because the raw numeric ids collide with the subway;
   routes are `1…7`, `A…W`, `SI`, `LIRR:1`, `MNR:5`.
-- **Modes:** subway + Staten Island Railway + LIRR + Metro-North. Settings shows
-  **Subway** and **Commuter rail**. Buses (MTA Bus Time) are deferred; NJ Transit, PATH,
+- **Modes:** subway + Staten Island Railway + LIRR + Metro-North. The rail sections
+  are **Subway** and **Commuter rail**. Buses (MTA Bus Time) are deferred; NJ Transit, PATH,
   AirTrain and NY Waterway are out of scope.
 - **Theme:** NYC Core Framework palette — accent `#181A7B`, light `#e6ecf7`, ink
   `#0A1438`; line colours come from the GTFS `route_color`.
@@ -221,17 +221,17 @@ Each city sets CSS variables from `js/cities/*.js`; nothing branches on a city n
 ### Settings and labels
 
 - Search dropdown order: Bus (hidden for bus-less cities), the rail section
-  (**Metro** / **Subway** / **Tube**), Commuter rail (Boston/NYC only), Settings.
-  Nearby and the city picker live in the top bar.
+  (**Metro** / **Subway** / **Tube**), Commuter rail (Boston/NYC only). Nearby and
+  the city picker live in the top bar; the settings submenu lives under the city mark.
 - Route labels keep the city noun where it adds meaning (`Red Line`, `Jubilee Line`)
   but never say "train". Named commuter rectangles carry the name inside the shape.
 - Nearby radius: 1,000 ft / 1 mile / 10 miles / 100 miles; distances switch to miles
-  from 0.5 mi. The Nearby view shows the first 25 by distance.
+  from 0.5 mi. The Nearby view shows the first 25 by distance as bookmark cards.
 - Station names get air around separators (`Flatbush Av - Brooklyn College`,
   `Park Rd NW and 19 St NW`); line names too (`Framingham / Worcester`).
 - The city mark is a button: its menu lists the cities (current one checked) and a
-  Settings entry that opens the Settings section. The Settings shortcut no longer sits
-  in the top bar.
+  Settings entry that expands the settings submenu in place. Settings is not present
+  anywhere else in the UI.
 
 ### Accessibility
 
