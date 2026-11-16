@@ -262,10 +262,11 @@
         .search-view { margin: 8px 2px 18px; }
         .search-view[hidden] { display: none; }
         .search-head {
-            display: flex; align-items: center; gap: 12px; margin: 0 0 8px;
+            display: flex; align-items: center; gap: 10px; margin: 0 0 8px;
         }
         .search-head .bookmark-title { flex: none; margin: 0; }
-        .search-head .search-bar { flex: 1; min-width: 0; }
+        .search-head .search-tabs { flex: none; margin: 0; padding: 2px; }
+        .search-head .search-bar { flex: 1 1 120px; min-width: 0; }
         .search-bar {
             display: flex; align-items: center; gap: 8px;
             padding: 8px 12px; background: #fff;
@@ -279,20 +280,20 @@
         .search-clear { border: 0; background: none; color: #6c757d; cursor: pointer; padding: 2px 4px; }
         .search-clear:hover { color: #212529; }
         .search-tabs {
-            display: flex; gap: 4px; margin: 10px 0 8px; padding: 3px;
+            display: flex; gap: 2px; padding: 2px;
             background: #eef1f5; border-radius: 8px;
         }
         .search-tabs button {
-            flex: 1; display: flex; align-items: center; justify-content: center;
-            min-height: 34px; border: 0; background: none; border-radius: 6px; padding: 6px 10px;
-            font: 600 12px/1.2 system-ui, -apple-system, sans-serif; color: #4a576b; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            width: 32px; min-height: 32px; border: 0; background: none;
+            border-radius: 6px; padding: 0;
+            color: #4a576b; cursor: pointer;
         }
         .search-tabs button[aria-selected="true"] {
             background: #fff; color: #182338; box-shadow: 0 1px 2px rgba(16, 24, 40, .12);
         }
         .search-tabs .mode-svg { width: 18px; height: 18px; display: block; }
         .search-tabs .icon { font-size: 17px; }
-        .search-meta { font-size: 12px; color: #6c757d; margin: 0 0 6px; }
         .search-stops { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
         .search-stop {
             display: flex; align-items: center; gap: 8px; padding: 8px 10px;
@@ -304,13 +305,14 @@
         .search-stop .meta { color: #8a96a8; font-size: 10px; }
         /* First level: route summary cards; stops render underneath. */
         .search-cards {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
-            gap: 8px; margin: 4px 0 12px; padding-right: 4px;
-            align-content: start; max-height: 46vh; overflow-y: auto;
+            display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px;
+            padding-right: 4px; align-content: flex-start;
+            max-height: 46vh; overflow-y: auto;
         }
         .search-card {
-            display: flex; align-items: center;
-            min-width: 0; padding: 10px; border: 1px solid #dee2e6; border-radius: 10px;
+            display: flex; align-items: center; flex: 0 1 auto;
+            min-width: 0; max-width: 100%;
+            padding: 10px; border: 1px solid #dee2e6; border-radius: 10px;
             background: #fff; color: inherit; cursor: pointer; text-align: left;
             font: inherit;
         }
@@ -324,8 +326,8 @@
             display: flex; align-items: center; gap: 6px; min-width: 0; width: 100%;
         }
         .search-card .card-name {
-            min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
-            white-space: nowrap; font-size: 12px; font-weight: 600; color: #33415c;
+            min-width: 0; max-width: 100%; font-size: 12px; font-weight: 600;
+            color: #33415c; line-height: 1.25; overflow-wrap: anywhere;
         }
         .search-card .card-open {
             flex: none; margin-left: auto; color: #8a96a8; font-size: 10px;
@@ -1398,6 +1400,7 @@
     <div id="searchView" class="search-view" hidden>
         <div class="search-head">
             <h4 class="bookmark-title">Search</h4>
+            <div id="searchTabs" class="search-tabs" role="tablist"></div>
             <div class="search-bar">
                 <i class="icon icon-search" aria-hidden="true"></i>
                 <input id="searchInput" type="search" placeholder="Search a stop or line…"
@@ -1405,8 +1408,6 @@
                 <button type="button" id="searchClear" class="search-clear" aria-label="Clear search">✕</button>
             </div>
         </div>
-        <div id="searchTabs" class="search-tabs" role="tablist"></div>
-        <div id="searchMeta" class="search-meta"></div>
         <div id="searchStopResults" class="search-stops"></div>
         <div id="searchList" class="search-cards"></div>
         <div id="searchDetail" class="search-detail"></div>
@@ -2018,7 +2019,6 @@ const gSearchView = document.getElementById("searchView");
 const gSearchInput = document.getElementById("searchInput");
 const gSearchClear = document.getElementById("searchClear");
 const gSearchTabs = document.getElementById("searchTabs");
-const gSearchMeta = document.getElementById("searchMeta");
 const gSearchStopResults = document.getElementById("searchStopResults");
 const gSearchList = document.getElementById("searchList");
 const gSearchDetail = document.getElementById("searchDetail");
@@ -6236,12 +6236,6 @@ function renderSearchChrome() {
                 + `<span class="badges">${badges}</span><span class="meta">›</span></div>`;
         }).join("");
     }
-    if (gSearchMeta) {
-        gSearchMeta.textContent = q
-            ? `${routes.length} ${routes.length === 1 ? "line" : "lines"} · ${stops.length} ${stops.length === 1 ? "stop" : "stops"}`
-            : `${all.length} ${all.length === 1 ? "route" : "routes"} in ${tab.label}`;
-    }
-
     const chosen = routes.find(r => r.id === searchRouteId) || routes[0] || null;
     if (gSearchList) {
         // Keep the card grid where the user left it when a card is selected;
