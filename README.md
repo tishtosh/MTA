@@ -33,6 +33,8 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   **Bus**, the city's rail section (**Metro** / **Subway** / **Tube**) and
   **Commuter rail**, and the search field on one row, then the matching routes
   wrap as summary cards with the selected route's stops in a grid below.
+  Typing searches Bus, rail, and Commuter together and lists matching routes
+  and stops as result rows.
 - **Find** (chevron) opens the quick dropdown with the same Bus / rail / commuter
   sections. Settings is only reachable from the city menu: the **Maps app** choice
   (**Apple Maps** or **Google Maps**, default Google), the **Nearby radius**
