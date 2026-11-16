@@ -309,6 +309,7 @@
         .search-row[aria-selected="true"] { background: #e8f0fe; }
         .search-row .name { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .search-row .meta { margin-left: auto; color: #6c757d; font-size: 11px; white-space: nowrap; }
+        .search-row .chev { margin-left: auto; color: #8a96a8; font-size: 10px; }
         .search-detail {
             border: 1px solid #dee2e6; border-radius: 10px; background: #fbfcfe;
             padding: 12px; min-height: 140px;
@@ -5252,7 +5253,7 @@ async function renderFavBusRoutesByStop(raw) {
         const expanded = matches.length > 0;
         return `<button type="button" class="fav-route" data-fav-route="${esc(r.id)}" aria-expanded="${expanded ? "true" : "false"}">`
             + `<span class="fav-badge${busBadgeClass()}" style="background:${routeColor(r.id)};color:${busTextColor(r.id)}">${esc(r.id)}</span>`
-            + `<span class="fav-desc">${esc(r.desc || "Bus route")}</span>`
+            + (busRouteDesc(r) ? `<span class="fav-desc">${esc(busRouteDesc(r))}</span>` : "")
             + `<i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i></button>`
             + `<div class="fav-stops" data-fav-stops="bus" data-route="${esc(r.id)}"`
             + `${expanded ? ` data-loaded="1"` : " hidden"}>`
@@ -5293,7 +5294,7 @@ async function renderFavBusRoutes(query) {
         const expanded = matches.length > 0;
         return `<button type="button" class="fav-route" data-fav-route="${esc(r.id)}" aria-expanded="${expanded ? "true" : "false"}">`
             + `<span class="fav-badge${busBadgeClass()}" style="background:${routeColor(r.id)};color:${busTextColor(r.id)}">${esc(r.id)}</span>`
-            + `<span class="fav-desc">${esc(r.desc || "Bus route")}</span>`
+            + (busRouteDesc(r) ? `<span class="fav-desc">${esc(busRouteDesc(r))}</span>` : "")
             + `<i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i></button>`
             + `<div class="fav-stops" data-fav-stops="bus" data-route="${esc(r.id)}"`
             + `${expanded ? ` data-loaded="1"` : " hidden"}>`
@@ -5301,6 +5302,11 @@ async function renderFavBusRoutes(query) {
             + `</div>`;
     }).join("") : `<div class="fav-empty">no matching bus routes</div>`;
     applyStopNameWidth(gFavBusRoutes);
+}
+
+function busRouteDesc(r) {
+    const desc = String(r.desc || "").trim();
+    return desc && desc.toLowerCase() !== String(r.id || "").toLowerCase() ? desc : "";
 }
 
 function lineBadgeHtml(line) {
@@ -5327,7 +5333,6 @@ async function renderFavMetroLines() {
         const label = desc(line);
         return `<button type="button" class="fav-route" data-fav-line="${line}" aria-expanded="false" aria-label="${esc(label)}">`
             + lineBadgeHtml(line)
-            + (badge ? "" : `<span class="fav-desc">${esc(label)}</span>`)
             + `<i class="icon icon-chevron-down bt-chevron" aria-hidden="true"></i></button>`
             + `<div class="fav-stops" data-fav-stops="metro" data-line="${line}" hidden></div>`;
     };
@@ -5979,6 +5984,60 @@ let searchTab = "metro";
 let searchRouteId = "";
 let searchQuery = "";
 let searchToken = 0;
+let searchBusMatches = [];
+let searchBusMatchQuery = "";
+let searchBusToken = 0;
+let searchBusTimer = 0;
+
+// Bus stop names are not in the rail station list: London searches TfL, the
+// other cities scan the stop directory (loaded once, lazily).
+function scheduleBusStopSearch(raw) {
+    const query = String(raw || "").trim();
+    clearTimeout(searchBusTimer);
+    if (query.length < 2) {
+        searchBusMatches = [];
+        searchBusMatchQuery = "";
+        return;
+    }
+    searchBusTimer = setTimeout(async () => {
+        const token = ++searchBusToken;
+        let rows = [];
+        try {
+            const provider = cityProvider();
+            if (typeof provider.busRoutesForQuery === "function") {
+                const map = await provider.busRoutesForQuery(query);
+                const byStop = new Map();
+                for (const [route, list] of (map || new Map())) {
+                    for (const st of list || []) {
+                        const id = String(st.StopID || st.id || "");
+                        if (!id) continue;
+                        let hit = byStop.get(id);
+                        if (!hit) byStop.set(id, hit = {
+                            kind: "bus", id, name: st.Name || st.name || "", lines: [],
+                        });
+                        if (!hit.lines.includes(route)) hit.lines.push(route);
+                    }
+                }
+                rows = [...byStop.values()];
+            } else {
+                if (!allStopsCache) await loadStopDirectory().catch(() => null);
+                const low = query.toLowerCase();
+                rows = (allStopsCache || [])
+                    .filter(st => String(st.Name || "").toLowerCase().includes(low))
+                    .map(st => ({
+                        kind: "bus", id: String(st.StopID), name: st.Name || "",
+                        lines: (st.Routes || []).slice(0, 4),
+                    }));
+            }
+        } catch (e) { rows = []; }
+        if (token !== searchBusToken) return;
+        if (!gSearchView || gSearchView.hidden) return;
+        if (searchQuery.trim().toLowerCase() !== query.toLowerCase()) return;
+        searchBusMatches = rows.slice(0, 10);
+        searchBusMatchQuery = query.toLowerCase();
+        renderSearchChrome();
+    }, 250);
+}
 
 function searchTabsList() {
     const caps = cityCfg().capabilities;
@@ -6044,8 +6103,11 @@ async function renderSearchDetail(tab, route) {
         gSearchDetail.innerHTML = `<div class="search-empty">Select a line to see its stops.</div>`;
         return;
     }
-    gSearchDetail.innerHTML = `<h5>${searchBadge(tab, route)} ${esc(route.name)}</h5>`
-        + `<p class="sub">loading stops…</p>`;
+    const title = tab.kind === "metro" ||
+        String(route.name || "").toLowerCase() === String(route.id).toLowerCase()
+        ? searchBadge(tab, route)
+        : `${searchBadge(tab, route)} ${esc(route.name)}`;
+    gSearchDetail.innerHTML = `<h5>${title}</h5><p class="sub">loading stops…</p>`;
     let stops = [];
     try {
         stops = await searchRouteStops(tab, route.id);
@@ -6056,7 +6118,7 @@ async function renderSearchDetail(tab, route) {
     }
     if (token !== searchToken) return;
     const shown = stops.slice(0, 12);
-    gSearchDetail.innerHTML = `<h5>${searchBadge(tab, route)} ${esc(route.name)}</h5>`
+    gSearchDetail.innerHTML = `<h5>${title}</h5>`
         + `<p class="sub">${stops.length} ${stops.length === 1 ? "stop" : "stops"}`
         + (stops.length > shown.length ? ` · showing ${shown.length}` : "") + `</p>`
         + (shown.length ? shown.map(s => `<div class="stop">`
@@ -6077,7 +6139,11 @@ function renderSearchChrome() {
 
     const q = searchQuery.trim().toLowerCase();
     const all = searchRoutesFor(tab);
-    const routes = q ? all.filter(r => `${r.id} ${r.name}`.toLowerCase().includes(q)) : all;
+    const busRouteHits = new Set((searchBusMatchQuery === q ? searchBusMatches : [])
+        .flatMap(st => st.lines || []));
+    const routes = q
+        ? all.filter(r => `${r.id} ${r.name}`.toLowerCase().includes(q) || busRouteHits.has(r.id))
+        : all;
 
     // Stop matches: rail stations always; bus stops once the directory is warm.
     const stops = [];
@@ -6087,12 +6153,8 @@ function renderSearchChrome() {
             stops.push({ kind: "metro", id: st.Code, name: st.Name, lines: st.Lines || [] });
             if (stops.length >= 8) break;
         }
-        if (tab.kind === "bus") {
-            for (const st of allStopsCache || []) {
-                if (!String(st.Name || "").toLowerCase().includes(q)) continue;
-                stops.push({ kind: "bus", id: st.StopID, name: st.Name, lines: st.Routes || [] });
-                if (stops.length >= 12) break;
-            }
+        if (searchBusMatchQuery && searchBusMatchQuery === q) {
+            for (const st of searchBusMatches) stops.push(st);
         }
     }
     if (gSearchStopResults) {
@@ -6115,10 +6177,18 @@ function renderSearchChrome() {
     const chosen = routes.find(r => r.id === searchRouteId) || routes[0] || null;
     if (gSearchList) {
         gSearchList.innerHTML = routes.length
-            ? routes.map(r => `<div class="search-row" role="button" tabindex="0"`
-                + ` aria-selected="${!!(chosen && r.id === chosen.id)}" data-search-route="${esc(r.id)}">`
-                + `${searchBadge(tab, r)}<span class="name">${esc(r.name)}</span>`
-                + `<span class="meta">${esc(r.id)}</span></div>`).join("")
+            ? routes.map(r => {
+                // The badge already carries the line name for rail; buses keep
+                // their description only when it adds something (not a number).
+                const label = tab.kind === "metro"
+                    ? "" : (String(r.name || "").toLowerCase() === String(r.id).toLowerCase() ? "" : r.name);
+                return `<div class="search-row" role="button" tabindex="0"`
+                    + ` aria-label="${esc(r.name || r.id)}" title="${esc(r.name || r.id)}"`
+                    + ` aria-selected="${!!(chosen && r.id === chosen.id)}" data-search-route="${esc(r.id)}">`
+                    + `${searchBadge(tab, r)}`
+                    + (label ? `<span class="name">${esc(label)}</span>` : "")
+                    + `<span class="chev" aria-hidden="true">›</span></div>`;
+            }).join("")
             : `<div class="search-empty">No ${esc(tab.label.toLowerCase())} matches`
                 + `${q ? ` “${esc(searchQuery.trim())}”` : ""}.</div>`;
     }
@@ -6136,10 +6206,13 @@ async function showSearchView() {
     scrollPageTop();
     const tabs = searchTabsList();
     if (!tabs.some(t => t.key === searchTab)) searchTab = tabs[0] && tabs[0].key;
+    searchBusMatches = [];
+    searchBusMatchQuery = "";
     if (gSearchInput) gSearchInput.value = searchQuery;
     await ensureSearchData();
     if (!gSearchView || gSearchView.hidden) return;
     renderSearchChrome();
+    if (searchQuery.trim()) scheduleBusStopSearch(searchQuery);
 }
 
 async function populateFavStops(container, kind, key) {
@@ -6266,9 +6339,13 @@ if (gBtnSearch) gBtnSearch.addEventListener("click", () => {
 if (gSearchInput) gSearchInput.addEventListener("input", () => {
     searchQuery = gSearchInput.value;
     renderSearchChrome();
+    scheduleBusStopSearch(searchQuery);
 });
 if (gSearchClear) gSearchClear.addEventListener("click", () => {
     searchQuery = "";
+    searchBusMatches = [];
+    searchBusMatchQuery = "";
+    clearTimeout(searchBusTimer);
     if (gSearchInput) { gSearchInput.value = ""; gSearchInput.focus(); }
     renderSearchChrome();
 });
@@ -6278,6 +6355,9 @@ if (gSearchView) gSearchView.addEventListener("click", async e => {
         searchTab = tabBtn.dataset.searchTab;
         searchRouteId = "";
         searchQuery = "";
+        searchBusMatches = [];
+        searchBusMatchQuery = "";
+        clearTimeout(searchBusTimer);
         if (gSearchInput) gSearchInput.value = "";
         await ensureSearchData();
         renderSearchChrome();
