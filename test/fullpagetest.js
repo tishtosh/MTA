@@ -204,10 +204,11 @@ const board = () => els.linesScroll.innerHTML;
   check("no across section with live fixtures", !ACROSS ? !b.includes("Across the street") : true);
   check("ticker retired (no #tickerHost in DOM)", els.tickerHost === undefined);
 
-  // Clock block: the clock is the last-refresh stamp; meta is the countdown.
-  check("clock: refresh time + countdown",
-    /^\d{1,2}:\d{2}:\d{2}$/.test(els.clock.textContent.trim()) &&
-    (/refresh in \d+s/.test(els.clockMeta.textContent) || els.clockMeta.textContent === "refreshing…"));
+  // Clock block: the big text is the auto-refresh countdown; the meta names it.
+  check("clock: refresh countdown",
+    /^\d{1,2}:\d{2}$/.test(els.clock.textContent.trim()) &&
+    (/^Refresh in$/.test(els.clockMeta.textContent) ||
+     els.clockMeta.textContent === "refreshing…"));
   check("nearby: distance or across-street label",
     !b.includes('data-nearby="1"') || /\d+ ft away|Across the street/.test(b));
 

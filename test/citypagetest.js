@@ -276,10 +276,16 @@ async function settle(board) {
   const nres = result();
   await nyc.sandbox.unlockAccess("bus");
   await wait(300);
-  check(nres, "nyc: registered in the city selector",
-    String(nyc.els.citySelect.innerHTML).includes("New York City"));
+  check(nres, "nyc: city mark menu lists every city",
+    ["Washington DC", "Boston", "London", "New York City"]
+      .every(name => String(nyc.els.cityMenuList.innerHTML).includes(name)));
+  check(nres, "nyc: city menu marks the current city",
+    /aria-checked="true"[^>]*data-city="nyc"/.test(String(nyc.els.cityMenuList.innerHTML)));
   check(nres, "nyc: city mark is the local MTA icon",
     String(nyc.els.cityMark.innerHTML).includes("img/nyc.png"));
+  check(nres, "nyc: refresh countdown formatting",
+    nyc.sandbox.fmtCountdown(27000) === "0:27" &&
+    nyc.sandbox.fmtCountdown(0) === "0:00");
   check(nres, "nyc: near-me radius defaults to 1,000 ft",
     nyc.sandbox.nearRadius().ft === 1000);
   nyc.sandbox.setNearRadius("mile");
@@ -378,6 +384,11 @@ async function settle(board) {
     nyc.sandbox.themedBullet("Danbury", "MNR:5", "#EE0034", {}).includes("w1"));
   check(nres, "nyc: default favorites are LGA and JFK",
     nycCards.includes("LGA/Terminal B") && nycCards.includes("Howard Beach-JFK Airport"));
+  await nyc.sandbox.renderNearbyView();
+  await wait(60);
+  check(nres, "nyc: Nearby view opens with a title and distance handling",
+    nyc.els.bookmarkTitle.textContent === "Nearby" &&
+    /location unavailable|nothing within|fav-stop/.test(nyc.els.bookmarkList.innerHTML));
   nyc.sandbox.setCity("dc");
   await wait(150);
   check(nres, "nyc: city mark follows the switch",

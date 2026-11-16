@@ -18,25 +18,27 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
   in the main panel. Each city seeds its airport stops as the default likes (see the
   city sections below). Selecting Likes, Home, or Work always shows that view; the
   icons are not toggles.
-- The top bar holds the display-only **city mark**, **Settings**, **Back**, **Search**,
-  **Likes**, **Home**, **Work**, and **Airport**, with the clock at the right showing
-  the last data-refresh time. All action icons are always enabled.
+- The top bar holds the **city mark** (opens the city menu: choose a city or open
+  Settings), **Nearby** (person), **Search**, **Back**, **Home**, **Work**, and
+  **Airport**; the **Likes** heart sits snug to the left of the clock. The clock is the
+  auto-refresh countdown (`0:27`) with "Refresh in" underneath. All action icons are
+  always enabled.
 - Home, Work, and Airport are multi-bookmark categories: each can hold several bus stops
   and Metro stations. Adding one also adds it to likes; removing a like removes
   it from Home, Work, and Airport too.
 - Bookmark cards can be dragged by their bus/train/commuter icon to reorder them. Likes, Home,
   Work, and Airport each keep their own order per city.
 - Airports are seeded per city with a bus stop and a rail station.
-- **Search** opens a dropdown with **Near me**, **Bus**, the city's rail section
-  (**Metro**, **Subway** or **Tube**), an optional **Commuter rail** section (Boston,
-  NYC), and **Settings**. Settings includes the **City** selector (**Washington DC**,
-  **Boston**, **London**, **New York City**), the **Maps app** choice (**Apple Maps**
-  or **Google Maps**, default Google, used by the hero map button and route actions),
-  the **Near me radius** (1,000 feet, 1 mile, 10 miles, or 100 miles), auto-refresh, and Delete
-  all likes.
-- **Near me** lists bus stops and Metro/subway/commuter-rail stations within the
-  chosen radius of the current location, and auto-selects the nearest city from that
-  location. Likes and Home/Work bookmarks are stored separately per city.
+- **Search** opens a dropdown with **Bus**, the city's rail section (**Metro**,
+  **Subway** or **Tube**), an optional **Commuter rail** section (Boston, NYC), and
+  **Settings**. Settings includes the **Maps app** choice (**Apple Maps** or
+  **Google Maps**, default Google, used by the hero map button and route actions), the
+  **Nearby radius** (1,000 feet, 1 mile, 10 miles, or 100 miles), auto-refresh, and
+  Delete all likes. City selection moved to the city-mark menu.
+- **Nearby** (person icon) lists bus stops and Metro/subway/commuter-rail stations
+  within the chosen radius of the current location, ordered by distance (first 25;
+  miles from 0.5 mi), and auto-selects the nearest city. Likes and Home/Work bookmarks
+  are stored separately per city.
 - The **Bus** filter matches route numbers and stop names; at 3+ characters it expands
   each matching route to only the matching stops.
 - A selected stop opens a compact **hero card** plus **route/departure rows**; the first departure is the first row, so every departure uses the same format. Other stops
@@ -81,7 +83,7 @@ Open it: **https://tishtosh.github.io/MTA/mta26.html**
 
 ## Cities
 
-The **Settings** section of the search dropdown selects the transport system:
+The **city menu** (top-left city mark) selects the transport system:
 
 | City | Data source | Modes |
 |------|-------------|-------|
@@ -180,7 +182,7 @@ Each city sets CSS variables from `js/cities/*.js`; nothing branches on a city n
 
 - Badge text is picked by WCAG relative luminance (dark `#111` above L ≈ 0.19), so
   yellow and pink lines (Circle, Hammersmith & City, N/Q/R/W) get dark text.
-- The top-left city mark is display-only and uses local brand files:
+- The top-left city mark is a button (city menu + Settings) using local brand files:
   `img/dc.svg`, `img/MBTA.svg`, `img/london.svg`, `img/nyc.png`. In-app mode icons stay
   neutral SVGs (`js/ui/icons.js`) — no MTA marks inside rows.
 
@@ -214,20 +216,22 @@ Each city sets CSS variables from `js/cities/*.js`; nothing branches on a city n
   rectangles keep their width tier.
 - The connection list is the station's served lines minus the route being expanded.
 - The hero "Next stops…" list uses the same row format as board stop rows, and the
-  Near me list puts the favourite star first (star, line badge, name, distance).
+  Nearby view puts the favourite star first (star, line badge, name, distance).
 
 ### Settings and labels
 
-- Dropdown order: Near me, Bus (hidden for bus-less cities), the rail section
+- Search dropdown order: Bus (hidden for bus-less cities), the rail section
   (**Metro** / **Subway** / **Tube**), Commuter rail (Boston/NYC only), Settings.
+  Nearby and the city picker live in the top bar.
 - Route labels keep the city noun where it adds meaning (`Red Line`, `Jubilee Line`)
   but never say "train". Named commuter rectangles carry the name inside the shape.
-- Near me radius: 1,000 ft / 1 mile / 10 miles / 100 miles; distances switch to miles
-  from 0.5 mi. The list shows the 100 nearest.
+- Nearby radius: 1,000 ft / 1 mile / 10 miles / 100 miles; distances switch to miles
+  from 0.5 mi. The Nearby view shows the first 25 by distance.
 - Station names get air around separators (`Flatbush Av - Brooklyn College`,
   `Park Rd NW and 19 St NW`); line names too (`Framingham / Worcester`).
-- Settings shortcut is the second top-bar icon, Back third; the city mark is first and
-  read-only.
+- The city mark is a button: its menu lists the cities (current one checked) and a
+  Settings entry that opens the Settings section. The Settings shortcut no longer sits
+  in the top bar.
 
 ### Accessibility
 

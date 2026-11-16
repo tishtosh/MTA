@@ -849,7 +849,39 @@
         .city-mark {
             flex: none; display: inline-flex; align-items: center; justify-content: center;
             width: 44px; height: 40px; color: #3f2b1e;
+            border: 0; padding: 0; background: none; cursor: pointer; border-radius: 8px;
+            position: relative;
         }
+        .city-mark:hover { background: rgba(0, 0, 0, .06); }
+        .city-mark-caret {
+            position: absolute; right: 1px; bottom: 4px;
+            font-size: 8px; opacity: .7; pointer-events: none;
+        }
+        .city-mark:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        /* City picker + settings submenu, opened from the top-left mark. */
+        .city-menu {
+            position: fixed; top: 58px; left: 12px; z-index: 4500;
+            min-width: 210px; padding: 6px; background: #fff;
+            border: 1px solid #dee2e6; border-radius: 10px;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, .2);
+        }
+        .city-menu[hidden] { display: none; }
+        .city-menu-label {
+            padding: 2px 8px 4px; color: #6c757d;
+            font: 700 10px/1.4 system-ui, -apple-system, sans-serif;
+            letter-spacing: .08em; text-transform: uppercase;
+        }
+        .city-menu-item {
+            display: flex; align-items: center; gap: 8px; width: 100%;
+            padding: 7px 8px; border: 0; border-radius: 6px; background: none;
+            color: #212529; cursor: pointer; text-align: left;
+            font: 500 13px/1.35 system-ui, -apple-system, sans-serif;
+        }
+        .city-menu-item:hover { background: #f1f3f5; }
+        .city-menu-item:focus-visible { outline: 2px solid #0056b3; outline-offset: 1px; }
+        .city-menu-item.active { font-weight: 700; color: #2e7d32; }
+        .city-menu-item .city-menu-check { margin-left: auto; font-size: 11px; }
+        .city-menu-sep { height: 1px; margin: 6px 4px; background: #e9ecef; }
         .city-mark .mode-svg { width: 34px; height: 34px; }
         .city-mark-img { width: 32px; height: 32px; object-fit: contain; display: block; }
         /* Station outside the NYC bbox (through-running LIRR/Metro-North). */
@@ -913,9 +945,6 @@
             .clock-meta { font-size: 9px; }
             .navbar .container > div:last-child { gap: 4px !important; }
         }
-        @media (max-width: 560px) {
-            .clock-meta { display: none; }
-        }
         /* Approach C: keep the bullet pure and move the disclosure chevron
            to the row's trailing edge on narrow screens. */
         @media (max-width: 480px) {
@@ -967,15 +996,17 @@
     <nav class="navbar fixed-top navbar-light bg-light">
         <div class="container d-flex align-items-center">
             <div class="d-flex align-items-center" style="gap: 6px">
-                <span id="cityMark" class="city-mark" role="img"></span>
+                <button id="cityMark" class="city-mark" type="button" title="City and settings"
+                        aria-haspopup="menu" aria-expanded="false" aria-controls="cityMenu"
+                        aria-label="City and settings"></button>
+                <button id="btnNearby" class="navicon nav-shortcut" title="Nearby stops" aria-label="Nearby stops">
+                    <i class="fa-solid fa-user fa-xl-mta" aria-hidden="true"></i>
+                </button>
                 <button id="btnAddFav" class="navicon add-fav-btn" title="Find stops and likes" aria-label="Find stops and likes" aria-expanded="false" aria-controls="favPanel">
                     <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
                 </button>
                 <button id="btnBack" class="navicon nav-back" title="Back" aria-label="Back" disabled>
                     <i class="fa-regular fa-circle-left" aria-hidden="true"></i>
-                </button>
-                <button id="btnFav" class="navicon nav-shortcut" title="All likes" aria-label="Show all likes">
-                    <i class="fa-regular fa-heart fa-xl-mta"></i>
                 </button>
                 <button id="btnHome" class="navicon nav-shortcut" title="Home stop" aria-label="Go to home stop">
                     <i class="fa-regular fa-house fa-xl-mta"></i>
@@ -987,7 +1018,10 @@
                     <i class="fa-solid fa-plane-up fa-xl-mta"></i>
                 </button>
             </div>
-            <div class="d-flex align-items-center">
+            <div class="d-flex align-items-center" style="gap: 4px">
+                <button id="btnFav" class="navicon nav-shortcut" title="All likes" aria-label="Show all likes">
+                    <i class="fa-regular fa-heart fa-xl-mta"></i>
+                </button>
                 <div class="d-flex flex-column" style="line-height:1.15; text-align:right">
                     <span class="navbar-text" id="clock" style="font-size: 30px; font-family: Helvetica, Arial, sans-serif; font-weight: 700"></span>
                     <span id="clockMeta" class="clock-meta"></span>
@@ -995,16 +1029,17 @@
             </div>
         </div>
     </nav>
+    <div id="cityMenu" class="city-menu" role="menu" hidden>
+        <div class="city-menu-label">City</div>
+        <div id="cityMenuList" class="city-menu-list"></div>
+        <div class="city-menu-sep"></div>
+        <button type="button" id="cityMenuSettings" class="city-menu-item" role="menuitem">
+            <i class="fa-solid fa-square-caret-down" aria-hidden="true"></i> Settings
+        </button>
+    </div>
 </div>
 
 <div id="favPanel" class="fav-panel" hidden>
-    <button type="button" class="fav-header" data-fav-panel="near" aria-expanded="false">
-        <span>Near me</span>
-        <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
-    </button>
-    <div id="favNearBody" class="fav-body" hidden>
-        <div id="favNearList" class="fav-list"></div>
-    </div>
     <button type="button" class="fav-header" data-fav-panel="bus" aria-expanded="false">
         <span>Bus</span>
         <i class="fa-solid fa-chevron-down bt-chevron" aria-hidden="true"></i>
@@ -1033,15 +1068,6 @@
         <i class="fa-solid fa-square-caret-down bt-chevron" aria-hidden="true"></i>
     </button>
     <div id="favSettingsBody" class="fav-body" hidden>
-        <div class="fav-setting fav-setting-static">
-            <i class="fa-solid fa-city" aria-hidden="true"></i>
-            <label class="fav-setting-name" for="citySelect">City</label>
-            <select id="citySelect" class="form-select form-select-sm fav-city-select" aria-label="City">
-                <option value="dc">Washington DC</option>
-                <option value="boston">Boston</option>
-                <option value="london">London</option>
-            </select>
-        </div>
         <div class="fav-setting fav-setting-static">
             <i class="fa-solid fa-map-marked-alt" aria-hidden="true"></i>
             <label class="fav-setting-name" for="mapsSelect">Maps app</label>
@@ -1319,7 +1345,6 @@ let nextRefreshAt = 0;        // when the armed timer fires (for the countdown)
 let rateLimited = false;      // WMATA returned 429 → slow the refresh down
 let busy = false;             // re-entrancy guard for runFlow()
 let lastRefreshAt = 0;
-const PAGE_LOADED_AT = Date.now();
 // stop directory
 // The full jStops dump (812 KB, ~7.5k stops) is fetched once per page load
 // and feeds the shared entry field's autocomplete plus the route picture.
@@ -1709,14 +1734,14 @@ const gBackBtn = document.getElementById("btnBack");
 const gFavPanel = document.getElementById("favPanel");
 const gFavFavBody = document.getElementById("favFavBody");
 const gFavFavList = document.getElementById("favFavList");
-const gFavNearBody = document.getElementById("favNearBody");
-const gFavNearList = document.getElementById("favNearList");
 const gFavSettingsBody = document.getElementById("favSettingsBody");
 const gRefreshState = document.getElementById("refreshState");
 const gClearLikes = document.getElementById("btnClearLikes");
-const gCitySelect = document.getElementById("citySelect");
 const gCityMark = document.getElementById("cityMark");
-const gBtnSettings = document.getElementById("btnSettings");
+const gCityMenu = document.getElementById("cityMenu");
+const gCityMenuList = document.getElementById("cityMenuList");
+const gCityMenuSettings = document.getElementById("cityMenuSettings");
+const gBtnNearby = document.getElementById("btnNearby");
 const gMapsSelect = document.getElementById("mapsSelect");
 const gNearRadiusSelect = document.getElementById("nearRadiusSelect");
 const gFavBusBody = document.getElementById("favBusBody");
@@ -3358,11 +3383,33 @@ function renderCityMark() {
     const cfg = cityCfg();
     const icons = (cfg.theme && cfg.theme.icons) || "dc";
     const img = CITY_MARK_IMG[icons];
-    gCityMark.innerHTML = img
+    const icon = img
         ? `<img class="city-mark-img" src="${img}" alt="">`
         : MTA.icons.html(icons, "subway");
-    gCityMark.setAttribute("aria-label", cfg.name || "");
-    gCityMark.title = cfg.name || "";
+    gCityMark.innerHTML = icon
+        + `<i class="fa-solid fa-caret-down city-mark-caret" aria-hidden="true"></i>`;
+    gCityMark.setAttribute("aria-label", `${cfg.name || "City"} — choose city or open settings`);
+    gCityMark.title = `${cfg.name || "City"} — city and settings`;
+}
+
+// City mark dropdown: city list + Settings, populated from the registry.
+function renderCityMenu() {
+    if (!gCityMenuList) return;
+    gCityMenuList.innerHTML = Object.values(CITIES).map(cfg => {
+        const active = cfg.id === city;
+        return `<button type="button" class="city-menu-item${active ? " active" : ""}"`
+            + ` role="menuitemradio" aria-checked="${active}" data-city="${esc(cfg.id)}">`
+            + `<span>${esc(cfg.name)}</span>`
+            + (active ? `<i class="fa-solid fa-check city-menu-check" aria-hidden="true"></i>` : "")
+            + `</button>`;
+    }).join("");
+}
+
+function setCityMenuOpen(open) {
+    if (!gCityMenu) return;
+    gCityMenu.hidden = !open;
+    if (gCityMark) gCityMark.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) renderCityMenu();
 }
 
 // Cities with no bus feed (NYC in phase 0) hide the Bus section and stay in
@@ -3386,7 +3433,7 @@ function applyCityCapabilities() {
 function setCity(next, opts) {
     if (!CITIES[next]) return;
     if (next === city) {
-        if (gCitySelect) gCitySelect.value = city;
+        renderCityMenu();
         return;
     }
     city = next;
@@ -3407,14 +3454,14 @@ function setCity(next, opts) {
     gBoardHeader.innerHTML = "";
     gLinesScroll.innerHTML = "";
     gLinesNote.textContent = "";
-    if (gCitySelect) gCitySelect.value = city;
+    renderCityMenu();
     updateShortcutNav();
     tickClock();
     if (!opts || !opts.keepPanel) {
         favNearToken++;
         closeFavPanel();
     }
-    renderBookmarkList("fav");
+    if (!opts || !opts.keepView) renderBookmarkList("fav");
 }
 
 async function runMetro() {
@@ -5327,6 +5374,7 @@ function screenLabel(s) {
     if (!s) return "previous screen";
     if (s.type === "bookmarks")
         return s.slot === "fav" ? "Likes" : shortcutLabel(s.slot);
+    if (s.type === "nearby") return "Nearby";
     return s.name || (s.id ? `#${s.id}` : "previous stop");
 }
 
@@ -5362,6 +5410,8 @@ async function goBack() {
         if (prev.type === "bookmarks") {
             closeFavPanel();
             await renderBookmarkList(prev.slot);
+        } else if (prev.type === "nearby") {
+            await renderNearbyView();
         } else if (prev.type === "board") {
             await gotoLike(prev.mode, prev.id, prev.name || "");
         }
@@ -5452,7 +5502,7 @@ function setNearRadius(id) {
     writeNearRadius();
     if (gNearRadiusSelect) gNearRadiusSelect.value = nearRadiusId;
 }
-const MAX_NEAR_ROWS = 100;
+const MAX_NEAR_ROWS = 25;
 
 // Near-me distances switch to miles from half a mile up (one decimal).
 function nearDistanceLabel(ft) {
@@ -5472,58 +5522,78 @@ function getUserPosition() {
     });
 }
 
-async function populateNearMe() {
-    if (!gFavNearList) return;
-    const token = ++favNearToken;
+// Collect stops/stations within the chosen radius, nearest first.
+async function loadNearbyRows() {
     const radius = nearRadius();
-    gFavNearList.innerHTML = `<div class="fav-empty">locating…</div>`;
     const pos = await getUserPosition();
-    if (token !== favNearToken) return;
-    if (!pos) {
-        gFavNearList.innerHTML = `<div class="fav-empty">location unavailable — allow location access and try again</div>`;
-        return;
-    }
-    // "Near me" selects the city automatically from the device location.
+    if (!pos) return { pos: null, radius, rows: [] };
+    // Nearby selects the city automatically from the device location.
     const targetCity = nearestCity(pos.lat, pos.lon);
-    if (targetCity !== city) setCity(targetCity, { keepPanel: true });
+    if (targetCity !== city) setCity(targetCity, { keepPanel: true, keepView: true });
     try {
         const [busStops, stations] = await Promise.all([
             // A large radius can exceed a provider's API cap; the station list
-            // still works, so a bus failure must not blank the panel.
+            // still works, so a bus failure must not blank the view.
             fetchStopsNear(pos.lat, pos.lon, radius.m).catch(() => []),
             loadMetroStations().catch(() => [])
         ]);
-        if (token !== favNearToken) return;
         const rows = [];
-        for (const s of busStops || []) {
-            const d = distance(pos.lat, pos.lon, s.Lat, s.Lon, "f");
+        for (const st of busStops || []) {
+            const d = distance(pos.lat, pos.lon, st.Lat, st.Lon, "f");
             if (d > radius.ft) continue;
             rows.push({
-                kind: "bus", id: s.StopID, name: s.Name,
-                route: (s.Routes || [])[0] || "", dist: d
+                kind: "bus", id: st.StopID, name: st.Name,
+                route: (st.Routes || [])[0] || "", dist: d
             });
         }
-        for (const s of stations || []) {
-            const d = distance(pos.lat, pos.lon, s.Lat, s.Lon, "f");
+        for (const st of stations || []) {
+            const d = distance(pos.lat, pos.lon, st.Lat, st.Lon, "f");
             if (d > radius.ft) continue;
             rows.push({
-                kind: "metro", id: s.Code, name: s.Name,
-                route: (s.Lines || [])[0] || "", dist: d
+                kind: "metro", id: st.Code, name: st.Name,
+                route: (st.Lines || [])[0] || "", dist: d
             });
         }
         rows.sort((a, b) => a.dist - b.dist);
-        const shown = rows.slice(0, MAX_NEAR_ROWS);
-        gFavNearList.innerHTML = shown.length ? shown.map(r =>
-            `<div class="fav-stop">${favStarHtml(r.kind, r.id, r.name, r.route)}`
-            + `${favBadgeHtml(r.kind, r.route)}`
-            + `${favGotoHtml(r.kind, r.id, r.name, stopName(r.name) || "#" + r.id)}`
-            + `<small class="fav-dist">${nearDistanceLabel(r.dist)}</small></div>`
-        ).join("") + (rows.length > shown.length
-            ? `<div class="fav-empty">showing the ${MAX_NEAR_ROWS} nearest of ${rows.length}</div>`
-            : "") : `<div class="fav-empty">nothing within ${radius.label}</div>`;
+        return { pos, radius, rows };
     } catch (e) {
-        gFavNearList.innerHTML = `<div class="fav-empty">could not load nearby stops</div>`;
+        return { pos, radius, rows: [], error: e };
     }
+}
+
+// Person icon: the "Nearby" view, nearest 25 stops first.
+async function renderNearbyView() {
+    clearHeroCountdown();
+    closeFavPanel();
+    bookmarkSlot = null;
+    bookmarkToken++;
+    enterScreen({ type: "nearby" });
+    if (gBookmarkTitle) gBookmarkTitle.textContent = "Nearby";
+    if (gBookmarkView) gBookmarkView.hidden = false;
+    if (gViewArrivals) gViewArrivals.hidden = true;
+    scrollPageTop();
+    if (!gBookmarkList) return;
+    const token = ++favNearToken;
+    gBookmarkList.innerHTML = `<div class="fav-empty">locating…</div>`;
+    const { pos, radius, rows, error } = await loadNearbyRows();
+    if (token !== favNearToken) return;
+    if (!pos) {
+        gBookmarkList.innerHTML = `<div class="fav-empty">location unavailable — allow location access and try again</div>`;
+        return;
+    }
+    if (error) {
+        gBookmarkList.innerHTML = `<div class="fav-empty">could not load nearby stops</div>`;
+        return;
+    }
+    const shown = rows.slice(0, MAX_NEAR_ROWS);
+    gBookmarkList.innerHTML = shown.length ? shown.map(r =>
+        `<div class="fav-stop">${favStarHtml(r.kind, r.id, r.name, r.route)}`
+        + `${favBadgeHtml(r.kind, r.route)}`
+        + `${favGotoHtml(r.kind, r.id, r.name, stopName(r.name) || "#" + r.id)}`
+        + `<small class="fav-dist">${nearDistanceLabel(r.dist)}</small></div>`
+    ).join("") + (rows.length > shown.length
+        ? `<div class="fav-empty">showing the ${MAX_NEAR_ROWS} nearest of ${rows.length}</div>`
+        : "") : `<div class="fav-empty">nothing within ${radius.label}</div>`;
 }
 
 async function populateFavStops(container, kind, key) {
@@ -5623,7 +5693,9 @@ if (gAddFavBtn) gAddFavBtn.addEventListener("click", () => {
 });
 // Settings shortcut in the top bar: open the search panel with the Settings
 // section expanded (the section itself is the disclosure control).
-if (gBtnSettings) gBtnSettings.addEventListener("click", () => {
+// Settings lives in the city menu; this opens the search panel with the
+// Settings section expanded.
+function openSettingsSection() {
     if (gFavPanel.hidden) {
         gFavPanel.hidden = false;
         if (gAddFavBtn) gAddFavBtn.setAttribute("aria-expanded", "true");
@@ -5634,7 +5706,38 @@ if (gBtnSettings) gBtnSettings.addEventListener("click", () => {
     if (head.getAttribute && head.getAttribute("aria-expanded") !== "true")
         head.click();
     if (head.scrollIntoView) head.scrollIntoView({ block: "nearest" });
+}
+
+// City mark dropdown: choose a city or jump to Settings.
+if (gCityMark && gCityMenu) gCityMark.addEventListener("click", e => {
+    if (e.stopPropagation) e.stopPropagation();
+    setCityMenuOpen(gCityMenu.hidden);
 });
+if (gCityMenu) gCityMenu.addEventListener("click", e => {
+    const item = e.target.closest ? e.target.closest("[data-city]") : null;
+    if (!item) return;
+    setCityMenuOpen(false);
+    if (item.dataset.city !== city) setCity(item.dataset.city);
+});
+if (gCityMenuSettings) gCityMenuSettings.addEventListener("click", () => {
+    setCityMenuOpen(false);
+    openSettingsSection();
+});
+if (gBtnNearby) gBtnNearby.addEventListener("click", () => {
+    setCityMenuOpen(false);
+    renderNearbyView();
+});
+if (document.addEventListener) {
+    document.addEventListener("click", e => {
+        if (!gCityMenu || gCityMenu.hidden) return;
+        const t = e.target;
+        if (t && t.closest && (t.closest("#cityMenu") || t.closest("#cityMark"))) return;
+        setCityMenuOpen(false);
+    });
+    document.addEventListener("keydown", e => {
+        if (e.key === "Escape") setCityMenuOpen(false);
+    });
+}
 if (gFavBusFilter) gFavBusFilter.addEventListener("input", () => {
     clearTimeout(favBusDebounce);
     favBusDebounce = setTimeout(() => renderFavBusRoutes(gFavBusFilter.value), 250);
@@ -5691,7 +5794,6 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
     if (!header) return;
     const which = header.dataset.favPanel;
     const body = which === "likes" ? gFavFavBody
-        : which === "near" ? gFavNearBody
         : which === "bus" ? gFavBusBody
         : which === "commuter" ? gFavCommuterBody
         : which === "metro" ? gFavMetroBody : gFavSettingsBody;
@@ -5700,8 +5802,6 @@ if (gFavPanel) gFavPanel.addEventListener("click", async e => {
         try {
             if (which === "likes") {
                 renderLikes();
-            } else if (which === "near") {
-                populateNearMe();
             } else if (which === "bus") {
                 await loadBusRouteDirectory();
                 renderFavBusRoutes(gFavBusFilter ? gFavBusFilter.value : "");
@@ -5803,6 +5903,13 @@ if (gBookmarkList) gBookmarkList.addEventListener("click", async e => {
         syncBookmarkView();
         if (gFavFavBody && !gFavFavBody.hidden) renderLikes();
         syncFavStars();
+        return;
+    }
+    const rowGo = e.target.closest ? e.target.closest(".fav-goto") : null;
+    if (rowGo && rowGo.dataset.favId) {
+        e.preventDefault();
+        await gotoLike(rowGo.dataset.favKind, rowGo.dataset.favId,
+            rowGo.dataset.favName);
         return;
     }
     const go = e.target.closest ? e.target.closest(".bookmark-card") : null;
@@ -6862,21 +6969,21 @@ function distance(lat1, lon1, lat2, lon2, unit) {
 // ════════════════════════════════════════════════════════════════════
 // Clock
 // ════════════════════════════════════════════════════════════════════
-function fmtClockTime(ms) {
-    return new Date(ms).toLocaleTimeString("en-us",
-        { hour: "numeric", minute: "2-digit", second: "2-digit" }).replace(/\s?[AP]M$/, "");
+function fmtCountdown(ms) {
+    const s = Math.max(0, Math.ceil(Number(ms) / 1000) || 0);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 function tickClock() {
-    // The clock is a freshness stamp: it shows when the page last refreshed
-    // its data (or when the page loaded, before any stop is chosen).
-    gClock.textContent = fmtClockTime(lastRefreshAt || PAGE_LOADED_AT);
-    let meta = "";
-    if (refreshInFlight) meta = "refreshing…";
+    // The clock is now the auto-refresh countdown; the meta line names it.
+    let big = "--:--", meta = "";
+    if (refreshInFlight) { big = "0:00"; meta = "refreshing…"; }
     else if (!refreshEnabled) meta = "auto-refresh off";
-    else if (nextRefreshAt)
-        meta = `refresh in ${Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000))}s`;
-    else if (!lastRefreshAt) meta = "waiting for a stop";
+    else if (nextRefreshAt) {
+        big = fmtCountdown(nextRefreshAt - Date.now());
+        meta = "Refresh in";
+    } else if (!lastRefreshAt) meta = "waiting for a stop";
+    gClock.textContent = big;
     gClockMeta.textContent = meta;
 }
 
@@ -6899,10 +7006,7 @@ function setRefreshEnabled(on) {
 gRefreshToggle.addEventListener("click", () => setRefreshEnabled(!refreshEnabled));
 if (gClearLikes) gClearLikes.addEventListener("click", resetLikes);
 applyCityChrome(city);
-if (gCitySelect) {
-    populateCitySelect(gCitySelect);
-    gCitySelect.addEventListener("change", () => setCity(gCitySelect.value));
-}
+renderCityMenu();
 applyCityCapabilities();
 renderCityMark();
 if (gMapsSelect) {
